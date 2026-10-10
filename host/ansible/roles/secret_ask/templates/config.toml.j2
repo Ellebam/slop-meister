@@ -1,0 +1,9 @@
+url = {{ secret_ask_url | to_json }}
+operator = {{ secret_ask_operator | to_json }}
+agent_uid = {{ secret_ask_agent_uid }}
+devices = {{ secret_ask_devices | to_json }}
+state = "/var/lib/slopmeister-secret-ask"
+socket = "/run/slopmeister-secret-ask/control.sock"
+op = "/usr/bin/op"
+op_token = "/etc/slopmeister-secret-ask/onepassword-token"
+ha_token = "/etc/slopmeister-secret-ask/home-assistant-token"

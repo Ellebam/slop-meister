@@ -1,0 +1,149 @@
+---
+- name: Require reviewed source and operator-only routing settings
+  ansible.builtin.assert:
+    that:
+      - secret_ask_revision is match('^[a-f0-9]{40}$')
+      - secret_ask_archive | length > 0
+      - secret_ask_requirements | length > 0
+      - secret_ask_operator is match('^[a-f0-9]{32}$')
+      - secret_ask_devices | length > 0
+      - secret_ask_agent_user | length > 0
+      - secret_ask_agent_user not in ['root', 'slopmeister-secret-ask']
+    fail_msg: Use the fixed secret-ask provisioning target with a reviewed revision and non-secret settings file.
+
+- name: Read the requesting agent account identity
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ secret_ask_agent_user }}"
+
+- name: Select the requesting agent UID
+  ansible.builtin.set_fact:
+    secret_ask_agent_uid: "{{ ansible_facts.getent_passwd[secret_ask_agent_user][1] | int }}"
+
+- name: Create the broker service group
+  ansible.builtin.group:
+    name: slopmeister-secret-ask
+    system: true
+
+- name: Create the broker service identity
+  ansible.builtin.user:
+    name: slopmeister-secret-ask
+    group: slopmeister-secret-ask
+    system: true
+    create_home: false
+    home: /var/lib/slopmeister-secret-ask
+    shell: /usr/sbin/nologin
+
+- name: Create root-controlled installation directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ secret_ask_root }}"
+    - "{{ secret_ask_root }}/{{ secret_ask_revision }}"
+
+- name: Install the exact reviewed source archive
+  ansible.builtin.unarchive:
+    src: "{{ secret_ask_archive }}"
+    dest: "{{ secret_ask_root }}/{{ secret_ask_revision }}"
+    owner: root
+    group: root
+    mode: "go-w"
+  notify: Restart secret approval broker
+
+- name: Install the hashed runtime requirements
+  ansible.builtin.copy:
+    src: "{{ secret_ask_requirements }}"
+    dest: "{{ secret_ask_root }}/{{ secret_ask_revision }}/requirements.txt"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install the system Python virtual environment support
+  ansible.builtin.apt:
+    name: "{{ secret_ask_venv_package }}"
+    state: present
+
+- name: Install only hashed dependencies in the protected runtime
+  ansible.builtin.pip:
+    requirements: "{{ secret_ask_root }}/{{ secret_ask_revision }}/requirements.txt"
+    virtualenv: "{{ secret_ask_root }}/{{ secret_ask_revision }}/.venv"
+    virtualenv_command: "{{ secret_ask_python }} -m venv"
+    extra_args: --require-hashes --no-deps
+  notify: Restart secret approval broker
+
+- name: Select the reviewed runtime
+  ansible.builtin.file:
+    src: "{{ secret_ask_root }}/{{ secret_ask_revision }}"
+    dest: "{{ secret_ask_root }}/current"
+    state: link
+    owner: root
+    group: root
+  notify: Restart secret approval broker
+
+- name: Expose the existing Slopmeister command
+  ansible.builtin.file:
+    src: "{{ secret_ask_root }}/current/bin/slopmeister"
+    dest: /usr/local/bin/slopmeister
+    state: link
+    owner: root
+    group: root
+
+- name: Protect the service configuration directory
+  ansible.builtin.file:
+    path: /etc/slopmeister-secret-ask
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the routing settings
+  ansible.builtin.template:
+    src: config.toml.j2
+    dest: /etc/slopmeister-secret-ask/config.toml
+    owner: root
+    group: slopmeister-secret-ask
+    mode: "0640"
+  notify: Restart secret approval broker
+
+# Bootstrap tokens are entered at the desk. This role never reads or transports their values.
+- name: Inspect bootstrap token metadata without reading values
+  ansible.builtin.stat:
+    path: "/etc/slopmeister-secret-ask/{{ item }}"
+    follow: false
+    get_checksum: false
+    get_mime: false
+    get_attributes: false
+  loop: [onepassword-token, home-assistant-token]
+  register: secret_ask_credentials
+
+- name: Determine whether both protected credentials are ready
+  ansible.builtin.set_fact:
+    secret_ask_credentials_ready: >-
+      {{ secret_ask_credentials.results | selectattr('stat.exists') | selectattr('stat.isreg', 'defined')
+      | selectattr('stat.isreg') | selectattr('stat.pw_name', 'equalto', 'slopmeister-secret-ask')
+      | selectattr('stat.mode', 'equalto', '0600') | selectattr('stat.size', 'gt', 0) | list | length == 2 }}
+
+- name: Install the system service
+  ansible.builtin.template:
+    src: slopmeister-secret-ask.service.j2
+    dest: /etc/systemd/system/slopmeister-secret-ask.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart secret approval broker
+
+- name: Enable the broker only when its credentials are ready
+  ansible.builtin.systemd_service:
+    name: slopmeister-secret-ask.service
+    enabled: "{{ secret_ask_credentials_ready }}"
+    state: "{{ 'started' if secret_ask_credentials_ready else 'stopped' }}"
+    daemon_reload: true
+
+- name: Report the remaining operator credential step
+  ansible.builtin.debug:
+    msg: Install both owner-only bootstrap token files through the documented desk command, then rerun this target.
+  when: not secret_ask_credentials_ready

@@ -1,0 +1,7 @@
+---
+- name: Install the confined page service
+  hosts: agent_hosts
+  become: true
+  gather_facts: false
+  roles:
+    - grove

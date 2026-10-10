@@ -1,0 +1,4 @@
+interface:
+  display_name: "Vault Todos"
+  short_description: "Maintain vault task files."
+  default_prompt: "Use $vault-todos to roll, clean up, or add tasks in this vault."

@@ -1,0 +1,65 @@
+---
+# Seed UI-owned files once so later edits survive deployment.
+- name: Protect approval channel storage
+  ansible.builtin.import_tasks: protect.yml
+
+- name: Install the compose file
+  ansible.builtin.copy:
+    src: "{{ home_assistant_service_dir }}/compose.yaml"
+    dest: "{{ home_assistant_dir }}/compose.yaml"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install the non-secret time zone setting
+  ansible.builtin.copy:
+    dest: "{{ home_assistant_dir }}/.env"
+    content: "HA_TIME_ZONE={{ home_assistant_time_zone }}\n"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install the authored configuration
+  ansible.builtin.copy:
+    src: "{{ home_assistant_service_dir }}/config/"
+    dest: "{{ home_assistant_dir }}/config/"
+    owner: root
+    group: root
+    mode: "0644"
+    directory_mode: "0755"
+  notify: Restart Home Assistant
+
+- name: Seed the UI-owned files the host does not have yet
+  ansible.builtin.copy:
+    src: "{{ home_assistant_service_dir }}/ui/{{ item }}"
+    dest: "{{ home_assistant_dir }}/config/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+    force: false
+  loop: [automations.yaml, scenes.yaml, scripts.yaml]
+  notify: Restart Home Assistant
+
+- name: Start Home Assistant, recreated when the compose file changed
+  ansible.builtin.command: docker compose up -d
+  args:
+    chdir: "{{ home_assistant_dir }}"
+  register: home_assistant_up
+  changed_when: home_assistant_up.stderr is search('Created|Recreated|Started')
+
+- name: Restart now when the configuration changed
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for the frontend
+  ansible.builtin.uri:
+    url: http://localhost:8123/
+    timeout: 4
+    return_content: true
+  register: home_assistant_frontend
+  until: "'<title>Home Assistant</title>' in home_assistant_frontend.content | default('')"
+  retries: 24
+  delay: 5
+  when: not ansible_check_mode
+
+- name: Install the private tailnet HTTPS route
+  ansible.builtin.import_tasks: https.yml

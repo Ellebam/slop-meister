@@ -1,0 +1,6 @@
+# Copy into the application repository and adapt it to that application.
+services:
+  web:
+    image: nginx:1.28-alpine
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:?set by the slot}:80"

@@ -1,0 +1,32 @@
+---
+# The approval channel contains credentials that must not be readable or replaceable by the agent UID.
+- name: Protect the Home Assistant deployment and configuration parents
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ home_assistant_dir }}"
+    - "{{ home_assistant_dir }}/config"
+    - "{{ home_assistant_dir }}/config/packages"
+    - "{{ home_assistant_dir }}/config/www"
+
+- name: Remove direct agent write access throughout the configuration
+  ansible.builtin.file:
+    path: "{{ home_assistant_dir }}/config"
+    state: directory
+    recurse: true
+    follow: false
+    owner: root
+    group: root
+    mode: "go-w"
+
+- name: Protect Home Assistant registration and authentication storage
+  ansible.builtin.file:
+    path: "{{ home_assistant_dir }}/config/.storage"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"

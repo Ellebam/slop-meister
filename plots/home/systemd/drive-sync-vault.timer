@@ -1,0 +1,9 @@
+# When drive-sync-vault.service runs. See docs/drive-access.md, Sync on Linux.
+[Unit]
+Description=Slopmeister vault sync with Drive, schedule
+
+[Timer]
+OnCalendar=*:0/5
+
+[Install]
+WantedBy=timers.target

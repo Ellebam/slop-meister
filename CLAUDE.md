@@ -1,0 +1,1 @@
+dist/claude/plots/slopmeister.md

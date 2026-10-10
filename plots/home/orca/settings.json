@@ -1,0 +1,55 @@
+{
+  "settings": {
+    "telemetry": {"optedIn": false},
+    "agentStatusHooksEnabled": true,
+    "agentDefaultArgs": {
+      "aider": "",
+      "amp": "",
+      "ante": "",
+      "antigravity": "",
+      "autohand": "",
+      "claude": "",
+      "claude-agent-teams": "",
+      "cline": "",
+      "codex": "",
+      "command-code": "",
+      "continue": "",
+      "copilot": "",
+      "crush": "",
+      "cursor": "",
+      "devin": "",
+      "droid": "",
+      "gemini": "",
+      "grok": "",
+      "hermes": "",
+      "kimi": "",
+      "kiro": "",
+      "mistral-vibe": "",
+      "openclaude": "",
+      "qwen-code": "",
+      "rovo": "",
+      "trae": ""
+    },
+    "experimentalAgentHibernation": false,
+    "notifications": {"enabled": true, "agentTaskComplete": true},
+    "terminalThemeDark": "Kanagawa",
+    "terminalQuickCommands": [
+      {
+        "id": "slopmeister-phone-claude",
+        "label": "Claude dispatcher",
+        "scope": {"type": "global"},
+        "action": "terminal-command",
+        "command": "/bin/zsh -lc 'cd \"$HOME/dev/slop-meister\" && task dispatch -- claude phone-claude'",
+        "appendEnter": true
+      },
+      {
+        "id": "slopmeister-phone-codex",
+        "label": "Codex dispatcher",
+        "scope": {"type": "global"},
+        "action": "terminal-command",
+        "command": "/bin/zsh -lc 'cd \"$HOME/dev/slop-meister\" && env CODEX_HOME=\"$HOME/.codex\" task dispatch -- codex phone-codex'",
+        "appendEnter": true
+      }
+    ]
+  }
+}

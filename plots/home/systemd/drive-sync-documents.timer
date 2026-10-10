@@ -1,0 +1,9 @@
+# When drive-sync-documents.service runs. See docs/drive-access.md, Sync on Linux.
+[Unit]
+Description=Slopmeister documents sync with Drive, schedule
+
+[Timer]
+OnCalendar=*:2/5
+
+[Install]
+WantedBy=timers.target

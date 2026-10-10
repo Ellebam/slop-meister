@@ -1,0 +1,19 @@
+[Unit]
+Description=Remove expired Grove pages
+
+[Service]
+Type=oneshot
+User={{ grove_publisher }}
+Group=grove
+ExecStart=/usr/local/bin/grove cleanup
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths={{ grove_pages }}
+PrivateTmp=true
+PrivateDevices=true
+RestrictAddressFamilies=AF_UNIX
+CapabilityBoundingSet=
+MemoryMax=128M
+TasksMax=8
+UMask=0077

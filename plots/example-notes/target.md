@@ -1,0 +1,1 @@
+The project of this session is `example-notes`. Its knowledge lives in the vault at `fields/example-notes/` and its context note is `fields/example-notes/CONTEXT.md`. Read the vault guidelines before editing a note. Tasks live in `To-Do/example-notes.md`.

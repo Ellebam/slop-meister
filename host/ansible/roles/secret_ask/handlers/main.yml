@@ -1,0 +1,7 @@
+---
+- name: Restart secret approval broker
+  ansible.builtin.systemd_service:
+    name: slopmeister-secret-ask.service
+    state: restarted
+    daemon_reload: true
+  when: secret_ask_credentials_ready | default(false)

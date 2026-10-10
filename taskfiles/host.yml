@@ -1,0 +1,147 @@
+version: '3'
+
+env:
+  ANSIBLE_CONFIG: '{{.ROOT_DIR}}/host/ansible/ansible.cfg'
+  HOST_INVENTORY: '{{.HOST_INVENTORY | default ""}}'
+  HOST_SETTINGS: '{{.HOST_SETTINGS | default ""}}'
+  HOST_REVISION: '{{.HOST_REVISION | default "HEAD"}}'
+
+tasks:
+  lint:
+    desc: Lint host playbooks without credentials or a deployment
+    cmds:
+      - uv run --locked --group host ansible-lint --profile production --offline host/ansible
+
+  syntax:
+    desc: Syntax-check every host playbook with a synthetic inventory
+    cmds:
+      - |
+        set -eu
+        for playbook in host/ansible/playbooks/*.yml; do
+          uv run --locked --group host ansible-playbook --syntax-check \
+            -i host/ansible/inventory/synthetic.yml "$playbook"
+        done
+
+  test:
+    desc: Test host security configuration and the real approval panel with synthetic state
+    cmds:
+      - |
+        unset PYTEST_ADDOPTS
+        uv run --locked --group host pytest -q host/tests
+      - npm --prefix host test
+
+  ha:check:
+    desc: Validate authored configuration in the pinned isolated Home Assistant image
+    silent: true
+    cmds:
+      - |
+        bash -eu <<'CHECK'
+        image=$(awk '$1 == "image:" {print $2}' host/home-assistant/compose.yaml)
+        case "$image" in *@sha256:*) ;; *) echo 'Home Assistant image needs a digest' >&2; exit 1;; esac
+        mkdir -p host/.scratch
+        scratch=$(mktemp -d host/.scratch/ha-check.XXXXXXXX)
+        container=
+        cleanup() {
+          if [ -s "$scratch/container.id" ]; then
+            container=$(cat "$scratch/container.id")
+            docker rm -f "$container" >/dev/null
+          fi
+          rm -rf "$scratch"
+        }
+        trap cleanup EXIT
+        trap 'exit 130' INT
+        trap 'exit 143' TERM
+        mkdir "$scratch/config"
+        cp -R host/home-assistant/config/. "$scratch/config/"
+        cp host/home-assistant/ui/*.yaml "$scratch/config/"
+        tar -C "$scratch/config" -cf "$scratch/config.tar" .
+        docker create --init --cidfile "$scratch/container.id" --network none \
+          --cpus 1 --memory 1g --pids-limit 128 --cap-drop ALL \
+          --security-opt no-new-privileges --stop-timeout 10 -i --entrypoint sh "$image" \
+          -c 'mkdir -p /config && tar -xf - -C /config && test -f /config/configuration.yaml && python -m homeassistant --script check_config -c /config' >/dev/null
+        container=$(cat "$scratch/container.id")
+        printf 'Home Assistant check container: %s\n' "$container"
+        result=0
+        timeout 180 docker start -ai "$container" < "$scratch/config.tar" > "$scratch/output" 2>&1 || result=$?
+        cat "$scratch/output"
+        test "$result" -eq 0 && ! grep -Eq 'Incorrect config|ERROR:' "$scratch/output"
+        CHECK
+
+  ha:deploy:
+    desc: Deploy protected Home Assistant to an explicitly selected host
+    cmds:
+      - |
+        set -eu
+        : "${HOST_INVENTORY:?Set HOST_INVENTORY to your private inventory}"
+        : "${HOST_SETTINGS:?Set HOST_SETTINGS to your non-secret settings file}"
+        revision=$(git rev-parse --verify --end-of-options "$HOST_REVISION^{commit}")
+        set -- host taskfiles Taskfile.yml pyproject.toml uv.lock uv.toml .python-version
+        git diff --quiet --no-ext-diff "$revision" -- "$@" &&
+          git diff --cached --quiet --no-ext-diff "$revision" -- "$@" || {
+            echo 'Host deployment inputs must match HOST_REVISION' >&2; exit 1;
+          }
+        untracked=$(git ls-files --others --exclude-standard -- "$@")
+        test -z "$untracked" || {
+          echo 'Host deployment inputs must match HOST_REVISION; untracked input found' >&2; exit 1;
+        }
+        uv run --locked --group host ansible-playbook -i "$HOST_INVENTORY" \
+          -e "@$HOST_SETTINGS" host/ansible/playbooks/home-assistant.yml
+
+  broker:deploy:
+    desc: Install one reviewed broker revision without reading or moving bootstrap tokens
+    cmds:
+      - |
+        set -eu
+        : "${HOST_INVENTORY:?Set HOST_INVENTORY to your private inventory}"
+        : "${HOST_SETTINGS:?Set HOST_SETTINGS to your non-secret settings file}"
+        revision=$(git rev-parse --verify --end-of-options "$HOST_REVISION^{commit}")
+        set -- host taskfiles Taskfile.yml pyproject.toml uv.lock uv.toml .python-version
+        git diff --quiet --no-ext-diff "$revision" -- "$@" &&
+          git diff --cached --quiet --no-ext-diff "$revision" -- "$@" || {
+            echo 'Host deployment inputs must match HOST_REVISION' >&2; exit 1;
+          }
+        untracked=$(git ls-files --others --exclude-standard -- "$@")
+        test -z "$untracked" || {
+          echo 'Host deployment inputs must match HOST_REVISION; untracked input found' >&2; exit 1;
+        }
+        mkdir -p host/.scratch
+        scratch=$(mktemp -d "$PWD/host/.scratch/broker.XXXXXXXX")
+        trap 'rm -rf "$scratch"' EXIT
+        git archive --format=tar "$revision" slopmeister bin/slopmeister pyproject.toml uv.lock > "$scratch/source.tar"
+        mkdir "$scratch/source"
+        tar -xf "$scratch/source.tar" -C "$scratch/source"
+        uv export --frozen --no-dev --no-emit-project --project "$scratch/source" \
+          --output-file "$scratch/requirements.txt" >/dev/null
+        uv run --locked --group host ansible-playbook -i "$HOST_INVENTORY" \
+          -e "@$HOST_SETTINGS" -e "secret_ask_revision=$revision" \
+          -e "secret_ask_archive=$scratch/source.tar" -e "secret_ask_requirements=$scratch/requirements.txt" \
+          host/ansible/playbooks/secret-ask.yml
+
+  grove:deploy:
+    desc: Install a reviewed Grove runtime and its private HTTPS route
+    cmds:
+      - |
+        set -eu
+        : "${HOST_INVENTORY:?Set HOST_INVENTORY to your private inventory}"
+        : "${HOST_SETTINGS:?Set HOST_SETTINGS to your non-secret settings file}"
+        revision=$(git rev-parse --verify --end-of-options "$HOST_REVISION^{commit}")
+        set -- host taskfiles Taskfile.yml pyproject.toml uv.lock uv.toml .python-version
+        git diff --quiet --no-ext-diff "$revision" -- "$@" &&
+          git diff --cached --quiet --no-ext-diff "$revision" -- "$@" || {
+            echo 'Host deployment inputs must match HOST_REVISION' >&2; exit 1;
+          }
+        untracked=$(git ls-files --others --exclude-standard -- "$@")
+        test -z "$untracked" || {
+          echo 'Host deployment inputs must match HOST_REVISION; untracked input found' >&2; exit 1;
+        }
+        mkdir -p host/.scratch
+        scratch=$(mktemp -d "$PWD/host/.scratch/grove.XXXXXXXX")
+        trap 'rm -rf "$scratch"' EXIT
+        git archive --format=tar "$revision" slopmeister/__init__.py slopmeister/session/__init__.py \
+          slopmeister/session/bloom.py slopmeister/session/bloom_storage.py \
+          slopmeister/session/git_environment.py slopmeister/session/remote_ssh.py \
+          slopmeister/session/launch_identity.py > "$scratch/runtime.tar"
+        checksum=$(sha256sum "$scratch/runtime.tar" | cut -d ' ' -f 1)
+        uv run --locked --group host ansible-playbook -i "$HOST_INVENTORY" \
+          -e "@$HOST_SETTINGS" -e "grove_archive=$scratch/runtime.tar" \
+          -e "grove_archive_sha256=$checksum" host/ansible/playbooks/grove.yml

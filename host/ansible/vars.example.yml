@@ -1,0 +1,7 @@
+---
+# Non-secret settings only. Replace the identities before deployment.
+secret_ask_agent_user: operator
+secret_ask_operator: REPLACE_WITH_HOME_ASSISTANT_USER_ID
+secret_ask_devices: [mobile_app_phone]
+grove_publisher: operator
+home_assistant_time_zone: Etc/UTC

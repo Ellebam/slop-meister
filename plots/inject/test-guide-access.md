@@ -1,0 +1,1 @@
+Who tests a change here and how they reach it is the project's own answer, the working rules row of the context note and the ticket carry it. The guide travels in the report with the working tree, because nothing ships from this session.

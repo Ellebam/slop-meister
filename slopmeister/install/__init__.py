@@ -1,0 +1,1 @@
+"""Install fixed session configuration."""

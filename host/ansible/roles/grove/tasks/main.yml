@@ -1,0 +1,157 @@
+---
+- name: Require a bounded reviewed runtime snapshot and publishing identity
+  ansible.builtin.assert:
+    that:
+      - grove_archive | length > 0
+      - grove_archive_sha256 is match('^[a-f0-9]{64}$')
+      - grove_publisher | length > 0
+      - grove_publisher not in ['root', 'grove']
+    fail_msg: Supply GROVE_ARCHIVE and its SHA-256 from the reviewed Slopmeister runtime.
+
+- name: Verify the runtime archive before root extraction
+  ansible.builtin.stat:
+    path: "{{ grove_archive }}"
+    checksum_algorithm: sha256
+  register: grove_runtime_archive
+  delegate_to: localhost
+  become: false
+
+- name: Refuse changed runtime bytes
+  ansible.builtin.assert:
+    that:
+      - grove_runtime_archive.stat.isreg
+      - grove_runtime_archive.stat.checksum == grove_archive_sha256
+
+- name: Create the isolated read-only server group
+  ansible.builtin.group:
+    name: grove
+    system: true
+
+- name: Create the isolated server identity
+  ansible.builtin.user:
+    name: grove
+    group: grove
+    system: true
+    create_home: false
+    home: /nonexistent
+    shell: /usr/sbin/nologin
+
+- name: Create root-owned runtime and jail directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ grove_root }}"
+    - "{{ grove_root }}/{{ grove_archive_sha256 }}"
+    - /usr/local/libexec/grove
+    - /srv/grove
+    - /etc/slopmeister
+    - "{{ grove_jail }}"
+    - "{{ grove_jail }}/pages"
+
+- name: Create the publisher-owned page directory with read-only service group access
+  ansible.builtin.file:
+    path: "{{ grove_pages }}"
+    state: directory
+    owner: "{{ grove_publisher }}"
+    group: grove
+    mode: "2750"
+
+- name: Install the reviewed runtime snapshot
+  ansible.builtin.unarchive:
+    src: "{{ grove_archive }}"
+    dest: "{{ grove_root }}/{{ grove_archive_sha256 }}"
+    owner: root
+    group: root
+    mode: "go-w"
+
+- name: Install the fixed intake and cleanup entry
+  ansible.builtin.template:
+    src: grove.j2
+    dest: /usr/local/bin/grove
+    backup: true
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Fetch the pinned official Caddy archive with checksum verification
+  ansible.builtin.get_url:
+    url: "https://github.com/caddyserver/caddy/releases/download/v{{ grove_caddy_version }}/caddy_{{ grove_caddy_version }}_linux_amd64.tar.gz"
+    dest: "{{ grove_root }}/caddy-{{ grove_caddy_version }}.tar.gz"
+    checksum: "{{ grove_caddy_checksum }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Extract only the verified static Caddy binary
+  ansible.builtin.unarchive:
+    src: "{{ grove_root }}/caddy-{{ grove_caddy_version }}.tar.gz"
+    dest: /usr/local/libexec/grove
+    remote_src: true
+    include: [caddy]
+    mode: "0111"
+    owner: root
+    group: root
+  register: grove_caddy_binary
+
+- name: Make the jailed executable unreadable through a malicious page link
+  ansible.builtin.file:
+    path: /usr/local/libexec/grove/caddy
+    owner: root
+    group: root
+    mode: "0111"
+
+- name: Read the local tailnet state without logging other devices
+  ansible.builtin.command: tailscale status --json
+  changed_when: false
+  no_log: true
+  register: grove_tailnet_status
+
+- name: Select this host's certificate name
+  ansible.builtin.set_fact:
+    grove_tailnet_name: "{{ (grove_tailnet_status.stdout | from_json).Self.DNSName | regex_replace('\\.$', '') }}"
+
+- name: Refuse a non-tailnet certificate origin
+  ansible.builtin.assert:
+    that: grove_tailnet_name is match('^[a-z0-9][a-z0-9.-]*\.ts\.net$')
+
+- name: Install the protected host publication settings
+  ansible.builtin.copy:
+    dest: /etc/slopmeister/grove.json
+    content: >-
+      {{ {'directory': grove_pages,
+          'base_url': 'https://' ~ grove_tailnet_name ~ ':' ~ grove_https_port}
+         | to_nice_json }}
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install the confined static service and publisher timer
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    backup: true
+    owner: root
+    group: root
+    mode: "0644"
+  loop: [grove.service, grove-cleanup.service, grove-cleanup.timer]
+  register: grove_units
+
+- name: Load and start the confined server
+  ansible.builtin.systemd_service:
+    name: grove.service
+    daemon_reload: true
+    enabled: true
+    state: "{{ 'restarted' if grove_units.changed or grove_caddy_binary.changed else 'started' }}"
+
+- name: Enable hourly publisher cleanup
+  ansible.builtin.systemd_service:
+    name: grove-cleanup.timer
+    enabled: true
+    state: started
+
+- name: Install the independent tailnet HTTPS handler
+  ansible.builtin.import_tasks: https.yml

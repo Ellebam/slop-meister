@@ -1,0 +1,10 @@
+---
+- name: Deploy the approval frontend
+  hosts: agent_hosts
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Install protected Home Assistant configuration
+      ansible.builtin.include_role:
+        name: home_assistant
+        tasks_from: deploy

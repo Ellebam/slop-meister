@@ -1,0 +1,11 @@
+{"type": "user", "message": {"role": "user", "content": "Probe kickoff"}}
+{"type": "attachment", "attachment": {"type": "deferred_tools_delta", "addedNames": ["WebFetch", "WebSearch"], "addedLines": ["WebFetch\n", "WebSearch\n"]}}
+{"type": "attachment", "attachment": {"type": "agent_listing_delta", "addedTypes": ["Explore"], "addedLines": ["- Explore: search\n"]}}
+{"type": "attachment", "attachment": {"type": "skill_listing", "content": "- frame: step 1\n- plan: step 2\n", "names": ["frame", "plan"]}}
+{"type": "assistant", "message": {"id": "msg_1", "content": [{"type": "thinking", "thinking": "x"}], "usage": {"input_tokens": 2, "cache_creation_input_tokens": 100, "cache_read_input_tokens": 900}}}
+{"type": "assistant", "message": {"id": "msg_1", "content": [{"type": "text", "text": "ok"}], "usage": {"input_tokens": 2, "cache_creation_input_tokens": 100, "cache_read_input_tokens": 900}}}
+{"type": "assistant", "message": {"id": "msg_1", "content": [{"type": "tool_use", "name": "Bash"}], "usage": {"input_tokens": 2, "cache_creation_input_tokens": 100, "cache_read_input_tokens": 900}}}
+{"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "content": "hi"}]}}
+{"type": "attachment", "attachment": {"type": "deferred_tools_delta", "addedNames": ["mcp__alpha__one", "mcp__beta__two", "mcp__beta__three"], "addedLines": ["mcp__alpha__one\n", "mcp__beta__two\n", "mcp__beta__three\n"]}}
+{"type": "attachment", "attachment": {"type": "mcp_instructions_delta", "addedNames": ["alpha"], "addedBlocks": ["## alpha\nuse it\n"]}}
+{"type": "assistant", "message": {"id": "msg_2", "content": [{"type": "text", "text": "done"}], "usage": {"input_tokens": 50, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 1002}}}

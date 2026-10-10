@@ -1,0 +1,55 @@
+[project]
+name = "slopmeister"
+version = "0.1.0"
+description = "Dispatch and manage agent sessions with fixed configuration, reviews and proof."
+requires-python = ">=3.14"
+dependencies = ["websockets==17.1"]
+
+[dependency-groups]
+dev = [
+    "ruff==0.16.7",
+    "pytest==9.1.1",
+    "pytest-xdist==3.8.0",
+    "pytest-timeout==2.4.0",
+]
+host = [
+    "ansible==14.4.0",
+    "ansible-core==2.21.4",
+    "ansible-lint==26.9.0",
+    "pyyaml==6.0.3",
+]
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+# The three tool directories are launcher-delivered copies.
+extend-exclude = [
+    "dist", "tests/data", ".venv", ".agents", ".claude", ".codex",
+]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "C90", "PLR0911", "PLR0912", "PLR0915"]
+mccabe.max-complexity = 10
+pylint.max-returns = 4
+pylint.max-branches = 8
+pylint.max-statements = 25
+
+[tool.ruff.lint.isort]
+known-first-party = ["slopmeister", "tests"]
+force-sort-within-sections = true
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-p no:cacheprovider --strict-markers"
+timeout = 60
+timeout_method = "thread"
+markers = [
+    "unit: no subprocess, no filesystem outside tmp_path",
+    "integration: portable, drives the product through subprocesses with fakes",
+    "native: needs macOS, Orca, the real Codex binary or launchd",
+    "live: real sessions with model inference, operator authorized",
+]

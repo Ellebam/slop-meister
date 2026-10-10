@@ -1,0 +1,16 @@
+# The phone's way in while no agent session runs, see docs/phone-access.md.
+[Unit]
+Description=Claude Code remote control for Slopmeister
+
+[Service]
+WorkingDirectory=%h/dev/slop-meister
+Environment=PATH=%h/.local/bin:/usr/bin:/bin
+Environment=SLOPMEISTER_SECRET_BROKER=1
+ExecStart=%h/.local/bin/claude remote-control
+Restart=always
+RestartSec=60
+StandardOutput=null
+StandardError=null
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,5 @@
+#!/bin/bash
+# Git against the vault. The repository lives outside the synced vault, which holds no .git.
+GIT_DIR="${VAULT_GIT_DIR:-$HOME/.vault-git/obsidian.git}"
+VAULT="${SLOPMEISTER_VAULT:-$HOME/.slopmeister/vault}"
+exec git --git-dir="$GIT_DIR" --work-tree="$VAULT" "$@"

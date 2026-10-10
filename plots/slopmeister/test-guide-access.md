@@ -1,0 +1,1 @@
+The tester runs commands from the repository root and reads their output and the rendered files under `dist/`. Include the specific changed command or instruction scenario, its expected result and a falsification case. `task check` is a regression gate, not proof that the changed command or loaded instruction works.

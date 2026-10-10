@@ -1,0 +1,60 @@
+{
+  "model": "opus[1m]",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/skill-tracker-hook.sh"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/skill-tracker-tool-hook.sh"
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "$HOME/.claude/statusline-command.sh"
+  },
+  "permissions": {
+    "allow": [
+      "Bash($HOME/dev/slop-meister/bin/slopmeister review review *)",
+      "Bash(task plot-session *)"
+    ],
+    "deny": [
+      "Bash(gh auth token *)",
+      "Bash(gh auth login *)",
+      "Bash(gh auth status --show-token *)",
+      "Bash(gh auth status -t *)",
+      "Bash(glab auth *)",
+      "Bash(glab config *)",
+      "Bash(op read *)",
+      "Bash(op item get *)",
+      "Bash(op item share *)",
+      "Bash(op document get *)",
+      "Bash(op inject *)",
+      "Bash(op run --no-masking *)",
+      "Bash(slopmeister secret-ask relay *)"
+    ]
+  },
+  "effortLevel": "high",
+  "tui": "fullscreen",
+  "voice": {
+    "enabled": true,
+    "mode": "hold"
+  },
+  "skipWorkflowUsageWarning": true,
+  "agentPushNotifEnabled": true,
+  "voiceEnabled": true
+}

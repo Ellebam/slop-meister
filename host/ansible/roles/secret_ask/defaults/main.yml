@@ -1,0 +1,11 @@
+---
+secret_ask_root: /opt/slopmeister-secret-ask
+secret_ask_url: http://127.0.0.1:8123
+secret_ask_operator: ""
+secret_ask_devices: []
+secret_ask_agent_user: ""
+secret_ask_revision: ""
+secret_ask_archive: ""
+secret_ask_requirements: ""
+secret_ask_python: /usr/bin/python3.14
+secret_ask_venv_package: python3.14-venv

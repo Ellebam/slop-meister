@@ -1,0 +1,65 @@
+# The opt-in Atlassian sandbox, driven only by `bin/slopmeister sandbox`, see docs/atlassian-sandbox.md.
+# Secrets arrive through env_file and the process environment, never through this file.
+name: slopmeister-sandbox
+
+x-proxied: &proxied
+  ATL_PROXY_NAME: localhost
+  ATL_TOMCAT_SCHEME: https
+  ATL_TOMCAT_SECURE: "true"
+
+services:
+  postgres:
+    image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+    env_file: ${SANDBOX_STATE}/db.env
+    environment:
+      POSTGRES_DB: jira
+    configs:
+      - source: confluence-database
+        target: /docker-entrypoint-initdb.d/confluence.sql
+    volumes:
+      - postgres:/var/lib/postgresql/data
+
+  jira:
+    image: atlassian/jira-software:10.3@sha256:f8a5732f3c949c865aa1429e33c83dcb75678a775169e1830ec50e35595fded5
+    depends_on: [postgres]
+    env_file: ${SANDBOX_STATE}/db.env
+    environment:
+      <<: *proxied
+      ATL_PROXY_PORT: "18443"
+      ATL_JDBC_URL: jdbc:postgresql://postgres:5432/jira
+      ATL_DB_DRIVER: org.postgresql.Driver
+      ATL_DB_TYPE: postgres72
+    volumes:
+      - jira:/var/atlassian/application-data/jira
+
+  confluence:
+    image: atlassian/confluence:9.2@sha256:9e713a69909937014a843b8fced0f366d00d0f28e5ec0a1706ea0406f97f0851
+    depends_on: [postgres]
+    env_file: ${SANDBOX_STATE}/db.env
+    environment:
+      <<: *proxied
+      ATL_PROXY_PORT: "18444"
+      ATL_JDBC_URL: jdbc:postgresql://postgres:5432/confluence
+      ATL_DB_TYPE: postgresql
+      ATL_LICENSE_KEY: ${CONFLUENCE_LICENSE:?}
+    volumes:
+      - confluence:/var/atlassian/application-data/confluence
+
+  proxy:
+    image: nginx:stable-alpine@sha256:985220252f3863977e468f611ef118ebd01421289dd86ee1ae99cb068c3bce2b
+    depends_on: [jira, confluence]
+    ports:
+      - 127.0.0.1:18443:18443
+      - 127.0.0.1:18444:18444
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ${SANDBOX_STATE}/tls:/etc/nginx/tls:ro
+
+configs:
+  confluence-database:
+    content: CREATE DATABASE confluence;
+
+volumes:
+  postgres:
+  jira:
+  confluence:

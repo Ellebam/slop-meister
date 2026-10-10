@@ -1,0 +1,8 @@
+homeassistant:
+  name: Agent approvals
+  packages: !include_dir_named packages
+
+default_config:
+automation: !include automations.yaml
+script: !include scripts.yaml
+scene: !include scenes.yaml

@@ -1,0 +1,16 @@
+#!/bin/bash
+# Slopmeister's op. In a session the launcher marked, op run goes to the Home Assistant approval
+# broker and value-printing subcommands are refused. Everywhere else it is the real op, next on
+# PATH. It never imports a checkout, see docs/1password-access.md.
+set -eu
+for python in /opt/homebrew/bin/python3.14 /usr/local/bin/python3.14 /usr/bin/python3.14 /usr/bin/python3; do
+    [ -x "$python" ] || continue
+    export PYTHONDONTWRITEBYTECODE=1
+    export PYTHONPATH="$HOME/.local/lib/slopmeister-op"
+    export SLOPMEISTER_OP_LAUNCHER="$HOME/.local/bin/op"
+    # The first available interpreter replaces this launcher.
+    # shellcheck disable=SC2093
+    exec "$python" -P -s -m slopmeister.session.secret_run "$@"
+done
+echo "op: Python 3 is required at a fixed system path" >&2
+exit 2

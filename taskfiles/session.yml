@@ -1,0 +1,55 @@
+version: '3'
+
+# Launching, dispatching and claiming sessions.
+tasks:
+  workspace:remove:
+    desc: Remove one retired workspace, task workspace:remove -- <path> [--force] [--self]
+    cmds:
+      - bin/slopmeister workspace-remove {{.CLI_ARGS}}
+
+  dispatch:
+    desc: Open a standing dispatcher here, or use --open for a separate Orca terminal, task dispatch -- [--open] [claude|codex] [remote-name] [--model <model>]
+    interactive: true
+    cmds:
+      - bin/slopmeister dispatch {{.CLI_ARGS}}
+
+  plot-session:
+    desc: Launch or recover a worker, use --host <alias> for a remote worker, --issue-id <n> with stdin, --issue <n> to fetch, or --abandon --handoff <path> to release a saved issue
+    cmds:
+      - bin/slopmeister plot-session {{.CLI_ARGS}}
+
+  plot:
+    desc: Look up a plot, task plot -- <name>, -- --list, -- --tasks/--commit/--shipping/--slots <name>, or -- --declare <name>
+    interactive: true
+    cmds:
+      - bin/slopmeister plots {{.CLI_ARGS}}
+
+  issue:claims:
+    desc: Inspect GitHub ownership with backlog or inspect, reconcile an explicit saved claim, or close it during finalize
+    cmds:
+      - bin/slopmeister claims {{.CLI_ARGS}}
+
+  slot:up:
+    desc: Allocate a slot and hand over, task slot:up -- <repo> <target> <name> [--slot <n>] [launcher args], kickoff on stdin for every repository delivery
+    cmds:
+      - bin/slopmeister slots up {{.CLI_ARGS}}
+
+  slot:down:
+    desc: Release everything a slot allocated, task slot:down -- <repo> <target> <name> [--force] [--slot <n>] [--self]
+    cmds:
+      - bin/slopmeister slots down {{.CLI_ARGS}}
+
+  slot:status:
+    desc: The slot definitions, or the live slots of a repository with their listeners and Codex threads, task slot:status -- [<repo>]
+    cmds:
+      - bin/slopmeister slots status {{.CLI_ARGS}}
+
+  timing:
+    desc: Stage timings of spine worker sessions on this machine, task timing -- --since <ISO time>, or -- --table [--show <repository>] with such lines on stdin
+    cmds:
+      - bin/slopmeister spine-timing {{.CLI_ARGS}}
+
+  kickoff:check:
+    desc: Decide whether a dispatcher-composed kickoff adheres to docs/contracts.md, task kickoff:check -- <file>, or -- - for stdin
+    cmds:
+      - bin/slopmeister kickoff {{.CLI_ARGS}}

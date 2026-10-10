@@ -1,0 +1,54 @@
+# Generic command-approval seed for ~/.codex/rules/default.rules.
+# Reference only. Fresh Slopmeister workspaces receive the generated secret deny baseline.
+# Project-specific and machine-specific approvals are omitted.
+
+prefix_rule(pattern=["git", "add"], decision="allow")
+prefix_rule(pattern=["git", "commit"], decision="allow")
+prefix_rule(pattern=["git", "push"], decision="allow")
+prefix_rule(pattern=["git", "fetch"], decision="allow")
+prefix_rule(pattern=["git", "switch"], decision="allow")
+prefix_rule(pattern=["git", "pull"], decision="allow")
+prefix_rule(pattern=["git", "merge"], decision="allow")
+prefix_rule(pattern=["git", "rebase"], decision="allow")
+prefix_rule(pattern=["git", "stash"], decision="allow")
+prefix_rule(pattern=["git", "rm"], decision="allow")
+prefix_rule(pattern=["git", "branch", "-d"], decision="allow")
+prefix_rule(pattern=["git", "ls-remote"], decision="allow")
+prefix_rule(pattern=["git", "status", "--short", "--branch"], decision="allow")
+prefix_rule(pattern=["git", "worktree", "list"], decision="allow")
+prefix_rule(pattern=["git", "worktree", "add"], decision="allow")
+# GitHub command decisions are the contract's, see src/permissions.toml and the rendered
+# dist/codex/rules/permissions.rules that every workspace receives. Reads are allowed there
+# and mutating commands prompt, so this seed carries no broad gh allow.
+prefix_rule(pattern=["npm", "install"], decision="allow")
+prefix_rule(pattern=["npx", "jest"], decision="allow")
+prefix_rule(pattern=["docker", "info"], decision="allow")
+prefix_rule(pattern=["docker", "ps"], decision="allow")
+prefix_rule(pattern=["docker", "compose"], decision="allow")
+prefix_rule(pattern=["docker", "logs"], decision="allow")
+prefix_rule(pattern=["docker", "inspect"], decision="allow")
+prefix_rule(pattern=["docker", "stats"], decision="allow")
+prefix_rule(pattern=["docker", "port"], decision="allow")
+prefix_rule(pattern=["open", "-a", "Docker"], decision="allow")
+prefix_rule(pattern=["brew", "doctor"], decision="allow")
+prefix_rule(pattern=["brew", "outdated"], decision="allow")
+prefix_rule(pattern=["brew", "info"], decision="allow")
+prefix_rule(pattern=["ps", "aux"], decision="allow")
+prefix_rule(pattern=["ps", "-ef"], decision="allow")
+prefix_rule(pattern=["ps", "-p"], decision="allow")
+prefix_rule(pattern=["lsof"], decision="allow")
+prefix_rule(pattern=["curl"], decision="allow")
+prefix_rule(pattern=["xcrun", "simctl", "list", "devices", "booted"], decision="allow")
+# Slopmeister cross-tool launch shapes. $HOME/dev/slop-meister is the operator's main slopmeister checkout,
+# spelled out in the live file, Codex reads a ~ or a variable as an opaque script that no rule matches.
+prefix_rule(pattern=["$HOME/dev/slop-meister/bin/slopmeister", "review", "review"], decision="allow", justification="Slopmeister cross-tool review, read-only reviewer with a persisted verdict")
+prefix_rule(pattern=["task", "plot-session"], decision="allow", justification="Slopmeister launcher, needs Orca and process listing")
+
+# Slopmeister secret-value deny baseline.
+prefix_rule(pattern=["op", "read"], decision="forbidden", justification="Slopmeister baseline: do not render secret values")
+prefix_rule(pattern=["op", "item", "get"], decision="forbidden", justification="Slopmeister baseline: do not disclose secret values")
+prefix_rule(pattern=["op", "item", "share"], decision="forbidden", justification="Slopmeister baseline: do not disclose secret values")
+prefix_rule(pattern=["op", "document", "get"], decision="forbidden", justification="Slopmeister baseline: do not render secret values")
+prefix_rule(pattern=["op", "inject"], decision="forbidden", justification="Slopmeister baseline: do not render secret values")
+prefix_rule(pattern=["op", "run", "--no-masking"], decision="forbidden", justification="Slopmeister baseline: do not render secret values")
+prefix_rule(pattern=["slopmeister", "secret-ask", "relay"], decision="forbidden", justification="Slopmeister baseline: the relay prints resolved values for the op shim, never for an agent")

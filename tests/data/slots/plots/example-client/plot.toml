@@ -1,0 +1,15 @@
+[plot]
+base = "inject"
+
+[target]
+tasks = "vault"
+
+[target.repository]
+commit = "deny"
+
+[slots]
+max = 3
+
+[slots.ports]
+PG_PORT = 45432
+API_PORT = 43100
