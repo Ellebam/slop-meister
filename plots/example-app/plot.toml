@@ -1,0 +1,22 @@
+[plot]
+base = "code"
+
+[target]
+tasks = "manual"
+
+[target.repository]
+commit = "allow"
+shipping = "allow"
+
+[slots]
+max = 6
+compose = "docker/docker-compose.slot.yml"
+
+[slots.ports]
+PG_PORT = 5432
+BACKEND_PORT = 3100
+MINIO_API_PORT = 9000
+MINIO_CONSOLE_PORT = 9100
+SUPABASE_AUTH_PORT = 9999
+SLOT_METRO_PORT = 8081
+SLOT_ADMIN_PORT = 5173

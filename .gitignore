@@ -1,0 +1,10 @@
+.DS_Store
+__pycache__/
+*.pyc
+settings.local.json
+.env
+tmp/
+/*-NOTES.md
+.venv/
+.ruff_cache/
+node_modules/

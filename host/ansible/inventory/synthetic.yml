@@ -1,0 +1,7 @@
+---
+all:
+  children:
+    agent_hosts:
+      hosts:
+        syntax_only:
+          ansible_connection: local

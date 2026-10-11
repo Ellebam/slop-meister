@@ -1,0 +1,13 @@
+[plot]
+base = "inject"
+
+[target]
+tasks = "manual"
+service_actions = ["jira-read", "confluence-read", "jira-write", "confluence-write"]
+
+[target.repository]
+commit = "deny"
+default = "~/dev/example-client"
+
+[slots]
+none = true

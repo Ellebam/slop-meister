@@ -1,0 +1,41 @@
+[Unit]
+Description=Grove, private Bloom visual explanations
+After=network.target
+
+[Service]
+Type=simple
+User=grove
+Group=grove
+RootDirectory={{ grove_jail }}
+MountAPIVFS=no
+InaccessiblePaths=-+/proc -+/sys -+/dev -+/etc -+/root -+/usr -+/var -+/run -+/tmp
+BindReadOnlyPaths=/usr/local/libexec/grove/caddy:/.caddy {{ grove_pages }}:/pages
+ExecStart=/.caddy run --config - --adapter caddyfile
+StandardInput=data
+StandardInputData={{ lookup('template', 'Caddyfile.j2') | b64encode }}
+Environment=HOME=/nonexistent XDG_CONFIG_HOME=/nonexistent XDG_DATA_HOME=/nonexistent GOMAXPROCS=1
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=15
+KillMode=control-group
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_UNIX
+CapabilityBoundingSet=
+AmbientCapabilities=
+LimitCORE=0
+LimitNOFILE=512
+MemoryMax=128M
+TasksMax=32
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

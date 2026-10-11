@@ -1,0 +1,13 @@
+[plot]
+base = "code"
+
+[target]
+tasks = "github"
+bloom = "tailnet"
+
+[target.repository]
+commit = "allow"
+shipping = "allow"
+
+[slots]
+none = true

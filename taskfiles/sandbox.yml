@@ -1,0 +1,28 @@
+version: '3'
+
+# Opt-in only, never part of task check or CI, see docs/atlassian-sandbox.md.
+tasks:
+  sandbox:up:
+    desc: Start the local Jira and Confluence sandbox, set it up from nothing or restart it to reset the licence clock
+    cmds:
+      - bin/slopmeister sandbox up
+
+  sandbox:status:
+    desc: Report whether sandbox Jira and Confluence are ready
+    cmds:
+      - bin/slopmeister sandbox status
+
+  sandbox:stop:
+    desc: Stop the sandbox and keep its data and tokens
+    cmds:
+      - bin/slopmeister sandbox stop
+
+  sandbox:down:
+    desc: Remove the sandbox containers and their data
+    cmds:
+      - bin/slopmeister sandbox down
+
+  sandbox:live:
+    desc: Run the delivered jira-read and confluence-read against the running sandbox
+    cmds:
+      - bin/slopmeister sandbox live

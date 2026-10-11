@@ -1,0 +1,29 @@
+{
+  "tagOwners": {
+    "tag:agent-host": ["autogroup:admin"],
+    "tag:workstation": ["autogroup:admin"]
+  },
+  "acls": [
+    {
+      "action": "accept",
+      "src": ["operator@example.invalid", "tag:workstation"],
+      "dst": ["tag:agent-host:443,8443"]
+    }
+  ],
+  "tests": [
+    {
+      "src": "operator@example.invalid",
+      "accept": ["tag:agent-host:443", "tag:agent-host:8443"],
+      "deny": ["tag:agent-host:8123", "tag:agent-host:8769"]
+    },
+    {
+      "src": "tag:workstation",
+      "accept": ["tag:agent-host:443", "tag:agent-host:8443"],
+      "deny": ["tag:agent-host:8123", "tag:agent-host:8769"]
+    },
+    {
+      "src": "other@example.invalid",
+      "deny": ["tag:agent-host:443", "tag:agent-host:8443", "tag:agent-host:8123", "tag:agent-host:8769"]
+    }
+  ]
+}

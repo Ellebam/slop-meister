@@ -1,0 +1,12 @@
+version: '3'
+
+tasks:
+  materialize:
+    desc: Render src/ and plots/home into dist/ for both tools
+    cmds:
+      - bin/slopmeister render
+
+  drift:
+    desc: Compare installed global files and vault version-control tooling against dist/ and plots/
+    cmds:
+      - bin/slopmeister workstation drift

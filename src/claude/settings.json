@@ -1,0 +1,15 @@
+{
+  "attribution": {
+    "commit": "",
+    "pr": "",
+    "sessionUrl": false
+  },
+  "autoMode": {
+    "allow": [
+      "$defaults",
+      "op run, direct or inside a Task target, is permitted on both machines: in a launched session op is Slopmeister's own, it resolves tier-one references with its own service-account token and releases tier-two references only under op tier-two after the operator's Approve in Home Assistant. op tier-two -- <command> and op desktop -- <command> are permitted only for the exact command the operator orders in this conversation. Selected service actions keep their existing native approval and service-account access without a Home Assistant decision or a desktop 1Password prompt. These exceptions do not authorize raw secret reads, reading the token files, credential discovery, environment dumps, disabling masking, saved or returned secret values, persistent credential priming or an alternate authentication path. Evaluate the command's destination and effects under every other rule, including deployment, deletion, publication, secret-store writes and data disclosure.",
+      "Operator-requested session dispatch: When the operator explicitly asked in this conversation to dispatch, launch or start a named Slopmeister worker or dispatcher session, treat the resulting task plot-session, task slot:up or task dispatch invocation, run directly or as task --dir <slopmeister root>, as permitted with respect to Create Unsafe Agents and Self-Modification. This holds when the dispatched task changes Slopmeister's own launch, permission or settings configuration, because the launcher delivers the reviewed configuration of the invoking checkout and the worker then works under its own permission rules. This exception covers only that requested launch. It does not authorize launches the operator did not ask for, other agent-spawning commands, direct edits to settings or permission files from this session, bypassing permissions, push, merge, secret reads or any other rule."
+    ]
+  },
+  "permissions": {}
+}

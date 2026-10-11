@@ -1,0 +1,3 @@
+codex_display_name: Vault Optimize
+codex_short_description: Audit vault structure and drift.
+codex_default_prompt: Use $vault-optimize to audit or clean up this Obsidian vault.

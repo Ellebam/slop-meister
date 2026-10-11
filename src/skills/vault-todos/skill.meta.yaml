@@ -1,0 +1,3 @@
+codex_display_name: Vault Todos
+codex_short_description: Maintain vault task files.
+codex_default_prompt: Use $vault-todos to roll, clean up, or add tasks in this vault.

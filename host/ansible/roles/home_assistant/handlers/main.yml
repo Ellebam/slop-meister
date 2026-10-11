@@ -1,0 +1,7 @@
+---
+# A running container does not reread its configuration, compose up alone leaves it as it is.
+- name: Restart Home Assistant
+  ansible.builtin.command: docker compose restart
+  args:
+    chdir: "{{ home_assistant_dir }}"
+  changed_when: true

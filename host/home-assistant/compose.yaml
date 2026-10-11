@@ -1,0 +1,17 @@
+services:
+  homeassistant:
+    container_name: homeassistant
+    image: ghcr.io/home-assistant/home-assistant:2026.9.4@sha256:3e6710a7ab2a61311d9d899b719f6c3657791c63e8f4942cec4ebc42401d6b76
+    volumes:
+      - ./config:/config
+    environment:
+      TZ: ${HA_TIME_ZONE:-Etc/UTC}
+    ports:
+      - "127.0.0.1:8123:8123"
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    stop_grace_period: 60s

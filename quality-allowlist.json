@@ -1,0 +1,24 @@
+{
+ "version": 1,
+ "rule": "An exception records its delivered size as the ceiling, forbids growth and targets at most 400 lines or 2000 words.",
+ "exceptions": [
+  {
+   "path": "docs/service-actions.md",
+   "metric": "document_words",
+   "symbol": "__file__",
+   "ceiling": 4489,
+   "target": 2000,
+   "owner": "maintainer",
+   "rationale": "Existing reference retained while introducing the word budget. No growth is permitted."
+  },
+  {
+   "path": "docs/testing.md",
+   "metric": "document_words",
+   "symbol": "__file__",
+   "ceiling": 3487,
+   "target": 2000,
+   "owner": "maintainer",
+   "rationale": "Existing reference retained while introducing the word budget. No growth is permitted."
+  }
+ ]
+}

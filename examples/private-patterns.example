@@ -1,0 +1,4 @@
+# Copy this file to ~/.config/slopmeister/private-patterns and set its mode to 0600.
+# Add one regular expression per line for your private project and machine facts.
+# Keep the populated file outside every repository. Matching ignores case.
+# Blank lines and comments are ignored. No real patterns belong in this example.

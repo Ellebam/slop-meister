@@ -1,0 +1,1 @@
+dist/codex/plots/slopmeister.md

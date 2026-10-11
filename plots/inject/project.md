@@ -1,0 +1,5 @@
+This file carries the plot for exactly this session. The `slopmeister` launcher copied it into this workspace as `AGENTS.md` and `CLAUDE.md`, it sits on top of the global {{TOOL}} layer, and it is never committed.
+
+Agent commit permission comes from this plot's declaration in `plots/<name>/plot.toml`. The launcher appends the declared permission to this session's instruction files. `allow` grants standing agent commit permission. An agent-issued direct `git push` always routes through native approval. `deny` routes exact commit-producing Git commands through it too, with the configured reviewer requiring explicit operator intent in the conversation. Only the operator can tell the agent to commit or push, and without that instruction the agent leaves the change uncommitted and reports it. Delivery and repository ownership grant no permission. One-command approval changes no saved permission. Commit permission grants no push, merge or other remote write.
+
+Work only inside this worktree under `.worktrees/`. The main checkout belongs to whoever owns the repository and other sessions may hold their own worktrees beside this one.

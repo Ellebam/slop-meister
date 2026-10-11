@@ -1,0 +1,1 @@
+The one must-fix class here is a leaked field fact. No field facts, ever. No ticket identifiers, hostnames, private addresses or field names. Point at the vault instead. `bin/slopmeister quality` refuses them and no allowlist entry can waive one.

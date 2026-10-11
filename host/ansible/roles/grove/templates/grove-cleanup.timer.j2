@@ -1,0 +1,10 @@
+[Unit]
+Description=Expire Grove pages every hour
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=1h
+Unit=grove-cleanup.service
+
+[Install]
+WantedBy=timers.target
