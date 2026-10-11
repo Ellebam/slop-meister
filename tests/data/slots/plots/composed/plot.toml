@@ -1,0 +1,14 @@
+[plot]
+base = "code"
+
+[target]
+tasks = "manual"
+
+[target.repository]
+commit = "allow"
+
+[slots]
+compose = "docker/compose.yml"
+
+[slots.ports]
+WEB_PORT = 45080

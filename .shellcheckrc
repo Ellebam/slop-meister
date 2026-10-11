@@ -1,0 +1,3 @@
+# Sourced helpers resolve from the script directory. Notes stay advisory, warnings gate.
+external-sources=true
+source-path=SCRIPTDIR

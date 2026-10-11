@@ -1,0 +1,35 @@
+{
+    admin off
+    auto_https off
+    persist_config off
+    servers {
+        protocols h1
+        max_header_size 16KB
+        timeouts {
+            read_header 5s
+            read_body 10s
+            write 15s
+            idle 20s
+        }
+    }
+}
+http://:{{ grove_backend_port }} {
+    bind 127.0.0.1
+    root * /pages
+    header {
+        Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; sandbox allow-scripts"
+        X-Content-Type-Options nosniff
+        Referrer-Policy no-referrer
+        Cache-Control no-store
+    }
+    @page {
+        method GET HEAD
+        path_regexp ^/[0-9a-f]{32}\.html$
+    }
+    handle @page {
+        file_server
+    }
+    handle {
+        respond 404
+    }
+}

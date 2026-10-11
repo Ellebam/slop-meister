@@ -1,0 +1,4 @@
+interface:
+  display_name: "Vault Optimize"
+  short_description: "Audit vault structure and drift."
+  default_prompt: "Use $vault-optimize to audit or clean up this Obsidian vault."

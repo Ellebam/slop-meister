@@ -1,0 +1,1 @@
+The one canonical test command the context note's repositories section names, where one exists, is the local gate here. Anything the project runs only on a developer's machine lives in the vault beside it, never in this plot.

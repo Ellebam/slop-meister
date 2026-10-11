@@ -1,0 +1,4 @@
+---
+# Non-secret settings only. Replace the identities before deployment.
+grove_publisher: operator
+home_assistant_time_zone: Etc/UTC

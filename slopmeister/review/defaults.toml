@@ -1,0 +1,10 @@
+# Reviewer and tester defaults. A single review run may override model and effort.
+# The tester verifies its values from native session records.
+
+[codex]
+model = "gpt-6.1-sol"
+effort = "high"
+
+[claude]
+model = "claude-opus-5-5"
+effort = "high"

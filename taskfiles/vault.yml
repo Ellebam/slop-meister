@@ -1,0 +1,27 @@
+version: '3'
+
+tasks:
+  vault:init:
+    desc: Create the vault's bare repository outside the vault, or rebuild it with -- --from-bundle <path>
+    cmds:
+      - bin/slopmeister vault init {{.CLI_ARGS}}
+
+  vault:commit:
+    desc: Commit named vault paths, task vault:commit -- "one line message" -- <vault-relative path>..., never a sweep
+    cmds:
+      - bin/slopmeister vault commit {{.CLI_ARGS}}
+
+  vault:status:
+    desc: What changed in the vault since the last commit
+    cmds:
+      - "$HOME/.vault-git/bin/vaultgit status --short"
+
+  vault:log:
+    desc: Recent vault history
+    cmds:
+      - "$HOME/.vault-git/bin/vaultgit log --oneline -20"
+
+  vault:lint:
+    desc: The vault's regression checks, vault-wide counts or task vault:lint -- --area <folder> over one folder with its links resolved
+    cmds:
+      - bin/slopmeister vault lint {{.CLI_ARGS}}

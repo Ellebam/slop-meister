@@ -1,0 +1,11 @@
+# Volatile Obsidian state, rewritten on every tab switch or device
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+.obsidian/graph.json
+.obsidian/cache
+# Third-party plugin code, re-downloadable from community-plugins.json
+.obsidian/plugins/
+# macOS noise
+.DS_Store
+# Python bytecode from an evaluation harness, never content
+__pycache__/

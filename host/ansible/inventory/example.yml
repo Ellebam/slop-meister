@@ -1,0 +1,8 @@
+---
+all:
+  children:
+    agent_hosts:
+      hosts:
+        agent:
+          ansible_host: agent.example.invalid
+          ansible_user: operator

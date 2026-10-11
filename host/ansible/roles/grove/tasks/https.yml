@@ -1,0 +1,42 @@
+---
+- name: Read the current private HTTPS routing
+  ansible.builtin.command: tailscale serve status --json
+  changed_when: false
+  register: grove_serve_status
+
+- name: Decode the existing routing without replacing another service
+  ansible.builtin.set_fact:
+    grove_serve: "{{ grove_serve_status.stdout | from_json }}"
+    grove_https_ready: false
+
+- name: Refuse public Funnel or a conflicting listener
+  ansible.builtin.assert:
+    that:
+      - grove_serve.get('AllowFunnel', {}).values() | select('equalto', true) | list | length == 0
+      - "grove_serve.get('TCP', {}).get(grove_https_port | string, {}) in [{}, {'HTTPS': true}]"
+
+- name: Refuse another handler on Grove's port
+  ansible.builtin.assert:
+    that:
+      - "item.value.get('Handlers', {}) in [{}, {'/': {'Proxy': 'http://127.0.0.1:' ~ grove_backend_port}}]"
+  loop: "{{ grove_serve.get('Web', {}) | dict2items }}"
+  when: item.key is search(':' ~ grove_https_port ~ '$')
+
+- name: Recognize the already-installed Grove route
+  ansible.builtin.set_fact:
+    grove_https_ready: true
+  loop: "{{ grove_serve.get('Web', {}) | dict2items }}"
+  when:
+    - item.key is search(':' ~ grove_https_port ~ '$')
+    - "item.value.get('Handlers', {}).get('/', {}) == {'Proxy': 'http://127.0.0.1:' ~ grove_backend_port}"
+
+- name: Serve Grove privately through the existing Tailscale daemon
+  ansible.builtin.command:
+    argv:
+      - tailscale
+      - serve
+      - --bg
+      - "--https={{ grove_https_port }}"
+      - "http://127.0.0.1:{{ grove_backend_port }}"
+  changed_when: true
+  when: not grove_https_ready

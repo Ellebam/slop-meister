@@ -1,0 +1,37 @@
+version: '3'
+
+tasks:
+  home:install:
+    desc: Install the global layer for both tools and the vault tooling with backups, or only the entries named after --
+    cmds:
+      - bin/slopmeister render --check
+      - bin/slopmeister workstation install {{.CLI_ARGS | default "--all"}}
+
+  home:diff:
+    desc: Show what home:install would change and the allow-rule status, write nothing
+    cmds:
+      - bin/slopmeister workstation diff
+
+  glab:login:
+    desc: Sign glab in using the operator's private 1Password reference file
+    preconditions:
+      - sh: 'test -f "$HOME/.config/slopmeister/glab.env"'
+        msg: Prepare ~/.config/slopmeister/glab.env with mode 0600, see docs/gitlab.md
+    cmds:
+      - op run --env-file="$HOME/.config/slopmeister/glab.env" -- bin/slopmeister workstation glab-login
+
+  op:setup:
+    desc: Install both tier tokens from the operator's private reference file, operator present
+    preconditions:
+      - sh: 'test -f "$HOME/.config/slopmeister/op-setup.env"'
+        msg: Prepare ~/.config/slopmeister/op-setup.env with mode 0600, see docs/1password-access.md
+    cmds:
+      - op run --env-file="$HOME/.config/slopmeister/op-setup.env" -- bin/slopmeister workstation op-setup tokens
+
+  op:approval:
+    desc: Install the approval route from the operator's private reference file, operator present
+    preconditions:
+      - sh: 'test -f "$HOME/.config/slopmeister/op-approval.env"'
+        msg: Prepare ~/.config/slopmeister/op-approval.env with mode 0600, see docs/1password-access.md
+    cmds:
+      - op run --env-file="$HOME/.config/slopmeister/op-approval.env" -- bin/slopmeister workstation op-setup approval

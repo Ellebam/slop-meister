@@ -1,0 +1,15 @@
+[plot]
+base = "code"
+
+[target]
+tasks = "manual"
+
+[target.repository]
+commit = "allow"
+
+[slots]
+max = 3
+
+[slots.ports]
+PG_PORT = 45432
+API_PORT = 43100

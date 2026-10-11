@@ -1,0 +1,39 @@
+version: '3'
+
+# The gate. Every target selects from the one catalogue in slopmeister/check/catalogue.py.
+tasks:
+  tools:
+    desc: Sync .venv exactly from the committed uv lock
+    cmds:
+      - uv sync --locked
+
+  check:
+    desc: Run every deterministic local check with bounded concurrency, without model inference
+    cmds:
+      - bin/slopmeister check {{.CLI_ARGS}}
+
+  lint:
+    desc: Ruff, ruff format and shellcheck, the same job CI runs first
+    cmds:
+      - bin/slopmeister check --kind lint {{.CLI_ARGS}}
+
+  quality:
+    desc: Budgets, import rules, the allowlist, current renders, identifier lint and docs paths
+    cmds:
+      - bin/slopmeister check --kind quality {{.CLI_ARGS}}
+
+  test:portable:
+    desc: The portable test layers, unit and integration, the same job CI runs
+    cmds:
+      - bin/slopmeister check --layer portable --kind tests {{.CLI_ARGS}}
+
+  test:live:
+    desc: The real-session smoke, one sow session per tool, only with the operator's consent
+    cmds:
+      - .venv/bin/python -m pytest tests/live -q -p no:cacheprovider {{.CLI_ARGS}}
+
+  spine:test:
+    desc: Launch or collect one isolated opposite-tool tester, pass -- launch or -- collect and its arguments
+    silent: true
+    cmds:
+      - bin/slopmeister tester {{.CLI_ARGS}}

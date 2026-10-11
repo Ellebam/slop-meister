@@ -1,0 +1,22 @@
+#!/bin/bash
+# Slopmeister's op. In a session the launcher marked, it picks the tier of an op run, holds the
+# service-account tokens and refuses value-printing subcommands. Everywhere else it is the real
+# op, next on PATH. It never imports a checkout, see docs/1password-access.md.
+set -eu
+for python in /opt/homebrew/bin/python3.14 /usr/local/bin/python3.14 /usr/bin/python3.14; do
+    [ -x "$python" ] || continue
+    # The first available interpreter replaces this launcher.
+    # shellcheck disable=SC2093
+    exec "$python" -B -I -c '
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path.home() / ".local/lib/slopmeister-op"))
+sys.argv = sys.argv[1:]
+from slopmeister.session.secret_run import main
+
+raise SystemExit(main(sys.argv[1:]))
+' "$0" "$@"
+done
+echo "op: Python 3.14 is required at a fixed system path" >&2
+exit 2

@@ -1,0 +1,1 @@
+The repositories section of the context note says how this project's repository is run and tested. Drive the change through the command it names, or through the note section it points at, never through a command you guessed.

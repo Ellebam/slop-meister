@@ -1,0 +1,12 @@
+[plot]
+base = "freeform"
+
+[target]
+tasks = "vault"
+
+[target.repository]
+commit = "deny"
+default = "~/dev/example-notes"
+
+[slots]
+none = true

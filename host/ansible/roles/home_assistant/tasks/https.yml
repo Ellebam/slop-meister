@@ -1,0 +1,39 @@
+---
+- name: Read the current Tailscale Serve routes
+  ansible.builtin.command: tailscale serve status --json
+  register: home_assistant_serve_status
+  changed_when: false
+  check_mode: false
+
+- name: Decode the current Serve configuration
+  ansible.builtin.set_fact:
+    home_assistant_serve: "{{ home_assistant_serve_status.stdout | from_json }}"
+    home_assistant_https_ready: false
+
+- name: Refuse to replace a different TCP service or public Funnel
+  ansible.builtin.assert:
+    that:
+      - "home_assistant_serve.get('TCP', {}).get('443', {}) in [{}, {'HTTPS': true}]"
+      - home_assistant_serve.get('AllowFunnel', {}).values() | select('equalto', true) | list | length == 0
+    fail_msg: Inspect existing Serve or Funnel configuration before installing the private Home Assistant route.
+
+- name: Refuse to replace another HTTPS root handler
+  ansible.builtin.assert:
+    that:
+      - "item.value.get('Handlers', {}).get('/', {}) in [{}, {'Proxy': 'http://127.0.0.1:8123'}]"
+    fail_msg: HTTPS port 443 already has another root handler. Preserve it and resolve the route explicitly.
+  loop: "{{ home_assistant_serve.get('Web', {}) | dict2items }}"
+  when: item.key is search(':443$')
+
+- name: Recognize the already-installed Home Assistant handler
+  ansible.builtin.set_fact:
+    home_assistant_https_ready: true
+  loop: "{{ home_assistant_serve.get('Web', {}) | dict2items }}"
+  when:
+    - item.key is search(':443$')
+    - "item.value.get('Handlers', {}).get('/', {}) == {'Proxy': 'http://127.0.0.1:8123'}"
+
+- name: Serve Home Assistant over private tailnet HTTPS
+  ansible.builtin.command: tailscale serve --bg --https=443 http://127.0.0.1:8123
+  changed_when: true
+  when: not home_assistant_https_ready

@@ -1,0 +1,4 @@
+---
+home_assistant_dir: /srv/homeassistant
+home_assistant_service_dir: "{{ playbook_dir }}/../../home-assistant"
+home_assistant_time_zone: Etc/UTC
