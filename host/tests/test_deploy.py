@@ -77,6 +77,7 @@ def deploy(subject, target):
             f"HOST_REVISION={revision}",
         ],
         cwd=repo,
+        env={**os.environ, "NO_COLOR": "1"},
         capture_output=True,
         text=True,
         check=False,
