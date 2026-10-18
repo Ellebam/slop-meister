@@ -1,5 +1,6 @@
 """Secret redaction and safe one-line rendering."""
 
+import json
 import re
 
 SENSITIVE_ENV_NAMES = frozenset(
@@ -35,17 +36,47 @@ _SECRET_PATTERNS = (
     re.compile(r"\bAIza[0-9A-Za-z_-]{35}"),
     re.compile(r"\bglpat-[A-Za-z0-9_-]{20,}"),
 )
-_CREDENTIAL_VALUE = r"""(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s|`]+)"""
+_CREDENTIAL_VALUE = r"""(?:"(?:\\.|[^"\\\r\n])*"|'(?:\\.|[^'\\\r\n])*'|[^\s|`]+)"""
 _CREDENTIAL_NAME = r"(?:TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|API[_-]?KEY|CREDENTIALS?)"
+_CREDENTIAL_LABEL = rf"(?<![\w-])(?:(?:[A-Za-z][A-Za-z0-9_]*_)?{_CREDENTIAL_NAME}|"
+_CREDENTIAL_LABEL += "|".join(sorted(SENSITIVE_ENV_NAMES | SENSITIVE_PROXY_NAMES)) + r")\b"
+_CLOUD_ENV_NAME = r"(?:AWS|CLOUDSDK|GCLOUD|GCP|GOOGLE)_[A-Z0-9_]*"
 
 
 def redact(text: str) -> str:
+    # Native envelopes and finding strings can each contain another JSON layer.
+    try:
+        value = json.loads(text)
+        masked = _redact_json(value)
+    except json.JSONDecodeError:
+        return _redact_text(text)
+    except ValueError, RecursionError:
+        return "[REDACTED: JSON exceeds decoding limits]"
+    return text if masked == value else json.dumps(masked)
+
+
+def _redact_json(value: object) -> object:
+    if isinstance(value, dict):
+        return {
+            key: "[REDACTED]"
+            if re.fullmatch(f"{_CREDENTIAL_LABEL}|{_CLOUD_ENV_NAME}", key, re.IGNORECASE)
+            else _redact_json(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_json(item) for item in value]
+    return redact(value) if isinstance(value, str) else value
+
+
+def _redact_text(text: str) -> str:
     redacted = text
     for pattern in _SECRET_PATTERNS:
         redacted = pattern.sub("[REDACTED]", redacted)
-    label = rf"(?<![\w-])(?:[A-Za-z][A-Za-z0-9_]*_)?{_CREDENTIAL_NAME}\b"
     redacted = re.sub(
-        rf"(({label})\s*[:=]\s*){_CREDENTIAL_VALUE}", r"\1[REDACTED]", redacted, flags=re.IGNORECASE
+        rf"""(({_CREDENTIAL_LABEL})(["']?)\s*[:=]\s*){_CREDENTIAL_VALUE}""",
+        lambda match: f"{match[1]}{match[3]}[REDACTED]{match[3]}",
+        redacted,
+        flags=re.IGNORECASE,
     )
     # A long flag takes its value after "=" or whitespace.
     flag = rf"(?<![\w-])--(?:[\w-]*[_-])?(?:{_CREDENTIAL_NAME}|USER|AUTH)\b(?:=|\s+)(?!-)"
@@ -60,7 +91,7 @@ def redact(text: str) -> str:
             flags=re.IGNORECASE,
         )
     return re.sub(
-        r"\b(?:AWS|CLOUDSDK|GCLOUD|GCP|GOOGLE)_[A-Z0-9_]*\s*=\s*[^\s|`]+",
+        rf"\b{_CLOUD_ENV_NAME}\s*=\s*[^\s|`]+",
         "[REDACTED_ENV]=[REDACTED]",
         redacted,
     )
@@ -68,7 +99,7 @@ def redact(text: str) -> str:
 
 def sanitize_text(value: str) -> str:
     value = redact(value)
-    value = "".join(" " if ord(char) < 32 or ord(char) == 127 else char for char in value)
+    value = "".join(char if char.isprintable() else " " for char in value)
     value = value.replace("|", r"\|")
     value = re.sub(r"(?m)^#{1,6}\s+", r"\# ", value)
     return re.sub(r"\s+", " ", value).strip()

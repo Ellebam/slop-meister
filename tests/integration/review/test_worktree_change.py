@@ -53,6 +53,20 @@ def test_unchanged_worktree_reports_whether_it_was_already_dirty(tmp_path):
     assert _review_with(repo, lambda: None).preexisting_dirty is False
 
 
+def test_writing_already_ignored_review_logs_does_not_change_the_subject(tmp_path):
+    repo = _dirty_repo(tmp_path)
+    (repo / ".git/info/exclude").write_text("/scratch/\n")
+    (repo / "scratch").mkdir()
+    log = repo / "scratch/review.log"
+    log.write_text("review started\n")
+
+    result = _review_with(repo, lambda: log.write_text("review finished\n"))
+
+    assert result.preexisting_dirty is True
+    assert result.findings == ()
+    assert log.read_text() == "review finished\n"
+
+
 @pytest.mark.parametrize("change, state", [(False, "unchanged"), (True, "changed")])
 def test_timeout_assessment_sees_an_edit_to_an_already_modified_file(tmp_path, change, state):
     repo = _dirty_repo(tmp_path)

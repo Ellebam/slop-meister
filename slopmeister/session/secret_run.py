@@ -1,21 +1,12 @@
-"""The `op` a launched session runs: it picks the tier of an `op run` and holds the tokens.
-
-Installed as ~/.local/bin/op, which the dotfiles put first on every shell's PATH. In a session
-the launcher marked, `op run` reads its env files and the environment the way the real command
-does and takes the tier from the vaults they name. Tier one runs the real `op run` with the
-tier-one service-account token. Tier two needs the operator's word, `op tier-two -- <command>`,
-and then their approval in Home Assistant. `op desktop -- <command>` sends every `op run` below
-it to the real `op` with the desktop app. Commands that disclose values are refused. Everything
-else, and everything outside a marked session, passes to the real `op` next on PATH.
-"""
+"""Resolve session secrets and project approved item metadata without exposing values."""
 
 import os
 from pathlib import Path
 import socket
 import sys
 
-from slopmeister.session import secret_approval, secret_tier
-from slopmeister.session.secret_env import environment
+from slopmeister.session import secret_approval, secret_metadata, secret_tier
+from slopmeister.session.secret_env import NO_MASKING, environment, parse
 
 MARK = "SLOPMEISTER_SECRET_BROKER"
 # The operator's word for this process tree, set by `op tier-two --` or `op desktop --`.
@@ -34,7 +25,6 @@ REFUSED_WORDS = {"read", "inject"}
 REFUSED_PAIRS = (("item", "get"), ("item", "share"), ("document", "get"))
 # op also takes both groups in the plural, a refusal must not depend on the spelling.
 GROUPS = {"items": "item", "documents": "document"}
-ENV_FILE, NO_MASKING = "--env-file", "--no-masking"
 REFUSAL = "is refused for agents; use op run, which puts the values into the command only"
 ORDER_DESKTOP = "Only the operator can order the desktop route, op desktop -- <command>."
 MISSING = "op: the 1Password CLI is not installed on this machine"
@@ -42,32 +32,6 @@ MISSING = "op: the 1Password CLI is not installed on this machine"
 
 class Refusal(Exception):
     """This request releases nothing, the message says why and what the operator can order."""
-
-
-def _flag(args: list[str], index: int, files: list[str]) -> int:
-    """Consume one `op run` flag at index into files, returning the next index."""
-    arg = args[index]
-    if arg == ENV_FILE and index + 1 < len(args):
-        files.append(args[index + 1])
-        return index + 2
-    if arg.startswith(ENV_FILE + "="):
-        files.append(arg.partition("=")[2])
-        return index + 1
-    if arg == NO_MASKING:
-        raise ValueError(f"{NO_MASKING} is refused, values stay masked")
-    raise ValueError(f"{arg} is not supported by the session's op")
-
-
-def parse(args: list[str]) -> tuple[list[str], list[str]]:
-    """The env files and the command of an `op run` line."""
-    files: list[str] = []
-    index = 0
-    while index < len(args) and args[index] != "--":
-        index = _flag(args, index, files)
-    command = args[index + 1 :]
-    if not command:
-        raise ValueError("op run needs -- followed by the command")
-    return files, command
 
 
 def session_name(cwd: Path) -> str:
@@ -135,7 +99,7 @@ def approved(references: dict[str, str], command: list[str]) -> None:
         raise Refusal(
             f"Home Assistant did not take the question, {error}. {ORDER_DESKTOP}"
         ) from None
-    waits = f"op run: request {body['id']} waits for Home Assistant approval"
+    waits = f"op: request {body['id']} waits for Home Assistant approval"
     print(waits, file=sys.stderr, flush=True)
     state = secret_approval.decision(settings, body["id"])
     if state != "approved":
@@ -235,11 +199,33 @@ def pass_through(argv: list[str]) -> int:
     return execute(argv)
 
 
+def metadata(args: list[str]) -> int:
+    try:
+        vault, search = secret_metadata.parse(args)
+        if os.environ.get(ROUTE) == DESKTOP:
+            raise Refusal("metadata uses the vault's tier route, not the desktop route")
+        binary = real_op()
+        if binary is None:
+            raise Refusal(MISSING)
+        scope = {"VAULT_METADATA": f"op://{vault}"}
+        tier = secret_tier.tier(scope)
+        approved(scope, ["op", "metadata", *args])
+        token = secret_tier.token(tier)
+        env = normalized(token) | {"OP_BIOMETRIC_UNLOCK_ENABLED": "false"}
+        secret_metadata.output((vault, search), binary, env)
+    except (ValueError, Refusal) as error:
+        message = str(error).removesuffix(f". {ORDER_DESKTOP}")
+        print(f"op metadata: {message}", file=sys.stderr)
+        return 1
+    return 0
+
+
 def main(argv: list[str]) -> int:
     if os.environ.get(MARK) != "1":
         return execute(argv)
-    if argv[:1] == ["run"]:
-        return run(argv[1:])
+    if argv[:1] in (["run"], ["metadata"]):
+        handler = run if argv[0] == "run" else metadata
+        return handler(argv[1:])
     if argv[:1] in ([TIER_TWO], [DESKTOP]):
         return choose(argv)
     return pass_through(argv)

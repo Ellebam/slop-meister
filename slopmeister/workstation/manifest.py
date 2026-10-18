@@ -88,6 +88,10 @@ COMMON = (
     Entry("slopmeister/__init__.py", f"{OP_LIBRARY}/slopmeister/__init__.py"),
     Entry("slopmeister/session/__init__.py", f"{OP_LIBRARY}/slopmeister/session/__init__.py"),
     Entry("slopmeister/session/secret_run.py", f"{OP_LIBRARY}/slopmeister/session/secret_run.py"),
+    Entry(
+        "slopmeister/session/secret_metadata.py",
+        f"{OP_LIBRARY}/slopmeister/session/secret_metadata.py",
+    ),
     Entry("slopmeister/session/secret_env.py", f"{OP_LIBRARY}/slopmeister/session/secret_env.py"),
     Entry("slopmeister/session/secret_tier.py", f"{OP_LIBRARY}/slopmeister/session/secret_tier.py"),
     Entry(

@@ -1,5 +1,6 @@
 kind	name	plot	claude_gate	codex_gate
 skill	bloom	shared	false	false
+skill	browser-login	shared	false	false
 skill	close-out	shared	true	true
 skill	cross-tool-review	shared	false	false
 skill	dummy	shared	false	false

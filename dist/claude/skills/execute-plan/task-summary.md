@@ -7,8 +7,8 @@ Every large message a worker sends at the start or the end of work uses this gui
 The operator is the first reader. They read on a phone, between many sessions, and must decide in under a minute. Open every such message with a summary that stands alone, and put nothing before it.
 
 - Write in plain words. Say what the user of the change gets, not how the code does it.
-- The summary has no file path, line number, command, command output, commit hash, procedure or step name, and no internal term the operator did not use first. Explain a technical term you cannot avoid in the same sentence.
-- The summary is at most 150 words. The whole message is at most 350 words. Count the words before you send, and cut until both limits hold.
+- The summary has no file path, line number, command, command output, commit hash, code, function name, API name, backticks, procedure or step name, and no internal term the operator did not use first. Explain a technical term you cannot avoid in the same sentence. Put implementation identifiers under Details even when the ticket uses them.
+- The summary is at most 150 words. The whole message is at most 350 words. Aim for about 100 summary words. Before sending, use a local text check on the exact draft to count whitespace-separated words before Details and in the whole message, and reject backticks in the summary. Cut until both limits hold, then send the checked text unchanged.
 - What does not fit moves to the pull request, the notes file or a linked receipt, and the message says in one line where it is. Chat is not the archive. Move evidence, never drop it.
 - A blocker, a failed proof or a non-clean merge state is the first line of the summary.
 - Review and tester verdicts keep their exact wording.

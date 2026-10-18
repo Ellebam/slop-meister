@@ -12,6 +12,8 @@ MARKDOWN = re.compile(
     r"\[[^]]*\]\((?:[^()]|\"(?:[^\"\\]|\\.)*\"|'(?:[^'\\]|\\.)*'|\((?:[^()\\]|\\.)*\))*\)"
 )
 SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
+PUBLISHED = re.compile(r"^status:[ \t]*(['\"]?)published\1[ \t\r]*$", re.M)
+PROTECTED = "protected (published mirror) "
 
 
 def _files(root: Path, recursive: bool = True) -> list[Path]:
@@ -155,23 +157,19 @@ def _check_link(resolver: Resolver, note: Path, item: tuple[str, bool]) -> tuple
     return None
 
 
-def _note_links(resolver: Resolver, note: Path) -> list[str]:
-    source = _read(note)
-    if source is None:
+def _note_links(resolver: Resolver, note: Path) -> list[tuple[str, bool]]:
+    if (source := _read(note)) is None:
         return []
     text, broken = _strip_code(source), []
-    prefix = str(note.relative_to(resolver.vault))
+    frontmatter = re.match(r"\A---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|$)", source, re.S)
+    protected = bool(frontmatter and PUBLISHED.search(frontmatter[1]))
+    prefix = f"{note.relative_to(resolver.vault)}: {PROTECTED if protected else ''}"
     for markdown, pattern in ((False, WIKI), (True, MARKDOWN)):
         for match in pattern.finditer(text):
             if problem := _check_link(resolver, note, (match.group(), markdown)):
                 raw, label = problem
-                broken.append(f"{prefix}: {label}{raw}")
+                broken.append((f"{prefix}{label}{raw}", protected))
     return broken
-
-
-def _links(vault: Path, area: Path, recursive: bool = True) -> list[str]:
-    resolver = Resolver(vault)
-    return [problem for note in _files(area, recursive) for problem in _note_links(resolver, note)]
 
 
 def _area_syntax(value: str, path: Path) -> str | None:
@@ -208,9 +206,10 @@ def _area(vault: Path, value: str) -> tuple[Path | None, str | None]:
 
 def _global(vault: Path) -> int:
     pipes, bare = _patterns(vault)
-    unresolved = len(_links(vault, vault))
     print(f"alias-pipe rows:  {pipes} (must be 0)")
     print(f"bare wikilinks:   {bare} (must be 0)")
+    resolver = Resolver(vault)
+    unresolved = sum(len(_note_links(resolver, note)) for note in _files(vault))
     print(f"unresolved links: {unresolved} (direct resolver)")
     copies = conflicts.copies(vault, vault)
     print(f"conflict copies:  {len(copies)} (must be 0)")
@@ -226,16 +225,19 @@ def _scoped(vault: Path, area_value: str, shallow: bool) -> int:
         return 2
     assert area is not None
     pipes, bare = _patterns(area, not shallow)
-    broken = _links(vault, area, not shallow)
+    resolver = Resolver(vault)
+    links = [entry for note in _files(area, not shallow) for entry in _note_links(resolver, note)]
+    protected = sum(mirror for _, mirror in links)
+    broken = len(links) - protected
     copies = conflicts.copies(vault, area, not shallow)
-    print(
-        "\n".join(
-            [*broken, *(f"{copy}: conflict copy, see slopmeister-vault lint" for copy in copies)]
-        )
-    )
+    lines = [line for line, _ in links]
+    lines.extend(f"{copy}: conflict copy, see slopmeister-vault lint" for copy in copies)
+    print("\n".join(lines))
     print(
         f"area {area_value.rstrip('/')}: alias-pipe rows {pipes}, bare wikilinks {bare}, "
-        f"unresolved links {len(broken)}" + (f", conflict copies {len(copies)}" if copies else "")
+        f"unresolved links {broken}"
+        + (f", protected links {protected}" if protected else "")
+        + (f", conflict copies {len(copies)}" if copies else "")
     )
     return int(bool(pipes or bare or broken or copies))
 

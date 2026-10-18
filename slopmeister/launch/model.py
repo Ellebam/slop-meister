@@ -152,7 +152,8 @@ class Launch:
 
     @property
     def terminal_line(self) -> str:
-        return f"/bin/zsh -l {shq(str(self.command_file))}"
+        """A one-key shell startup question consumes the space before Orca types the command."""
+        return f" /bin/zsh -l {shq(str(self.command_file))}"
 
     @property
     def claude_config(self) -> Path:

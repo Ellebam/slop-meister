@@ -70,7 +70,7 @@ def test_worktree_opens_named_with_its_issue_and_records_the_handle(seam, tmp_pa
     fake = seam()
     launch = _worktree(tmp_path, issue_id="337")
     cli._open(launch)
-    line = f"/bin/zsh -l '{tmp_path}/example-client-a.command'"
+    line = f" /bin/zsh -l '{tmp_path}/example-client-a.command'"
     assert fake.calls == [
         ("ready",),
         ("register", tmp_path / "repo"),

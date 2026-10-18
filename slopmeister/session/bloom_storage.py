@@ -50,8 +50,11 @@ def locked(path: Path):
         info = os.fstat(folder)
         if info.st_uid != os.getuid() or info.st_mode & 0o022:
             raise ValueError("Grove directory needs publisher ownership and no other writers")
-        flags = os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK
-        descriptor = os.open(".lock", flags, 0o600, dir_fd=folder)
+        flags = os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK
+        try:
+            descriptor = os.open(".lock", flags | os.O_CREAT | os.O_EXCL, 0o600, dir_fd=folder)
+        except FileExistsError:
+            descriptor = os.open(".lock", flags, dir_fd=folder)
         try:
             info = os.fstat(descriptor)
             if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:

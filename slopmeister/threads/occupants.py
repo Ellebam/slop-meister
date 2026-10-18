@@ -8,7 +8,10 @@ import subprocess
 import sys
 
 KINDS = ("claude", "codex", "opencode")
-DAEMON_ARGS = re.compile(r"(?:^|/)codex\s+(?:app-server|remote-control)(?:\s|$)")
+# Freeze the first executable match so a worker's prompt cannot become a second command.
+DAEMON_ARGS = re.compile(
+    r"^(?>(?:codex|.*?/codex)\s+)(?:app-server|remote-control|sandbox)(?:\s|$)"
+)
 # A headless OpenCode server holds no conversation, only its TUI or run process is a worker.
 SERVER_ARGS = re.compile(r"(?:^|/)opencode\s+(?:serve|web|acp)(?:\s|$)")
 COMMAND_TIMEOUT = 15

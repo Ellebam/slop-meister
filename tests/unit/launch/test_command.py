@@ -1,6 +1,13 @@
 """The launch line and the command file are the bytes the dispatcher and the tab rely on."""
 
+import contextlib
+import os
 from pathlib import Path
+import pty
+import select
+import shutil
+import subprocess
+import time
 
 import pytest
 
@@ -139,3 +146,46 @@ def test_codex_writer_pins_effective_native_approval(tmp_path, monkeypatch):
     config.parent.mkdir(parents=True)
     config.write_text('[mcp_servers.jira_write.tools.run]\napproval_mode="prompt"\n')
     assert "-c 'mcp_servers.jira_write.tools.run.approval_mode=\"prompt\"'" in command.line(launch)
+
+
+def _typed(line: str, cwd: Path) -> str:
+    """Orca types the line into a starting shell, as oh-my-zsh's update question reads one key."""
+    zsh = shutil.which("zsh")
+    assert zsh
+    leader, follower = pty.openpty()
+    shell = subprocess.Popen(
+        [zsh, "-f", "-c", f"print -n 'update? '; read -r -k 1 option; exec {zsh} -f"],
+        stdin=follower,
+        stdout=follower,
+        stderr=follower,
+        cwd=cwd,
+        start_new_session=True,
+    )
+    os.close(follower)
+    screen, typed, deadline = b"", False, time.monotonic() + 10
+    # The terminal is drained throughout, a full buffer would block the shell.
+    while shell.poll() is None and time.monotonic() < deadline:
+        if select.select([leader], [], [], 0.1)[0]:
+            with contextlib.suppress(OSError):
+                screen += os.read(leader, 4096)
+        # Orca types only after its shell-ready wait, while the question is already reading.
+        if not typed and b"update? " in screen:
+            os.write(leader, f"{line.replace('/bin/zsh', zsh, 1)}\nexit\n".encode())
+            typed = True
+    shell.kill()
+    os.close(leader)
+    return screen.decode(errors="replace")
+
+
+def test_typed_line_survives_a_startup_question_taking_one_key(monkeypatch, tmp_path):
+    """Bug: the update question took the leading slash, `bin/zsh` failed and a dead tab stayed."""
+    launch = _launch(tmp_path, "claude", monkeypatch)
+    marker = tmp_path / "ran"
+    launch.command_file.write_text(f"touch '{marker}'\n")
+    zsh = shutil.which("zsh")
+    assert zsh
+    missing = f"no such file or directory: {zsh[1:]}"
+    assert missing in _typed(launch.terminal_line.lstrip(), tmp_path)
+    assert not marker.exists()
+    _typed(launch.terminal_line, tmp_path)
+    assert marker.exists()

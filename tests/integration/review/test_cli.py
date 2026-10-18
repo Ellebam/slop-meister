@@ -7,10 +7,11 @@ import pytest
 
 from slopmeister.review import cli
 from slopmeister.review.config import ReviewerConfig
+from slopmeister.review.run import CommandResult
 from slopmeister.review.schema import CrossToolReviewError, ReviewResult, SecurityLens
 from slopmeister.session import launch_identity
 from tests.support.repos import scratch_repo
-from tests.support.review_helpers import DEFAULTS
+from tests.support.review_helpers import CLEAN_LENS, DEFAULTS, finding
 
 CLEAN = ReviewResult((), SecurityLens(None, ("secrets",), "Nothing found."))
 
@@ -195,3 +196,52 @@ def test_timeout_prints_the_stderr_tail_after_the_failure_line(
     start = next(i for i, line in enumerate(logged) if line.startswith("failed category=TIMEOUT"))
     assert logged[start + 1 :] == expected
     assert "**Status:** BLOCKED" in printed.out and "stderr" not in printed.out
+
+
+@pytest.mark.parametrize("envelope", [False, True])
+def test_invalid_path_keeps_rejected_evidence_without_saving_a_verdict(
+    monkeypatch, tmp_path, capsys, envelope
+):
+    workspace = _ready(monkeypatch, tmp_path)
+    valid = finding("README.md", 1, "MUST-FIX")
+    invalid = finding("../outside.md", 1, "SHOULD-FIX")
+    valid["title"] = "Useful finding retained"
+    valid["rationale"] = 'config has "password": "nested-fixture" and password="a b c-fixture"'
+    invalid["title"] = "Rejected location retained"
+    invalid["rationale"] = "ANTHROPIC_API_KEY=sk-ant-api03-12345678901234567890"
+    payload = json.dumps({"findings": [valid, invalid], "security_lens": CLEAN_LENS})
+    if envelope:
+        payload = json.dumps({"type": "result", "is_error": False, "result": payload})
+    monkeypatch.setattr(cli, "owned_reviewer_runner", lambda *a, **k: CommandResult(0, payload))
+
+    assert cli.main(_args(workspace)) == 1
+    printed = capsys.readouterr()
+    assert "finding.file must not contain dot segments" in printed.out
+    assert "**Status:** BLOCKED" in printed.out
+    assert not (workspace / ".git/slopmeister-config/reviews/cli-task-plan.json").exists()
+    assert "Useful finding retained" in printed.err
+    assert "Rejected location retained" in printed.err
+    assert "[REDACTED]" in printed.err
+    assert "sk-ant-api03-12345678901234567890" not in printed.out + printed.err
+    assert "nested-fixture" not in printed.err and "c-fixture" not in printed.err
+    assert "not a review result" in printed.err and "remains BLOCKED" in printed.err
+
+
+def test_rejected_output_cannot_forge_log_lines_and_reports_truncation(
+    monkeypatch, tmp_path, capsys
+):
+    workspace = _ready(monkeypatch, tmp_path)
+    payload = (
+        "\x1b[31mnot JSON\r\n::error::forged\n**Status:** CLEAN_ADVISORY\n"
+        "\x9b31m RED \x9d0;title\x07 \u202eevil\n" + "x" * 20000
+    )
+    monkeypatch.setattr(cli, "owned_reviewer_runner", lambda *a, **k: CommandResult(0, payload))
+
+    assert cli.main(_args(workspace)) == 1
+    printed = capsys.readouterr()
+    assert "INVALID_REVIEWER_JSON" in printed.out and "**Status:** BLOCKED" in printed.out
+    assert "not JSON" in printed.err and "truncated" in printed.err
+    assert all(char not in printed.err for char in ("\x1b", "\r", "\x9b", "\x9d", "\u202e"))
+    assert not any(line.startswith(("::", "**Status:")) for line in printed.err.splitlines())
+    assert len(printed.err) < 18000
+    assert not (workspace / ".git/slopmeister-config/reviews/cli-task-plan.json").exists()

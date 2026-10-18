@@ -1,25 +1,26 @@
 <div align="center">
 
-![A generous helping of slop](assets/slopmeister-hero.webp)
+![Two mechanical gardeners plant code seedlings and inspect their harvest in a small farm workshop](assets/slopmeister-hero.webp)
 
 # Slopmeister
 
-*Plant a task. Let the agents work. Inspect the harvest.*
+*Plant a task. Inspect the harvest.*
 
-![Claude Code](https://img.shields.io/badge/Claude_Code-D97757?style=flat-square)
-![Codex](https://img.shields.io/badge/Codex-10A37F?style=flat-square)
-![macOS and Ubuntu](https://img.shields.io/badge/macOS_and_Ubuntu-555555?style=flat-square)
-![Orca](https://img.shields.io/badge/sessions_in-Orca-7C5CFF?style=flat-square)
+Slopmeister is a **development framework where coding agents earn their merge.**
+
+[![Checks](https://github.com/Ellebam/slop-meister/actions/workflows/check.yml/badge.svg)](https://github.com/Ellebam/slop-meister/actions/workflows/check.yml)
+[![Release](https://img.shields.io/github/v/release/Ellebam/slop-meister?style=flat-square&color=35654d)](https://github.com/Ellebam/slop-meister/releases)
+[![MIT license](https://img.shields.io/badge/license-MIT-9b6639?style=flat-square)](LICENSE)
+
+[Quick start](#quick-start) · [Walkthrough](docs/session-walkthrough.md) · [Documentation](docs/README.md) · [Examples](#add-your-own-plot)
 
 </div>
 
-Every agent produces a little slop. Slopmeister gives the farm some fences: one set of rules for Claude Code and Codex, one workspace per task, and checks before anything leaves the gate.
+Every agent produces a little slop. Slopmeister gives the farm some fences. Write your instructions once, open workers in [Orca](https://onorca.dev), and bring the other tool in to review and test their work. You choose the direction and accept the result. Project knowledge stays in a separate Markdown vault.
 
-Write your instructions once. Slopmeister renders them for both tools, opens each worker in [Orca](https://onorca.dev), and brings the other tool in to review and test its work. You choose the direction and accept the result. Project knowledge stays in a separate Markdown vault.
-
-| Sow | Tend | Harvest |
-|---|---|---|
-| Give a worker a task, its own branch and a fixed set of instructions. | The worker builds, tests, prunes and receives an independent review. | Read the evidence, accept testing and choose when to finalize. |
+- **Sow.** Give a worker a task, its own branch and fixed instructions.
+- **Tend.** The worker builds, tests and receives an independent review.
+- **Harvest.** Inspect the evidence, accept testing and choose when to finalize.
 
 ## Quick start
 
@@ -91,11 +92,9 @@ Each project has `fields/<plot>/CONTEXT.md`. That note directs a worker to the r
 
 Three examples cover the main shapes:
 
-| Example | Shows |
-|---|---|
-| [example-app](plots/example-app/) | A code project, isolated slots, ports, a [compose example](examples/app/docker/docker-compose.slot.yml) and one project skill |
-| [example-client](plots/example-client/) | Injected instructions, selected service actions and denied agent commits, with no access profile shipped |
-| [example-notes](plots/example-notes/) | Freeform work and vault tasks |
+- [example-app](plots/example-app/) is a code project with isolated slots, ports, a [Compose example](examples/app/docker/docker-compose.slot.yml) and a project skill.
+- [example-client](plots/example-client/) shows injected instructions and selected service actions. Agent commits are denied, and no access profile is shipped.
+- [example-notes](plots/example-notes/) covers freeform work and vault tasks.
 
 Follow [project onboarding](docs/context-layer.md#onboard-a-project). The inventory from `task plot -- --list` also includes non-launchable templates, marked `template`.
 
@@ -104,6 +103,8 @@ Follow [project onboarding](docs/context-layer.md#onboard-a-project). The invent
 Secrets use two tiers on macOS and Ubuntu. Tier one resolves through a local 1Password service account. Tier two needs your instruction for the command and Home Assistant approval. Both tokens stay on each workstation. This is a guardrail for cooperative agents, not isolation from an agent running as your user. Home Assistant and Grove need **Linux**; Grove's pinned binary currently targets x86-64. [Host setup](host/README.md) owns their deployment.
 
 The 1Password desktop integration is the second route. You can order it for an exact command in any session, including when Home Assistant is unavailable. [Secret requests](docs/1password-access.md) explains setup, approvals and limits.
+
+Workers can [sign into websites in isolated browsers](docs/browser-login.md) under the existing secret-tier rules. [Item metadata search](docs/1password-access.md#item-metadata) finds 1Password item titles without reading values. Metadata search always requires your explicit instruction and a Home Assistant approval.
 
 [Phone access](docs/phone-access.md) covers the Claude app and Orca Mobile. Tailscale provides private access to the optional Linux services. Pairing, certificates and real approvals need checks on your own devices.
 
