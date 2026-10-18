@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 352" width="900" height="352" role="img" aria-labelledby="wf-title wf-desc">
+  <title id="wf-title">How the farm runs: Sow, Tend, Harvest</title>
+  <desc id="wf-desc">Sow: you dispatch a task, the dispatcher prepares an isolated workspace with fixed instructions, the worker proposes goal, plan and decisions, you approve the direction, and the other tool reviews the plan. Tend: the worker builds, tests and tries to break the work, the other tool tests independently and reviews the diff, and the worker addresses the findings. Harvest: the worker hands over the evidence, you accept testing, then you order finalize. Nothing merges by itself.</desc>
+
+  <rect width="900" height="352" fill="#f3ecd7"/>
+
+  <!-- Phase headings -->
+  <g font-family="Georgia, 'Iowan Old Style', 'Times New Roman', serif" font-size="22" fill="#2a241c">
+    <text x="32" y="54">Sow</text>
+    <text x="320" y="54">Tend</text>
+    <text x="608" y="54">Harvest</text>
+  </g>
+  <g font-family="system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#6f6554">
+    <text x="32" y="72">A task becomes an approved plan</text>
+    <text x="320" y="72">The work earns its evidence</text>
+    <text x="608" y="72">You accept, then finalize</text>
+  </g>
+  <g stroke="#2a241c" stroke-width="1">
+    <line x1="32" y1="84" x2="292" y2="84"/>
+    <line x1="320" y1="84" x2="580" y2="84"/>
+    <line x1="608" y1="84" x2="868" y2="84"/>
+  </g>
+
+  <!-- Rails -->
+  <g stroke="#cfc3a4" stroke-width="1">
+    <line x1="39" y1="108" x2="39" y2="284"/>
+    <line x1="327" y1="108" x2="327" y2="204"/>
+    <line x1="615" y1="108" x2="615" y2="172"/>
+  </g>
+
+  <!-- Agent steps: open moss circles -->
+  <g fill="#f3ecd7" stroke="#35654d" stroke-width="1.5">
+    <circle cx="39" cy="140" r="4.5"/>
+    <circle cx="39" cy="204" r="4.5"/>
+    <circle cx="39" cy="284" r="4.5"/>
+    <circle cx="327" cy="108" r="4.5"/>
+    <circle cx="327" cy="156" r="4.5"/>
+    <circle cx="327" cy="204" r="4.5"/>
+    <circle cx="615" cy="108" r="4.5"/>
+  </g>
+
+  <!-- Your decisions: filled diamonds -->
+  <g fill="#9b6639">
+    <path d="M39 103l5 5-5 5-5-5z"/>
+    <path d="M39 247l5 5-5 5-5-5z"/>
+    <path d="M615 135l5 5-5 5-5-5z"/>
+    <path d="M615 167l5 5-5 5-5-5z"/>
+  </g>
+
+  <!-- Role tags -->
+  <g font-family="system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" letter-spacing="0.8" fill="#6f6554">
+    <text x="54" y="111.5" fill="#9b6639">YOU</text>
+    <text x="54" y="143.5">DISPATCHER</text>
+    <text x="54" y="207.5">WORKER</text>
+    <text x="54" y="255.5" fill="#9b6639">YOU</text>
+    <text x="54" y="287.5">OTHER TOOL</text>
+
+    <text x="342" y="111.5">WORKER</text>
+    <text x="342" y="159.5">OTHER TOOL</text>
+    <text x="342" y="207.5">WORKER</text>
+
+    <text x="630" y="111.5">WORKER</text>
+    <text x="630" y="143.5" fill="#9b6639">YOU</text>
+    <text x="630" y="175.5" fill="#9b6639">YOU</text>
+  </g>
+
+  <!-- Step text -->
+  <g font-family="system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" fill="#2a241c">
+    <text x="140" y="112.5">Dispatch a task</text>
+    <text x="140" y="144.5">Prepares an isolated</text>
+    <text x="140" y="160.5">workspace with fixed</text>
+    <text x="140" y="176.5">instructions</text>
+    <text x="140" y="208.5">Proposes goal, plan</text>
+    <text x="140" y="224.5">and decisions</text>
+    <text x="140" y="256.5">Approve the direction</text>
+    <text x="140" y="288.5">Reviews the plan</text>
+
+    <text x="422" y="112.5">Builds, tests and tries</text>
+    <text x="422" y="128.5">to break the work</text>
+    <text x="422" y="160.5">Tests independently</text>
+    <text x="422" y="176.5">and reviews the diff</text>
+    <text x="422" y="208.5">Addresses the findings</text>
+
+    <text x="710" y="112.5">Hands over the evidence</text>
+    <text x="710" y="144.5">Accept testing</text>
+    <text x="710" y="176.5">Then order finalize</text>
+    <text x="710" y="208.5" font-size="12" font-style="italic" fill="#6f6554">Nothing merges by itself.</text>
+  </g>
+
+  <!-- Key -->
+  <line x1="32" y1="314" x2="868" y2="314" stroke="#cfc3a4" stroke-width="1"/>
+  <circle cx="39" cy="330" r="4.5" fill="#f3ecd7" stroke="#35654d" stroke-width="1.5"/>
+  <path d="M139 325l5 5-5 5-5-5z" fill="#9b6639"/>
+  <g font-family="system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#6f6554">
+    <text x="52" y="334">Agent step</text>
+    <text x="152" y="334">Your decision</text>
+  </g>
+</svg>
