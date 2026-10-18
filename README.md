@@ -59,7 +59,7 @@ Use `codex` instead of `claude` for a Codex dispatcher. The dispatcher waits for
 
 <p align="center">
 <picture>
-  <source media="(max-width: 1200px)" srcset="assets/workflow-mobile.svg" width="360" height="718">
+  <source media="(max-width: 1200px)" srcset="assets/workflow-mobile.svg" width="360">
   <img src="assets/workflow.svg" width="900" alt="How the farm runs, in three phases. Sow: you dispatch a task, the dispatcher prepares an isolated workspace with fixed instructions, the worker proposes goal, plan and decisions, you approve the direction, and the other tool reviews the plan. Tend: the worker builds, tests and tries to break the work, the other tool tests independently and reviews the diff, and the worker addresses the findings. Harvest: the worker hands over the evidence, you accept testing, then you order finalize. Nothing merges by itself.">
 </picture>
 </p>
