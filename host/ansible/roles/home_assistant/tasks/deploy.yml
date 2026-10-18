@@ -93,6 +93,9 @@
   loop: [automations.yaml, scenes.yaml, scripts.yaml]
   notify: Restart Home Assistant
 
+- name: Validate before starting or flushing restart handlers
+  ansible.builtin.import_tasks: validate.yml
+
 - name: Start Home Assistant, recreated when the compose file changed
   ansible.builtin.command: docker compose up -d
   args:

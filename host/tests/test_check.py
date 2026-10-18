@@ -50,7 +50,8 @@ def checker(tmp_path, monkeypatch):
             "0",
             False,
         ),
-        ("WARNING:homeassistant.config:Deprecated configuration", "0", True),
+        ("WARNING:homeassistant.config:Deprecated configuration", "1", False),
+        ("CRITICAL:homeassistant.config:Invalid configuration", "0", False),
         ("Checker failed", "2", False),
     ],
 )
@@ -69,6 +70,7 @@ def test_checker_refuses_errors_and_keeps_container_contained(
     assert create[:1] == ["create"] and create[create.index("--network") + 1] == "none"
     assert all(flag in create for flag in ("--cpus", "--memory", "--pids-limit"))
     assert not any(flag in create for flag in ("-p", "--publish", "-v", "--volume", "--mount"))
+    assert "--fail-on-warnings" in create[-1]
     assert commands[1] == ["start", "-ai", CID]
     assert commands[2] == ["rm", "-f", CID]
     assert CID in result.stdout

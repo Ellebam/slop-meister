@@ -66,13 +66,13 @@ tasks:
         docker create --init --cidfile "$scratch/container.id" --network none \
           --cpus 1 --memory 1g --pids-limit 128 --cap-drop ALL \
           --security-opt no-new-privileges --stop-timeout 10 -i --entrypoint sh "$image" \
-          -c 'mkdir -p /config && tar -xf - -C /config && test -f /config/configuration.yaml && python -m homeassistant --script check_config -c /config' >/dev/null
+          -c 'mkdir -p /config && tar -xf - -C /config && test -f /config/configuration.yaml && python -m homeassistant --script check_config -c /config --fail-on-warnings' >/dev/null
         container=$(cat "$scratch/container.id")
         printf 'Home Assistant check container: %s\n' "$container"
         result=0
         timeout 180 docker start -ai "$container" < "$scratch/config.tar" > "$scratch/output" 2>&1 || result=$?
         cat "$scratch/output"
-        test "$result" -eq 0 && ! grep -Eq 'Incorrect config|ERROR:' "$scratch/output"
+        test "$result" -eq 0 && ! grep -Eq 'Incorrect config|ERROR:|CRITICAL:' "$scratch/output"
         CHECK
 
   ha:deploy:

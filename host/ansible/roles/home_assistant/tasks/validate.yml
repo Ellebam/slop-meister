@@ -1,0 +1,19 @@
+---
+# Retained packages and UI files exist only on the host. Never expose their diagnostics.
+- name: Validate the complete Home Assistant configuration
+  ansible.builtin.shell: |
+    set -euo pipefail
+    image=$(docker compose config --images)
+    test -n "$image"
+    docker compose pull --quiet
+    output=$(timeout 120 docker run --rm --init --network none --cpus 1 --memory 1g --pids-limit 128 \
+      --cap-drop ALL --security-opt no-new-privileges --volume "$PWD/config:/config:ro" \
+      --entrypoint python "$image" -m homeassistant --script check_config --config /config --fail-on-warnings 2>&1)
+    ! grep -E '^(ERROR|CRITICAL):' <<<"$output" |
+      grep -Ev '^ERROR:homeassistant\.(util\.file:Saving file failed|helpers\.storage:Error writing config for)' > /dev/null
+  args:
+    chdir: "{{ home_assistant_dir }}"
+    executable: /bin/bash
+  changed_when: false
+  no_log: true
+  when: not ansible_check_mode

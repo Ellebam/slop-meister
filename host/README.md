@@ -4,10 +4,10 @@ This directory owns Home Assistant approvals and Grove hosting. These services n
 
 ## Check without deployment
 
-From the repository root, install the optional host tools and the pinned browser dependency. Use the Node version in [.node-version](.node-version).
+From the repository root, install the optional host tools and the pinned browser dependency. Use the Node version in [.node-version](.node-version). The pinned Ansible tools require Python 3.14; select it explicitly when newer interpreters are installed.
 
 ```bash
-uv sync --locked --group host
+uv sync --locked --group host --python 3.14
 npm --prefix host ci --ignore-scripts
 (cd host && npx playwright install chromium)
 task host:lint
@@ -20,7 +20,7 @@ On a disposable Linux test machine or image, `cd host && npx playwright install-
 
 `host:lint` uses the production Ansible profile. `host:syntax` checks every playbook against the [synthetic inventory](ansible/inventory/synthetic.yml), without executing tasks. `host:test` evaluates role and route configuration with synthetic state, drives the actual approval handlers with synthetic requests and events, exercises the Docker-control task with a stand-in, and drives the actual approval panel in Chromium. The panel's temporary loopback server stays inside the test container. No test creates or imitates a login or needs a real account or token. Handler tests use stand-ins for Home Assistant's interfaces. They do not establish its live HTTP authentication boundary.
 
-`host:ha:check` is the separate Docker-control command. Run it from the machine that owns Docker. It streams authored configuration and synthetic route settings into the [pinned Home Assistant image](home-assistant/compose.yaml), with no mounts, no published ports and networking disabled. It bounds CPU, memory, process count and runtime, prints the created container ID, and removes only that container. It rejects a nonzero checker result, `Incorrect config` output or `ERROR:` logs even when HA returns zero. Warnings alone do not fail the check. Bash, GNU `timeout`, Docker and tar are required. An unavailable image must be pulled before an offline run.
+`host:ha:check` is the separate Docker-control command. Run it from the machine that owns Docker. It streams authored configuration and synthetic route settings into the [pinned Home Assistant image](home-assistant/compose.yaml), with no mounts, no published ports and networking disabled. It bounds CPU, memory, process count and runtime, prints the created container ID, and removes only that container. It rejects a nonzero checker result, `Incorrect config` output or `ERROR:` logs even when HA returns zero. The checker also refuses warnings, including ignored packages, through `--fail-on-warnings`. Bash, GNU `timeout`, Docker and tar are required. An unavailable image must be pulled before an offline run.
 
 These checks establish static configuration and synthetic behavior. They do not prove deployment, service restarts, notifications, real approvals or phone connectivity. Never substitute an Ansible check-mode deployment for syntax-only validation on a live host.
 
@@ -36,6 +36,8 @@ Keep credentials out of these files. Each deployment requires `HOST_INVENTORY` a
 task host:ha:deploy HOST_INVENTORY=/absolute/inventory.yml HOST_SETTINGS=/absolute/settings.yml HOST_REVISION=<reviewed-commit>
 task host:grove:deploy HOST_INVENTORY=/absolute/inventory.yml HOST_SETTINGS=/absolute/settings.yml HOST_REVISION=<reviewed-commit>
 ```
+
+Home Assistant validates the complete host configuration before startup and again before a restart handler runs. The check uses a bounded container with a read-only configuration mount and suppresses private diagnostics. Invalid retained packages or UI configuration prevent the restart. Configuration files can already have been copied when validation fails, so correct them before retrying. Expected storage-write errors from the read-only check are ignored.
 
 Run these only for an intended deployment. They install files and start or restart the named services. They do not provision an entire workstation or change the tailnet policy. The ordinary agent account cannot replace the installed HA integration or configuration. Root and Docker administrators remain trusted.
 

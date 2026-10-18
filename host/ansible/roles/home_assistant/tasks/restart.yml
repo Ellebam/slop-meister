@@ -1,0 +1,10 @@
+---
+# Forced handlers must validate even when deployment failed before its guard.
+- name: Validate before restarting Home Assistant
+  ansible.builtin.import_tasks: validate.yml
+
+- name: Restart the validated Home Assistant configuration
+  ansible.builtin.command: docker compose restart
+  args:
+    chdir: "{{ home_assistant_dir }}"
+  changed_when: true
