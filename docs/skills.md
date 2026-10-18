@@ -27,6 +27,7 @@ Every session gets the same shared skills, rendered from [src/skills/](../src/sk
 | [slot](../src/skills/slot/SKILL.md) | Allocates a worktree with its own ports and resources, then launches into it. | A task that runs its project's stack beside other work | Agent, on your word |
 | [dummy](../src/skills/dummy/SKILL.md) | Explains one decision plainly with options and a recommendation. | When a topic is not landing | Agent or operator |
 | [bloom](../src/skills/bloom/SKILL.md) | Explains complex work in a browser-checked HTML visualization, with a private [Grove](agent-hosts.md#grove) link for eligible plots and a local path otherwise. | When you ask for a page or a view | Agent or operator |
+| [browser-login](../src/skills/browser-login/SKILL.md) | Signs into an authorized HTTPS service through an isolated browser and the existing secret approval route. | When you ask a worker to sign into a website | Agent, on your word |
 | [workstation](../src/skills/workstation/SKILL.md) | Onboards macOS or Ubuntu, diagnoses a failed launch or tool and keeps the tools current. | When you say onboard me, or something broke | Agent or operator |
 | [vault-optimize](../src/skills/vault-optimize/SKILL.md) | Audits a vault scope for broken links, orphans and drift, and applies approved cleanup. | When you ask | Agent, on your word |
 | [vault-todos](../src/skills/vault-todos/SKILL.md) | Rolls, cleans up and adds tasks in the vault's To-Do files. | When you ask | Agent, on your word |

@@ -16,6 +16,7 @@ FILE_MODE = 0o644
 DIRECTORY_MODE = 0o755
 # Skill to (script name, program): the entry sits at <skill>/scripts/<script>.py in either tool.
 SKILL_PROGRAMS = {
+    "browser-login": ("browser", "slopmeister.session.browser_login"),
     "bloom": ("bloom", "slopmeister.session.bloom"),
     "ship": ("ship", "slopmeister.session.ship"),
     "update-prs": ("update", "slopmeister.session.update_pr"),

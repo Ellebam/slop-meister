@@ -81,3 +81,32 @@ def environment(files: list[str]) -> tuple[dict[str, str], dict[str, str]]:
         if value.strip().startswith("op://") and not REFERENCE.fullmatch(value):
             raise ValueError(f"{name} is not a secret reference: {value.strip()}")
     return literals, references
+
+
+ENV_FILE, NO_MASKING = "--env-file", "--no-masking"
+
+
+def _flag(args: list[str], index: int, files: list[str]) -> int:
+    """Consume one `op run` flag at index into files, returning the next index."""
+    arg = args[index]
+    if arg == ENV_FILE and index + 1 < len(args):
+        files.append(args[index + 1])
+        return index + 2
+    if arg.startswith(ENV_FILE + "="):
+        files.append(arg.partition("=")[2])
+        return index + 1
+    if arg == NO_MASKING:
+        raise ValueError(f"{NO_MASKING} is refused, values stay masked")
+    raise ValueError(f"{arg} is not supported by the session's op")
+
+
+def parse(args: list[str]) -> tuple[list[str], list[str]]:
+    """The env files and the command of an `op run` line."""
+    files: list[str] = []
+    index = 0
+    while index < len(args) and args[index] != "--":
+        index = _flag(args, index, files)
+    command = args[index + 1 :]
+    if not command:
+        raise ValueError("op run needs -- followed by the command")
+    return files, command

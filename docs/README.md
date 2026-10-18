@@ -21,6 +21,8 @@ New here? Start with the [project overview](../README.md), then follow [one sess
 | Read or change GitLab issues, epics and merge requests | [GitLab through glab](gitlab.md) |
 | Deploy Home Assistant approvals or Grove on Linux | [Host services](../host/README.md) |
 | Request a secret from an agent session, on either machine | [Secret requests in two tiers](1password-access.md) |
+| Sign a worker into a website | [Browser login](browser-login.md) |
+| Find a 1Password item by title without reading values | [Item metadata search](1password-access.md#item-metadata) |
 | Add a project | [Onboard a project](context-layer.md#onboard-a-project) |
 | Prepare project secrets | [1Password integration](1password.md) |
 | Run parallel stacks | [Slots](slots.md) |

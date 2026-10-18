@@ -149,6 +149,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y lsof zsh uuid-runtime
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: host/.node-version
       - run: task tools
       - id: tests_check
         run: task test:portable -- --report ci-evidence/tests.json

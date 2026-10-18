@@ -1,8 +1,10 @@
 # Secret requests in two tiers
 
-An agent asks for secrets with `op run`. On macOS and Ubuntu the home install puts Slopmeister's own `op` at `~/.local/bin/op`. [Workstation setup](../src/skills/workstation/SKILL.md) puts `~/.local/bin` first on every shell's `PATH`, and the launcher marks each session with `SLOPMEISTER_SECRET_BROKER=1`. In a marked session this `op` uses two local 1Password service-account tokens. It reads the references of an `op run`, takes the tier from the vault each one names and starts the real `op run` with that tier's token. The real `op` resolves and masks. Unmarked, in the operator's own terminals, it is the real `op`. No service runs for this on either machine.
+Use `op run` for secret requests. The home installer puts Slopmeister's `op` first on `PATH` at `~/.local/bin/op`. The launcher marks sessions with `SLOPMEISTER_SECRET_BROKER=1`. In marked sessions, the wrapper selects a local service-account token from the referenced vault's tier. The real CLI resolves and masks values. Unmarked operator terminals retain ordinary CLI behavior. No broker service runs. [Workstation setup](../src/skills/workstation/SKILL.md) owns installation.
 
 Selected [service actions](service-actions.md) keep their existing in-app native approval and service-account access. They acquire no Home Assistant decision and no desktop 1Password prompt.
+
+For HTTPS logins, use the [browser-login procedure](browser-login.md). The existing tier and approval rules still apply.
 
 ## Tiers
 
@@ -25,7 +27,7 @@ op run --env-file=secrets/example.env -- <the command>
 
 Every flag other than `--env-file` is refused, `--no-masking` included. An inherited `OP_RUN_NO_MASKING` or 1Password Connect setting is dropped before the real `op` starts. An env file that sets one of them, `OP_SERVICE_ACCOUNT_TOKEN` or this program's own route variables is refused.
 
-`op read`, `op item get`, `op item share`, `op document get` and `op inject` are refused by this `op` whatever flags surround them, also in the plural spellings `items` and `documents`, and denied by the permission rules. Item sharing is refused because its link exposes a copy of the secret. Every other subcommand, such as `op --version` or `op whoami`, passes to the real `op` next on `PATH`. `op run` behind a global flag is refused too, so put nothing before `run`.
+`op read`, `op item get`, `op item share`, `op document get` and `op inject` are refused by this `op` whatever flags surround them, also in the plural spellings `items` and `documents`, and denied by the permission rules. Item sharing is refused because its link exposes a copy of the secret. Apart from the metadata route below, other subcommands such as `op --version` or `op whoami` pass to the real `op` next on `PATH`. `op run` behind a global flag is refused too, so put nothing before `run`.
 
 ## Tier two
 
@@ -37,9 +39,24 @@ Tier two has two layers, and both are required.
 
 The first layer is the operator's word. A plain `op run` on a tier-two reference releases nothing and names the form `op tier-two -- <command>`. That form is a `needs_intent` rule in both tools, so it runs only when the operator's own message orders that command. It sets the route for its process tree, so an `op run` inside a Task target needs no change. For a project target that already wraps `op run`, use `SECRET_ASK_REASON="<one line>" op tier-two -- task <target>`.
 
-The second layer is the approval. Each tier-two `op run` sends one question to Home Assistant. Its text starts with the reason from `SECRET_ASK_REASON`, the session and the host, then the exact command, the references and the directory. The session is the containing repository's directory name. The reason is required and shown as one line. Without it the request is refused and nothing is sent. The command prints `op run: request <id> waits for Home Assistant approval` on stderr and waits up to ten minutes, so give the tool call a ten-minute timeout. Only Approve for this request's own ID starts the real `op run`. Deny prints `denied`, ten minutes of silence print `timed out`, and both exit 1. A wait that was killed asks again on the next run. A press for a request nobody waits for releases nothing.
+The second layer is the approval. Each tier-two `op run` sends one question to Home Assistant. Its text starts with the reason from `SECRET_ASK_REASON`, the session and the host, then the exact command, the references and the directory. The session is the containing repository's directory name. The reason is required and shown as one line. Without it the request is refused and nothing is sent. The command prints `op: request <id> waits for Home Assistant approval` on stderr and waits up to ten minutes, so give the tool call a ten-minute timeout. Only Approve for this request's own ID starts the real `op run`. Deny prints `denied`, ten minutes of silence print `timed out`, and both exit 1. A wait that was killed asks again on the next run. A press for a request nobody waits for releases nothing.
 
 `op tier-two` and `op desktop` must be the outermost command. Below an `op run` or another route word they are refused, so the allowed `op run` prefix cannot carry them past the rule.
+
+## Item metadata
+
+In a launched session, use `op metadata --vault NAME [--search TEXT]` to find item titles without reading values. All metadata requests require operator intent and Home Assistant approval:
+
+```bash
+SECRET_ASK_REASON="Find the existing service item by metadata only" \
+op tier-two -- op metadata --vault ExampleVault --search service
+```
+
+The wrapper selects the named vault's existing tier account and calls only `op item list` with desktop integration disabled. It prints item ID, title, category and vault ID/name. Search is a case-insensitive title substring. It never prints fields, notes, URLs or upstream diagnostics. The approval shows the exact command and `VAULT_METADATA=op://<vault>`. This names the vault scope.
+
+Denial, expiry or an unknown vault starts no listing. There is no desktop fallback. The listing has a 60-second timeout and an 8 MiB response limit. Invalid JSON, a non-list response or a mismatched vault fails without printing items. Rows with missing required metadata are skipped with a count and field names only. A skip warning means the result can be incomplete. An empty result proves no matching title only.
+
+Use this command for agent metadata searches. Plain `op item list` retains its ordinary CLI behavior and does not request Home Assistant approval. Secret-value requests still use `op run`.
 
 ## Desktop route
 
