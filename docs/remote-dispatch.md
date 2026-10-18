@@ -124,3 +124,15 @@ A dispatcher keeps its delivered instructions. After installing an updated check
 After the remote host reboots, Orca and 1Password need the operator's desktop login. The separate Claude phone route can return earlier. Desktop recovery remains an operator setup responsibility.
 
 A conflicting VPN can make the remote host's tailnet address unreachable even while its LAN address responds. Inspect the configured route and coordinate any VPN change with the operator, or use the remote host independently from the phone. Do not broaden the key's source restriction or silently fall back to the LAN.
+
+## Update Orca without stopping workers
+
+Run a Linux package update from another machine over the verified SSH route, on the operator's order. Record the installed version, host architecture, active agent rows, worker process IDs and start times, and the terminal daemon's unit and process identity. Keep that evidence private. Confirm that the app and daemon run in separate user units before proceeding.
+
+Use a stable release from [Orca's official releases](https://github.com/stablyai/orca/releases). Download its Debian package and the same release's `latest-linux.yml`, or `latest-linux-arm64.yml` for arm64, into an owner-only temporary directory. Use fixed HTTPS release URLs. Match the package's SHA-512 against its exact entry under `files`, not the AppImage or top-level hash. Compute it with `openssl dgst -sha512 -binary <package> | openssl base64 -A`. Only after that match, inspect `dpkg-deb --field <package> Package Version Architecture` and the package scripts.
+
+Simulate `apt-get --simulate --no-remove install -- <absolute-package>`. Stop if it removes a package, upgrades another installed package, or would interrupt the terminal daemon. Recheck the checksum immediately before the operator-authorized `sudo apt-get install --yes --no-remove -- <absolute-package>`.
+
+Open terminals belong to the separate `orca-daemon-*` user unit. Keep that unit running. If the host uses an `orca-ide-app.service` unit, restart only that app unit once after installation. Verify the actual unit configuration first. Do not guess a service name, signal workers, replace pairing or reboot. A changed daemon protocol can start a second daemon for new terminals. Keep the old daemon until its workers finish.
+
+Set `XDG_RUNTIME_DIR=/run/user/$(id -u)` for remote user-service and Orca commands. Wait for `orca-ide status --json` to report the installed `appVersion` and a reachable runtime, then repeat the same status projection and process census. The same worker row plus the same process ID and start time proves continuity. A running app unit alone does not prove runtime recovery. If rows remain unavailable, retain the live daemon and workers, inspect app-service and daemon diagnostics, and report verification as incomplete. Do not repeat the restart or change the recovery route without the operator's order. Remove only the temporary downloads created for this update.
