@@ -4,7 +4,11 @@ Slopmeister is a Python product. This page is the short form of [the architectur
 
 ## Set up
 
-Follow the [workstation skill](src/skills/workstation/SKILL.md) for macOS or Ubuntu prerequisites, including uv. Then sync the committed environment:
+Follow the [workstation skill](src/skills/workstation/SKILL.md) for macOS or Ubuntu prerequisites, including uv.
+
+Portable browser-consumer tests need Node with built-in WebSocket support. Use the version in [host/.node-version](host/.node-version). When Node is absent, the tests can use an installed Orca runtime instead. This requirement also applies to `task test:portable` on a machine without the desktop tools.
+
+Sync the committed environment and run the checks:
 
 ```bash
 task tools          # uv sync --locked creates the exact .venv from uv.lock
@@ -13,7 +17,7 @@ task check          # the complete deterministic gate on a workstation
 
 Python 3.14 is the development and runtime floor. The checkout runs through `bin/slopmeister`. The self-contained vault runtime is the narrow exception: the workstation installer copies its reviewed bytes behind `~/.vault-git/bin/slopmeister-vault` so repository and directory sessions use the same command without a checkout. Repository checks use only `.venv`; `task tools` also removes packages that are not in the lock.
 
-Core developer tools belong in `[dependency-groups].dev` in `pyproject.toml`. Ansible and host validation tools belong in the optional `host` group. `uv sync --locked --group host` selects that group. The [host guide](host/README.md#check-without-deployment) owns browser setup and the separate `host:*` checks. After changing a pin, run `uv lock --upgrade-package <name>`, review `uv.lock`, and confirm `uv lock --check`. Normal setup never updates the lock.
+Core developer tools belong in `[dependency-groups].dev` in `pyproject.toml`. Ansible and host validation tools belong in the optional `host` group. Follow the [host guide](host/README.md#check-without-deployment) for its supported Python version, exact setup commands, browser setup and separate `host:*` checks. After changing a pin, run `uv lock --upgrade-package <name>`, review `uv.lock`, and confirm `uv lock --check`. Normal setup never updates the lock.
 
 ## Where things go
 

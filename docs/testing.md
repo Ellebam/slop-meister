@@ -2,7 +2,7 @@
 
 Select tests by [Test purpose](../src/skills/implement/SKILL.md#test-purpose). Use the smallest check that observes the behavior. Apply [behavior proof](../src/skills/local-qa/SKILL.md#3-the-break-it-pass) to distinct changes and boundaries. Absence claims need subject activity and a control when capture can hide execution. Run the complete local gate after exact restoration. Deterministic checks make no paid requests. Real sessions prove decisions those checks cannot establish. [Architecture](architecture.md) owns layers, [CONTRIBUTING.md](../CONTRIBUTING.md) owns placement.
 
-Test paths name their layer and subsystem. Names describe stable behavior and the failure prevented.
+Test paths name their layer and subsystem. Names describe stable behavior and the failure prevented. Follow [contributor setup](../CONTRIBUTING.md#set-up), including the Node or Orca runtime requirement for portable browser tests.
 
 ## Which command
 
