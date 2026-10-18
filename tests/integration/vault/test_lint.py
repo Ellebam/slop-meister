@@ -179,6 +179,25 @@ def test_shallow_area_skips_subfolder_areas_but_resolves_into_them(tmp_path: Pat
     assert run(vault, "--area", "fields/demo").returncode == 1
 
 
+def test_published_mirror_links_are_protected_and_never_fail_the_area(tmp_path: Path) -> None:
+    """Bug: an area with a published page mirror never passes, nobody may fix the mirror's links."""
+    vault = tmp_path / "vault"
+    area = vault / "fields/demo"
+    area.mkdir(parents=True)
+    (area / "page.md").write_text("---\nstatus: published\n---\n\n[Sibling](Sibling-Page)\n")
+    mirror_only = run(vault, "--area", "fields/demo")
+    protected = "fields/demo/page.md: protected (published mirror) [Sibling](Sibling-Page)"
+    assert mirror_only.returncode == 0 and protected in mirror_only.stdout, mirror_only.stdout
+    assert mirror_only.stdout.rstrip().endswith("unresolved links 0, protected links 1")
+    (area / "draft.md").write_text("---\nstatus: draft\n---\n\nstatus: published\n\n[[gone]]\n")
+    (area / "unclosed.md").write_text("---\nstatus: published\n\n[[lost]]\n")
+    mixed = run(vault, "--area", "fields/demo")
+    assert mixed.returncode == 1 and protected in mixed.stdout
+    assert "draft.md: [[gone]]" in mixed.stdout and "unclosed.md: [[lost]]" in mixed.stdout
+    assert mixed.stdout.rstrip().endswith("unresolved links 2, protected links 1")
+    assert run(vault).stdout.splitlines()[2] == "unresolved links: 3 (direct resolver)"
+
+
 def test_empty_override_means_the_default_vault(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
