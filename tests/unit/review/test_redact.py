@@ -7,7 +7,7 @@ import time
 
 import pytest
 
-from slopmeister.review.redact import redact
+from slopmeister.review.redact import redact, sanitize_text
 from slopmeister.review.render import render_hard_gate
 from slopmeister.review.schema import (
     parse_review_json,
@@ -131,6 +131,36 @@ def test_redaction_masks_explicit_credential_labels(text, value):
     assert redact("token_count=12 password_length: 20 release: ordinary-value") == (
         "token_count=12 password_length: 20 release: ordinary-value"
     )
+
+
+@pytest.mark.parametrize(
+    "label,secret",
+    [
+        ("password", "plain-fixture"),
+        ("password", 'prefix"private-suffix'),
+        ("ANTHROPIC_BASE_URL", "plain-fixture"),
+    ],
+)
+def test_redaction_masks_json_quoted_credentials_without_losing_neighboring_evidence(label, secret):
+    text = json.dumps({label: secret, "note": "retained evidence"})
+    masked = redact(text)
+    assert "plain-fixture" not in masked and "private-suffix" not in masked
+    assert "[REDACTED]" in masked and "retained evidence" in masked
+    assert redact(masked) == masked
+
+
+def test_sanitizing_terminal_controls_keeps_printable_unicode():
+    text = "café 日本語 \x9b31m RED \x9d0;title\x07 \u202eevil"
+    safe = sanitize_text(text)
+    assert all(char not in safe for char in ("\x9b", "\x9d", "\x07", "\u202e"))
+    assert "café 日本語" in safe and "evil" in safe
+
+
+def test_json_depth_failure_does_not_fall_back_to_escaped_secret_text():
+    text = "[" * 2000 + json.dumps(json.dumps({"password": "deep-fixture"})) + "]" * 2000
+    masked = redact(text)
+    assert "deep-fixture" not in masked
+    assert "JSON exceeds decoding limits" in masked
 
 
 def test_redaction_keeps_hyphenated_scenario_labels():

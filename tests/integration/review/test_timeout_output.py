@@ -1,7 +1,10 @@
 """A timed-out reviewer leaves the redacted tail of its stderr on the error."""
 
+import time
+
 import pytest
 
+from slopmeister.review import run as review_run
 from slopmeister.review.process import STDERR_LINE_CHARS, STDERR_TAIL_LINES
 from slopmeister.review.prompt import ReviewTarget
 from slopmeister.review.run import owned_reviewer_runner, run_review
@@ -23,6 +26,22 @@ def _stderr_lines() -> list[str]:
     return lines
 
 
+def _wait_for_stderr(monkeypatch, ready):
+    original = review_run._start_reviewer
+
+    def start_ready(argv, options):
+        process = original(argv, options)
+        deadline = time.monotonic() + 10
+        while not ready.exists():
+            if time.monotonic() >= deadline:
+                review_run._stop_reviewer(process)
+                pytest.fail("stderr fixture did not become ready")
+            time.sleep(0.01)
+        return process
+
+    monkeypatch.setattr(review_run, "_start_reviewer", start_ready)
+
+
 def _timed_out(tmp_path, monkeypatch, script: str) -> CrossToolReviewError:
     tool = fake_binary(tmp_path, "codex", script)
     monkeypatch.setenv("CROSS_TOOL_REVIEW_TIMEOUT_SECONDS", "2")
@@ -39,7 +58,10 @@ def test_timeout_keeps_the_redacted_bounded_stderr_tail(tmp_path, monkeypatch, n
     by the cut or a terminal code printed, one line of any length."""
     written = tmp_path / "stderr.txt"
     written.write_bytes((newline.join(_stderr_lines()) + newline).encode())
-    error = _timed_out(tmp_path, monkeypatch, f'cat "{written}" >&2\nsleep 30')
+    ready = tmp_path / "stderr-ready"
+    _wait_for_stderr(monkeypatch, ready)
+    script = f'cat "{written}" >&2\nprintf ready > "{ready}"\nsleep 30'
+    error = _timed_out(tmp_path, monkeypatch, script)
     tail = error.stderr_tail
 
     assert len(tail) == STDERR_TAIL_LINES

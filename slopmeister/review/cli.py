@@ -16,7 +16,7 @@ from slopmeister.review.prompt import ReviewTarget
 from slopmeister.review.redact import sanitize_text
 from slopmeister.review.render import render_hard_gate
 from slopmeister.review.run import owned_reviewer_runner, run_review
-from slopmeister.review.schema import CrossToolReviewError, ReviewDirection
+from slopmeister.review.schema import CrossToolReviewError, ReviewDirection, ReviewErrorCategory
 from slopmeister.review.state import (
     read_result,
     result_path,
@@ -26,6 +26,7 @@ from slopmeister.session import launch_identity
 from slopmeister.spine import candidate as repository_candidate
 
 _monotonic = time.monotonic
+REJECTED_OUTPUT_CHARS = 16 * 1024
 
 
 def _feedback(message: str) -> None:
@@ -176,5 +177,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             if isinstance(error, CrossToolReviewError)
             else CrossToolReviewError(str(error), category="START_PRECONDITION")
         )
+        if failure.category == ReviewErrorCategory.INVALID_REVIEWER_JSON and failure.raw_stdout:
+            output = sanitize_text(failure.raw_stdout)
+            _feedback(
+                "rejected output, not a review result, gate remains BLOCKED, "
+                "do not record findings as a disposition: " + output[:REJECTED_OUTPUT_CHARS]
+            )
+            if len(output) > REJECTED_OUTPUT_CHARS:
+                _feedback(f"rejected output truncated at {REJECTED_OUTPUT_CHARS} characters")
         print(render_hard_gate(failure))
         return 1

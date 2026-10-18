@@ -48,7 +48,7 @@ Claude receives these directories through native `--add-dir` while retaining `--
 
 Codex runs without its sandbox, as the tester does, and receives no `--add-dir`. Both directions may run commands and tests, are told never to change the reviewed files, and gain no edit tools. The runner compares the tree of every file Git sees before and after the review and refuses a verdict when it differs. Ignored files are not compared.
 
-If a review fails, the runner prints the blocked gate and writes no final result. Inspect uncertain process and mutation state and stop; never reinvoke while the original call may still be live.
+If a review fails, the runner prints the blocked gate and writes no final result. Invalid reviewer JSON also produces redacted diagnostic output on stderr, capped at 16,384 characters. Nested JSON credentials and terminal control characters are removed before display. A decoding-limit failure omits the output. These diagnostics are not a review result and do not change the review gate. Inspect uncertain process and mutation state and stop; never reinvoke while the original call may still be live.
 
 ## Prove the result
 
