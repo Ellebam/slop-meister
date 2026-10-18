@@ -57,24 +57,12 @@ Use `codex` instead of `claude` for a Codex dispatcher. The dispatcher waits for
 
 ## How the farm runs
 
-```mermaid
-sequenceDiagram
-    actor You
-    participant D as Dispatcher
-    participant W as Worker
-    participant O as Other tool
-    You->>D: Dispatch a task
-    D->>W: Own workspace and fixed instructions
-    W->>You: Goal, plan and decisions
-    You->>W: Your answer
-    W->>O: Review the plan
-    O-->>W: Findings
-    W->>W: Build, prove and try to break it
-    W->>O: Independent testing and diff review
-    O-->>W: Evidence and findings
-    W->>You: Testing handoff
-    You->>W: Accept testing, then finalize
-```
+<p align="center">
+<picture>
+  <source media="(max-width: 1200px)" srcset="assets/workflow-mobile.svg" width="360">
+  <img src="assets/workflow.svg" width="900" alt="How the farm runs, in three phases. Sow: you dispatch a task, the dispatcher prepares an isolated workspace with fixed instructions, the worker proposes goal, plan and decisions, you approve the direction, and the other tool reviews the plan. Tend: the worker builds, tests and tries to break the work, the other tool tests independently and reviews the diff, and the worker addresses the findings. Harvest: the worker hands over the evidence, you accept testing, then you order finalize. Nothing merges by itself.">
+</picture>
+</p>
 
 The **plot** describes a project's rules, task source and permissions. The **field** in your vault holds its knowledge. Workers **sow** a plan, **groom** documentation, **prune** unnecessary work and check whether the result is **ripe**. **Bloom** explains complex work visually, and optional **Grove** hosting lets you read those pages on your phone.
 
