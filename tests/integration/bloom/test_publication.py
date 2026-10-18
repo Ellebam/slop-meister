@@ -16,6 +16,17 @@ ENTRY = ROOT / "src/skills/bloom/scripts/bloom.py"
 ORIGIN = "https://agent.example.ts.net:8443"
 
 
+@pytest.fixture(autouse=True)
+def isolated_intake(tmp_path, monkeypatch):
+    # A broken source guard must never send a fixture to the machine's live Grove.
+    monkeypatch.setattr(bloom.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(
+        bloom,
+        "HOST_COMMAND",
+        (sys.executable, str(ENTRY), "receive", "--config", str(tmp_path / "absent-intake")),
+    )
+
+
 def scene(tmp_path, policy="tailnet"):
     root = tmp_path / "worktree"
     root.mkdir()
@@ -41,6 +52,20 @@ def scene(tmp_path, policy="tailnet"):
 
 def publish_args(root, page, config):
     return ["publish", "--worktree", str(root), "--page", str(page), "--config", str(config)]
+
+
+def test_nested_repository_cannot_hide_a_tracked_page(tmp_path, monkeypatch, capsys):
+    root, page, _, pages, config = scene(tmp_path)
+    nested = page.parent / "nested"
+    nested.mkdir()
+    git(nested, "init", "-q")
+    page = page.rename(nested / page.name)
+    git(nested, "add", page.name)
+    git(nested, "commit", "-qm", "Track nested fixture")
+    monkeypatch.setattr(bloom, "_send", lambda *_: "unexpected publication")
+    assert bloom.main(publish_args(root, page, config)) == 1
+    assert "page belongs to another repository" in capsys.readouterr().err
+    assert list(pages.iterdir()) == []
 
 
 def test_local_publication_calls_the_installed_protocol_and_keeps_git_state(

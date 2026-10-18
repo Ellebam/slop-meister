@@ -62,6 +62,8 @@ def _source(root: Path, page: Path) -> tuple[Path, bytes]:
     if _git(root, "ls-files", "--", ":(literal)" + str(relative)):
         raise ValueError("Bloom page must not be tracked")
     _git(root, "check-ignore", "--", str(relative))
+    if Path(_git(page.parent, "rev-parse", "--show-toplevel")).resolve() != root:
+        raise ValueError("page belongs to another repository")
     with store.directory(page.parent) as parent:
         descriptor = os.open(page.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
         with os.fdopen(descriptor, "rb") as stream:
