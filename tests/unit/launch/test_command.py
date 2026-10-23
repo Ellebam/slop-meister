@@ -5,9 +5,11 @@ import os
 from pathlib import Path
 import pty
 import select
+import shlex
 import shutil
 import subprocess
 import time
+import tomllib
 
 import pytest
 
@@ -109,7 +111,8 @@ def test_command_file_execs_the_tool(tmp_path, monkeypatch, tool):
     launch.line = f"cd '{WT}' && tool --flag && more"
     command.write(launch)
     assert launch.command_file.read_text() == (
-        f"#!/bin/zsh -l\ncd '{WT}' && exec tool --flag && more\n"
+        f"#!/bin/zsh -l\nexport SLOPMEISTER_SESSION_WORKSPACE='{WT}'\n"
+        f"cd '{WT}' && exec tool --flag && more\n"
     )
     assert launch.command_file.stat().st_mode & 0o777 == 0o700
 
@@ -144,8 +147,13 @@ def test_codex_writer_pins_effective_native_approval(tmp_path, monkeypatch):
     launch.wt = tmp_path / "workspace"
     config = launch.wt / ".codex/config.toml"
     config.parent.mkdir(parents=True)
-    config.write_text('[mcp_servers.jira_write.tools.run]\napproval_mode="prompt"\n')
-    assert "-c 'mcp_servers.jira_write.tools.run.approval_mode=\"prompt\"'" in command.line(launch)
+    config.write_text(
+        '[mcp_servers.jira_write]\ncommand="/writer"\nargs=["--scope", "🐙"]\n'
+        'required=true\n[mcp_servers.jira_write.tools.run]\napproval_mode="prompt"\n'
+    )
+    pins = [word for word in shlex.split(command.line(launch)) if word.startswith("mcp_servers.")]
+    assert len(pins) == 1
+    assert tomllib.loads(pins[0])["mcp_servers"] == tomllib.loads(config.read_text())["mcp_servers"]
 
 
 def _typed(line: str, cwd: Path) -> str:
@@ -189,3 +197,15 @@ def test_typed_line_survives_a_startup_question_taking_one_key(monkeypatch, tmp_
     assert not marker.exists()
     _typed(launch.terminal_line, tmp_path)
     assert marker.exists()
+
+
+def test_complete_pins_precede_the_users_optional_server_disable(tmp_path, monkeypatch):
+    launch = _launch(tmp_path, "codex", monkeypatch)
+    launch.wt = tmp_path / "workspace"
+    config = launch.wt / ".codex/config.toml"
+    config.parent.mkdir(parents=True)
+    config.write_text('[mcp_servers.optional]\ncommand="/reader"\nenabled=true\n')
+    launch.extra = ["-c", "mcp_servers.optional.enabled=false"]
+    words = shlex.split(command.line(launch))
+    pin = next(word for word in words if word.startswith("mcp_servers.optional="))
+    assert words.index(pin) < words.index("mcp_servers.optional.enabled=false")

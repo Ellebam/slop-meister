@@ -66,7 +66,7 @@ To commit work, name the exact vault-relative paths:
 task vault:commit -- "One line message" -- <vault-relative path>...
 ```
 
-The command commits only those literal paths, preserving another session's staged files. It refuses a named directory, which would commit every changed note inside it. It commits the whole named file, so close-out checks first-touch cleanliness and the last-write digest before including a path. Earlier foreign or unknown changes exclude that note from automatic commits and consolidation. It prints the commit stat. A failed add or commit returns nonzero, names the failed phase and paths, and leaves the Markdown and Git index dirty for inspection and recovery. `task vault:commit` is the repository convenience form; installed `slopmeister-vault commit` is the same contract from any worktree or directory session. A session commits its recorded paths when it hands back finished work, not only at finalize, so the delivered session settings allow `slopmeister-vault commit` without an approval question. That exception covers the `commit` subcommand under that exact name on `PATH`, nothing else.
+The command commits only those literal paths, preserving another session's staged files. It refuses a named directory, which would commit every changed note inside it. It commits the whole named file, so session maintenance checks first-touch cleanliness and the last-write digest before including a path. Earlier foreign or unknown changes exclude that note from automatic commits and consolidation. It prints the commit stat. A failed add or commit returns nonzero, names the failed phase and paths, and leaves the Markdown and Git index dirty for inspection and recovery. `task vault:commit` is the repository convenience form; installed `slopmeister-vault commit` is the same contract from any worktree or directory session. A session commits its recorded paths when it hands back finished work, not only at harvest or finalize, so the delivered session settings allow `slopmeister-vault commit` without an approval question. That exception covers the `commit` subcommand under that exact name on `PATH`, nothing else.
 
 | Exit | Meaning |
 |---|---|
@@ -75,81 +75,39 @@ The command commits only those literal paths, preserving another session's stage
 | `2` | Missing message, paths or `--` separator. |
 | `75` | The commit lease is busy. |
 
-Manual named commits, the scheduled sweep and the one shared retro transaction use `~/.vault-git/obsidian.git/slopmeister-coordination/commit.lock`. The operating system owns that short lease and releases it on process exit or crash. Ordinary transactions hold it only for validation, staging and commit. Retro holds it across materialization, read, replay, append, verification and named commit so simultaneous close-outs cannot lose bytes. Ordinary vault reading and editing remain outside it. A busy manual transaction refuses immediately. The scheduled job skips that run.
+Manual named commits, the scheduled sweep and retro commits share `~/.vault-git/obsidian.git/slopmeister-coordination/commit.lock`. The holder keeps the lock until its owned writer processes stop, including cancellation and the default 300-second execution deadline. A timeout returns `124`; cancellation reports a nonzero status. Inspect partial writes before retrying. Ordinary reading and editing stay outside the lock. Busy manual commits refuse immediately, the scheduled job skips that run, and a new retro waits up to 60 seconds for its named commit. Explicit legacy append holds the lock across read, replay, append and commit.
 
-Status and log tasks use `~/.vault-git/bin/vaultgit`. `slopmeister-vault lint` prints vault-wide counts. Add `--area <vault-relative folder>` to resolve that folder's wikilinks and relative Markdown links against the vault. Local and cross-note heading fragments must resolve by decoded heading text or ordinary Markdown slug. Unsupported block references and nested heading paths are reported. Frontmatter `status: published` marks a live-page-owned mirror. Its unresolved `protected links` do not fail area lint but remain in vault-wide counts. Add `--shallow` to leave the folder's subfolders out, which close-out uses for a field folder whose project and ticket folders are areas of their own. Plots requiring [groom](../src/skills/groom/SKILL.md) maintain content before review or handback, then close-out verifies it without repairs. Other plots run area lint before and after close-out housekeeping. `SLOPMEISTER_VAULT` points the command at another vault, which is how `tests/integration/vault/test_lint.py` uses a disposable one.
+Status and log tasks use `~/.vault-git/bin/vaultgit`. `slopmeister-vault lint` prints vault-wide counts. Add `--area <vault-relative folder>` to resolve that folder's wikilinks and relative Markdown links against the vault. Local and cross-note heading fragments must resolve by decoded heading text or ordinary Markdown slug. Unsupported block references and nested heading paths are reported. Frontmatter `status: published` marks a live-page-owned mirror. Its unresolved `protected links` do not fail area lint but remain in vault-wide counts. Add `--shallow` to leave the folder's subfolders out, which close-out uses for a field folder whose project and ticket folders are areas of their own. Plots requiring [groom](../src/skills/groom/SKILL.md) maintain content before review or handback, then finalize and close-out verify it without repairs. Direct harvest can finish authorized routine document gaps through groom. Run area lint after maintenance and retain protected findings. `SLOPMEISTER_VAULT` points the command at another vault, which is how `tests/integration/vault/test_lint.py` uses a disposable one.
 
-`slopmeister-vault retro` is the narrow automatic-consolidation exception for the shared append-only retro log. It appends and verifies the regular Markdown file directly under the existing lease, commits only that named note and removes replayed spills only after the committed blob contains their entries. A `dataless` placeholder note is refused, never read as empty. When append succeeds but consolidation fails, the Markdown remains dirty and the existing spill queue retains the entry; stderr names both the note to inspect and the spill. Ordinary notes keep the manual named-commit rule above.
+### Session retros and legacy logs
+
+Without `--note`, `slopmeister-vault retro` creates a separate UTF-8 note under `_system/retros/` with private file permissions and a unique filename. It commits only that file. Concurrent sessions do not append to the same note. Harvest uses the session name and checks for an existing entry before retrying. If the commit fails, keep the returned path and recover with an ordinary named commit. Do not run retro again merely to recover that file.
+
+`slopmeister-vault retro-count` prints normalized repository names and counts from the new collection. URLs, owner/name forms and worktree paths normalize to the repository name. It excludes index notes, conflict copies and numbered duplicates whose base file exists. Historical log entries are not included.
+
+Explicit `--note _system/retro-log.md` retains the legacy append, deduplication and spill-replay behavior used by close-out. A custom note requires its own `RETRO_SPILL_DIR`. `RETRO_FORBID_NOTE` still refuses the named target. Failed legacy consolidation retains the Markdown and spill; successful replay deletes a spill only after Git contains its entry. Default new-note calls report pending legacy spills but do not replay or migrate them. Recover that queue with an explicitly selected original note and spill directory. A dataless legacy note is refused, never treated as empty.
+
+### Runtime overrides
+
+`SLOPMEISTER_VAULT`, `VAULT_GIT_DIR`, `VAULT_LOCK`, `VAULTGIT` and `SLOPMEISTER_VAULT_LAUNCHER` remain supported. The runtime resolves the selected paths before lock re-entry and preserves them. XDG state selection and the legacy spill overrides remain available. Child commands discard Python and Git startup injection variables while retaining the selected public paths and Git author identity. The installed launcher uses isolated Python and suppresses shell startup injection. No command installs or migrates a vault automatically.
 
 Quoted Markdown link titles are excluded from destination lookup. Area lint reads locally available regular Markdown files and never follows note symlinks; confirm the dataless check above prints nothing before treating zero as complete coverage. Zero lint counts still require a separate check that retained notes remain reachable through the area's navigation.
 
 ## Scheduled history
 
-The installed [commit job](../plots/vault/bin/vault-commit.sh) runs at 08:00 and 20:00. It stages the vault, applies a deletion guard, logs a non-blocking lint result and writes a daily `git bundle --all` into `Backups/` beside the real vault folder, so a mirrored parent can carry the history while the vault holds nothing Git-shaped. Without separate storage or sync, this bundle remains on the same disk. The job replaces it only when the repository holds every commit the bundle ends on, so a rebuilt repository never overwrites a longer history.
-
-The launchd file and the applet exist on the Mac only. On Linux `vault-commit.timer` runs the same job at the same hours, and `systemctl --user list-timers` shows its next run. Its bundle lands beside the vault folder, outside every synced folder, so only the Mac's bundle reaches Drive.
-
-| File | Purpose |
-|---|---|
-| `~/.vault-git/bin/slopmeister-vault` | Stable launcher for direct Markdown access, named commits, lint, initialization, consolidated retro append and optional bounded read-only Obsidian calls. |
-| `~/.vault-git/lib/slopmeister_vault/` | Exact reviewed standard-library runtime copied by the workstation installer. |
-| `~/.vault-git/bin/vaultgit` | Raw Git recovery wrapper with its work tree at `~/.slopmeister/vault`. |
-| `~/.vault-git/bin/vault-commit.sh` | Installed job script. |
-| `~/.vault-git/bin/vault-lock.py` | Shared process-owned commit lease. |
-| `~/Library/LaunchAgents/local.vault-commit.plist` | Launchd job, label `local.vault-commit`, from the [template](../plots/home/launchd/local.vault-commit.plist.tmpl). |
-| `~/.vault-git/VaultCommit.app` | Applet through which launchd runs the script. |
-| `~/.vault-git/vault-commit.log` | Job log, including the messages of Git and the lock helper. |
-| `~/.vault-git/launchd.out`, `~/.vault-git/launchd.err` | Launchd output. |
-| `My Drive/Backups/vault-history.bundle` | Recovery bundle, in the folder that holds the real vault. |
-
-> [!WARNING]
-> The scheduled job refuses a commit deleting more than 25 files or 5 percent of tracked files. Check the log and the vault before treating a large deletion as intentional.
+See [the schedule, installed files and failure recovery](vault-history-scheduled.md).
 
 ## Merge a conflict copy
 
-`task vault:lint` counts conflict copies and prints the merge steps. The base is a committed version of the note from before the edits of both files, taken from the history of the machine that merges. `git merge-file <note> <base> <copy>` then joins both edits and marks only those that overlap. A base that already holds one side's edit makes the merge revert that edit without a mark. When unsure take an older version, which only marks more overlaps. For the append-only retro log add `--union`, both machines append at the end and every entry stays. Then remove the copy and commit by name.
+`task vault:lint` counts conflict copies and prints the merge steps. The base is a committed version of the note from before the edits of both files, taken from the history of the machine that merges. `git merge-file <note> <base> <copy>` then joins both edits and marks only those that overlap. A base that already holds one side's edit makes the merge revert that edit without a mark. When unsure take an older version, which only marks more overlaps. For the append-only retro log add `--union`, both machines append at the end and every entry stays. Then remove the copy and commit by name. Lint also reports numbered copy candidates such as `note (1).md` when `note.md` exists. Compare them and keep both until reviewed; a matching filename is not deletion authority.
 
 ## When the job stops
 
-`bin/slopmeister workstation doctor` reports `vault-history` as a problem when the bundle is missing or older than two days. The job writes the bundle once a day, at the end of a run that worked, so an old bundle means its runs fail. Read `~/.vault-git/vault-commit.log` for the cause. Git and the lock helper write their own message directly above the job's line.
-
-| Log line | Fix |
-|---|---|
-| `NO ACCESS to the vault` | [Give the applet access](#give-the-applet-access). |
-| `SKIPPED, <n> deletions` | Inspect them with `task vault:status`. Restore the files, or commit intended deletions by name with `task vault:commit`. |
-| `add failed`, `commit failed` | Read Git's message above the line. Remove a stale `~/.vault-git/obsidian.git/index.lock` once no Git process uses the repository. |
-| `bundle kept` | The repository lacks history that the bundle holds. Move the repository aside, then [recover from the bundle](#recover-after-loss). When the bundle itself is damaged, Git's message above the line says so or `git bundle list-heads <bundle>` prints nothing. Move the bundle aside instead, and the next run writes a new one. |
-| `bundle failed` | Read Git's message above the line. Check that `Backups/` beside the vault is writable. |
-| `vault transaction busy` | Another vault commit held the lease. The next run retries. |
-| `no repository`, `no vault lock helper` | Run the doctor and follow `vault-repository` or `home-install`. |
-| No line at 08:00 or 20:00 | Follow `launchd:local.vault-commit` in the doctor, on Linux `vault-sweep`. |
+Use the [job diagnostics](vault-history-scheduled.md#when-the-job-stops) before retrying.
 
 ## Give the applet access
 
-macOS file-access consent belongs to the applet. If the job cannot list the vault it logs `NO ACCESS` and stops, rather than reporting an empty tree as a successful run.
-
-1. Run the named history installs above when installation is intended. Installing the changed launchd entry reloads that job.
-2. If the applet is missing, the install builds it, `task home:install -- .vault-git/VaultCommit.app` builds it alone.
-3. Allow the first-run consent dialog. If dismissed, add `VaultCommit.app` under System Settings → Privacy and Security → Full Disk Access.
-
-Inspect the job without running it:
-
-```bash
-launchctl print "gui/$(id -u)/local.vault-commit"
-```
-
-To request an immediate scheduled commit:
-
-```bash
-launchctl kickstart "gui/$(id -u)/local.vault-commit"
-```
-
-The [installer](../slopmeister/workstation/install.py) leaves an existing applet untouched because rebuilding changes its identity and revokes its consent. A failed build is reported while the rest of installation continues. The manual build command is:
-
-```bash
-osacompile -o ~/.vault-git/VaultCommit.app \
-  -e 'do shell script "/bin/bash " & quoted form of (POSIX path of (path to home folder)) & ".vault-git/bin/vault-commit.sh"'
-```
+Follow [macOS applet consent](vault-history-macos.md#give-the-applet-access).
 
 ## Recover after loss
 

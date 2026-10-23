@@ -77,7 +77,12 @@ def test_adoption_preserves_workspace(tmp_path, mode, tool):
     assert snapshot(root) == before
     upstream = {str(root.resolve())} if mode == "committed" else set()
     vault = str(scene.world.vault.resolve())
-    assert codex_writable(scene.wt) == {vault, *upstream, *temporary_roots(scene.world)}
+    assert codex_writable(scene.wt) == {
+        vault,
+        *upstream,
+        *temporary_roots(scene.world),
+        str(scene.wt / ".slopmeister-tmp"),
+    }
     assert "--add-dir" not in result.stdout
     if mode != "directory":
         git(scene.wt, "commit", "-qm", "application")

@@ -11,10 +11,12 @@ import tempfile
 import time
 import uuid
 
+from slopmeister.errors import SlopmeisterError
 from slopmeister.opencode import native
 from slopmeister.opencode import tester as opencode_tester
 from slopmeister.removal import remove_tree
 from slopmeister.review.redact import redact
+from slopmeister.slots import tester as slot_tester
 from slopmeister.spine import candidate as repository_candidate
 from slopmeister.spine.tester import runs
 from slopmeister.spine.tester.process import run_tester
@@ -24,7 +26,7 @@ from slopmeister.vault import subject as directory_subject
 BLOCKING = (OSError, ValueError, KeyError, TypeError, StopIteration, subprocess.SubprocessError)
 PROMPT = (
     "You are the independent tester for the operator-approved spine task. Test it the way you "
-    "would test a colleague's pull request. Run every guide scenario and the worker "
+    "would test a colleague's pull request. Run every guide scenario, including its read-only "
     "falsification cases, then try additional counterexamples. Decide each required scenario by "
     "its written steps and expected results alone. Add no scenario of your own. Report each "
     "additional counterexample that holds as a regression candidate named for the escaping bug, "
@@ -40,13 +42,14 @@ PROMPT = (
     "output, verify the command succeeded and its saved output is empty, then save and quote a "
     "nonempty assertion marker. Never print success unconditionally. Batch independent checks "
     "and reuse saved results unless a changed input or unresolved failure requires a rerun. A "
-    "failed or unavailable scenario is fail or blocked, never pass. Return the requested JSON, "
+    "failed or unavailable scenario is fail or blocked, never pass. Save JSON matching {schema}, "
     "every required scenario ID and regression candidates named for the escaping bug. Before "
     "submission, save your draft to evidence/draft.json under the run root and run this check. "
     "Draft check command: {draft}\n"
     "Correct citation mistakes from saved evidence, preserving actual scenario outcomes, then "
-    "check again. A valid draft is not test proof. After successful validation return the checked "
-    "draft unchanged. Read {guide} and {validation}. Evidence root: {root}. "
+    "check again. A valid draft is not test proof. The saved draft is the sole verdict source. "
+    "Save and validate any later outcome change there before finishing. Your final message only "
+    "signals completion. Read {guide} and {validation}. Evidence root: {root}. "
     "Work only in {checkout}. Required IDs: {required}."
 )
 
@@ -60,21 +63,15 @@ def prompt(root: Path, run: dict) -> str:
         "--draft",
         str(root / "evidence/draft.json"),
     )
-    # OpenCode has no output-schema flag, its final message carries the JSON instead.
-    schema = (
-        f"\nYour final message is only that JSON, matching {root / 'schema.json'}."
-        if run["tool"] == "opencode"
-        else ""
-    )
-    text = PROMPT.format(
+    return PROMPT.format(
         draft=shlex.join(draft),
+        schema=root / "schema.json",
         guide=root / "guide.md",
         validation=root / "validation.md",
         root=root,
         checkout=run["checkout"],
         required=", ".join(run["required"]),
     )
-    return text + schema
 
 
 def supervise(root: Path) -> int:
@@ -99,9 +96,11 @@ def supervise(root: Path) -> int:
         elapsed_seconds=time.monotonic() - started,
         completed_at=time.time(),
     )
-    runs.save(root / "result.json", run)
-    if error := _cleanup_checkout(root / "checkout", run):
-        run["checkout_cleanup_error"] = error
+    try:
+        if error := _cleanup_checkout(root / "checkout", run):
+            run["checkout_cleanup_error"] = error
+    finally:
+        # Collect returns on this file, so it appears only once the stack and checkout are gone.
         runs.save(root / "result.json", run)
     return code
 
@@ -112,10 +111,12 @@ def _cleanup_checkout(checkout: Path, run: dict) -> str | None:
     if checkout.is_symlink():
         return "checkout is a symlink, not removed"
     try:
+        if error := slot_tester.cleanup(checkout.parent, run):
+            raise OSError(error)
         remove_tree(checkout)
     except FileNotFoundError:
         pass
-    except OSError as error:
+    except (OSError, SlopmeisterError) as error:
         return redact(str(error))
     return None
 
@@ -127,10 +128,14 @@ def _test(root: Path, run: dict, text: str) -> str:
     run["process_stopped"] = False
     run_tester(root, run, text)
     if run["tool"] == "opencode":
-        _, verdict = opencode_tester.outcome(root, run, text)
+        opencode_tester.outcome(root, run, text)
     else:
-        verdict = _native(root, run)
+        _native(root, run)
     _verify_subject(run)
+    draft = (root / "evidence/draft.json").resolve()
+    if not draft.is_relative_to(root.resolve()):
+        raise ValueError("draft escapes the run")
+    verdict = json.loads(draft.read_text())
     validate_verdict(verdict, run["required"], root)
     _mask(root, verdict)
     status = validate_verdict(verdict, run["required"], root)
@@ -139,8 +144,8 @@ def _test(root: Path, run: dict, text: str) -> str:
     return status
 
 
-def _native(root: Path, run: dict) -> dict:
-    session, verdict, natives = _outcome(root, run)
+def _native(root: Path, run: dict) -> None:
+    session, natives = _outcome(root, run)
     if len(natives) != 1:
         raise ValueError("tester native session record is missing or ambiguous")
     shutil.copyfile(natives[0], root / "native.jsonl")
@@ -153,7 +158,6 @@ def _native(root: Path, run: dict) -> dict:
         observed_model=observed[0],
         observed_effort=observed[1],
     )
-    return verdict
 
 
 def _verify_subject(run: dict) -> None:
@@ -172,8 +176,8 @@ def _verify_subject(run: dict) -> None:
         raise ValueError("tester changed the tested commit or files")
 
 
-def _outcome(root: Path, run: dict) -> tuple[str, dict, list[Path]]:
-    """The native session, the returned verdict and the native records naming that session."""
+def _outcome(root: Path, run: dict) -> tuple[str, list[Path]]:
+    """Verify completion and find the native records naming that session."""
     lines = (root / "events.jsonl").read_bytes().split(b"\n")
     events = [json.loads(line) for line in lines if line.strip()]
     if run["tool"] == "claude":
@@ -181,20 +185,21 @@ def _outcome(root: Path, run: dict) -> tuple[str, dict, list[Path]]:
             e for e in events if e.get("type") == "system" and e.get("subtype") == "init"
         )
         session = str(uuid.UUID(initial["session_id"]))
-        terminal = next(e for e in reversed(events) if e.get("type") == "result")
-        if terminal.get("is_error"):
-            raise ValueError("tester returned an error result")
+        terminal = next((e for e in reversed(events) if e.get("type") == "result"), None)
+        if terminal is None or terminal.get("is_error"):
+            raise ValueError("tester did not complete successfully")
         natives = list((Path.home() / ".claude/projects").glob(f"*/{session}.jsonl"))
         run["cost_usd_client_estimate"] = terminal.get("total_cost_usd")
         run["usage"] = terminal.get("usage")
-        return session, terminal["structured_output"], natives
+        return session, natives
     thread = next(e["thread_id"] for e in events if e.get("type") == "thread.started")
     session = str(uuid.UUID(thread))
-    verdict = json.loads((root / "verdict.raw.json").read_text())
+    terminal = next((e for e in reversed(events) if e.get("type") == "turn.completed"), None)
+    if terminal is None or not (root / "verdict.raw.json").read_text().strip():
+        raise ValueError("tester did not complete with a final message")
     natives = list((Path.home() / ".codex/sessions").glob(f"*/*/*/*{session}.jsonl"))
-    completed = (e.get("usage") for e in reversed(events) if e.get("type") == "turn.completed")
-    run["usage"] = next(completed, None)
-    return session, verdict, natives
+    run["usage"] = terminal.get("usage")
+    return session, natives
 
 
 def _mask(root: Path, verdict: dict) -> None:

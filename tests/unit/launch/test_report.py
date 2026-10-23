@@ -1,6 +1,8 @@
 """The reported resume command must recover the same standalone Codex session."""
 
 from pathlib import Path
+import shlex
+import tomllib
 
 import pytest
 
@@ -16,7 +18,6 @@ def test_resume_pins_home_and_auto_review(monkeypatch, tmp_path, capsys, service
     monkeypatch.setattr(report.kickoff, "receipt", lambda _: "receipt")
     monkeypatch.setattr(report, "_thread_name", lambda *_: "recorded")
     launch = Launch("example-client", "example-client-worker", "repo", tool="codex")
-    launch.service_actions = service_actions
     launch.wt = tmp_path / "worker"
     if service_actions:
         config = launch.wt / ".codex/config.toml"
@@ -35,9 +36,11 @@ def test_resume_pins_home_and_auto_review(monkeypatch, tmp_path, capsys, service
     assert 'approvals_reviewer="user"' not in resume
     assert "project_root_markers=" in resume
     assert "--remote" not in resume
-    for writer in ("jira_write", "confluence_write"):
-        pin = f'mcp_servers.{writer}.tools.run.approval_mode="prompt"'
-        assert (pin in resume) == service_actions
+    pins = [word for word in shlex.split(resume) if word.startswith("mcp_servers.")]
+    assert len(pins) == (2 if service_actions else 0)
+    for pin in pins:
+        server = next(iter(tomllib.loads(pin)["mcp_servers"].values()))
+        assert server["tools"]["run"]["approval_mode"] == "prompt"
 
 
 def test_manual_reviewer_resume_keeps_manual_choice(monkeypatch, tmp_path, capsys):

@@ -210,21 +210,21 @@ def test_named_commit_pins_the_lock_interpreter(
     env["PATH"] = f"{bin_dir}:{env['PATH']}"
     launcher = tmp_path / "slopmeister-vault"
     launcher.write_text(
-        f'#!/bin/sh\nexec "{Path(sys.executable)}" -P -m slopmeister.vault.runtime "$@"\n'
+        f"#!{sys.executable} -I\nimport sys\nsys.path.insert(0, {str(ROOT)!r})\n"
+        "from slopmeister.vault.runtime.__main__ import main\nraise SystemExit(main())\n"
     )
     launcher.chmod(0o755)
     env["PYTHONPATH"] = str(ROOT)
     env["SLOPMEISTER_VAULT_LAUNCHER"] = str(launcher)
-    (vault / "named").mkdir()
-    (vault / "named/note.md").write_text("note\n")
+    (vault / "note.md").write_text("note\n")
     command = [sys.executable, "-P", "-m", "slopmeister", "vault", "commit"]
     result = subprocess.run(
-        [*command, "Named", "note", "--", "named/note.md"],
+        [*command, "Named", "note", "--", "note.md"],
         env=env,
         capture_output=True,
         text=True,
     )
     assert result.returncode == 0 and "intercepted" not in result.stderr
     assert vaultgit(env, "show", "--name-only", "--format=", "HEAD").stdout.splitlines() == [
-        "named/note.md"
+        "note.md"
     ]

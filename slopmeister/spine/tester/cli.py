@@ -32,6 +32,7 @@ def parser() -> argparse.ArgumentParser:
     start.add_argument("--commit")
     start.add_argument("--candidate", action="store_true")
     start.add_argument("--subject-manifest")
+    start.add_argument("--slot-target")
     for command in ("collect", "_supervise", "validate"):
         child = sub.add_parser(command)
         child.add_argument("--run", type=Path, required=True)

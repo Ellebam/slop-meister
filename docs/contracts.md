@@ -63,9 +63,12 @@ The [checker](../slopmeister/workstation/kickoff.py), `bin/slopmeister kickoff`,
 
 | Situation | What the session leaves |
 |---|---|
-| Operator invokes [finalize](../src/skills/finalize/SKILL.md) after accepted testing | [Close-out](../src/skills/close-out/SKILL.md) before cleanup, including the retro, ticket comment or report, notes removal and handoff. |
-| Operator directly requests close-out at the end of freeform work | The same close-out duties where they apply. |
-| Session stops at a gate, on request or out of context | A handoff and the notes file, ready to resume. No claim that the task is finished. |
-| Task breaks midway | The operator creates a ticket. Its retro comes when that ticket is finalized. |
+| Operator explicitly invokes [harvest](../src/skills/harvest/SKILL.md) | Current-state document maintenance, retro, authorized closure or hand-back, report and owned cleanup. Finished spine work retains testing acceptance. |
+| Operator invokes [finalize](../src/skills/finalize/SKILL.md) after accepted testing | Harvest's finished route after finalize's existing pre-flight and selected ending. |
+| Operator directly requests [close-out](../src/skills/close-out/SKILL.md) | Its narrow report, legacy retro and notes duties. No merge or task close. |
+| Session stops at a gate, on request or out of context | A handoff and notes ready to resume. The claim stays. |
+| Operator harvests unfinished work | The issue stays open. A guarded hand-back may release its claim after the worker stops. Unsaved or unpushed work keeps the workspace. |
 
-The retro is written once, when the task finishes. See [pause and resume](session-walkthrough.md#pause-and-resume) for the relaunch command.
+Harvest records one retro per session. Close-out retains its completed-task legacy log route. See [pause and resume](session-walkthrough.md#pause-and-resume).
+
+A green divergent pull-request head does not require a refresh solely for divergence. Merge still checks fresh identity, review, mergeability and the exact head. Slopmeister's own plot checks the combined tree before merging. Completion requires proof for the exact merged commit; a pending, absent or failed integration result leaves the task unproven. See the [merge procedure](../src/skills/merge/SKILL.md).

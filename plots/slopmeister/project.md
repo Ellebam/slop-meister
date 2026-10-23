@@ -5,4 +5,44 @@ This repository is the single source of every agent configuration the operator w
 - The vault at `~/.slopmeister/vault` is a docs backend and receives no rendered configuration, skills or command stubs. Never create anything git-shaped inside it. Installed `slopmeister-vault commit "One line" -- <vault-relative path>...` commits the named paths through the bare repository outside the vault from any workspace, never a sweep, because other sessions hold half-written notes in the same tree.
 - Read Slopmeister's declared agent commit permission with `task plot -- --commit slopmeister`. The declaration is `plots/slopmeister/plot.toml`.
 - An ordinary Slopmeister checkout links `AGENTS.md` and `CLAUDE.md` to their respective plot renders under `dist/`. A launcher-prepared Slopmeister worktree receives separate fixed copies and copied skills through the same installer as every plot. Edit `src/` and `plots/`, then regenerate `dist/`. Those product files remain editable while the active session copies stay fixed. Native Claude attribution settings are maintained in `src/claude/settings.json` and rendered to `dist/claude/settings.json`. Normal Git identity, signing and repository hooks remain inherited; worktree-local exclusion and index flags keep delivered copies out of ordinary staging.
-- Use `groom` for affected repository documentation and vault knowledge. This plot requires its document list in `## Plan` and its maintenance before review. Freeform uses the same list in the session notes. Finalize and close-out verify delivery without document edits. The close-out line names the documents changed or explains why none changed.
+- Use `groom` for affected repository documentation and vault knowledge. This plot requires its document list in `## Plan` and its maintenance before review. Freeform uses the same list in the session notes. Finalize and close-out verify delivery without document edits. Direct harvest finishes routine gaps through groom while retaining conflict and executed-instruction stops. The report names the documents changed or explains why none changed.
+
+## Merge-tree proof
+
+Before the merge procedure's step 3 block, run the literal block below using its saved `merge_repository`, `merge_base`, `merge_head` and `merge_proof` values. Join the two blocks with `&&` in one native tool action. The second block freshly verifies the PR identity, review, comparison and mergeability before its head-pinned merge. This prerequisite changes no branch. It runs only the standard-library quality and render checks on the combined tree. Do not run the workstation gate or installed drift from the unprepared scratch tree. Python 3.14 or newer is required. The exact merge-commit CI run remains the integration proof when the tree differs from the checked head.
+
+```bash
+(
+    merge_refuse() {
+        printf 'MERGE REFUSED: %s\n' "$1" >&2
+        exit 1
+    }
+    : "${merge_repository:?MERGE REFUSED: set merge_repository}"
+    : "${merge_base:?MERGE REFUSED: set merge_base}"
+    : "${merge_head:?MERGE REFUSED: set merge_head}"
+    : "${merge_proof:?MERGE REFUSED: set merge_proof}"
+    merge_comparison=$(gh api --hostname github.com \
+        "repos/$merge_repository/compare/$merge_base...$merge_head" --jq .status) \
+        || merge_refuse 'base comparison API failed'
+    [ "$merge_comparison" != diverged ] || [ "$merge_proof" = ci ] \
+        || merge_refuse 'diverged base needs fresh bootstrap proof'
+    if [ "$merge_comparison" = diverged ]
+    then
+        git fetch --no-tags "https://github.com/$merge_repository.git" "$merge_base" "$merge_head" \
+            || merge_refuse 'merge-tree fetch failed'
+        merge_tree=$(git merge-tree --write-tree FETCH_HEAD "$merge_head") \
+            || merge_refuse 'merge-tree failed'
+        merge_scratch=$(mktemp -d) || merge_refuse 'scratch creation failed'
+        trap 'rm -rf "$merge_scratch"' EXIT
+        git init --quiet "$merge_scratch" || merge_refuse 'scratch initialization failed'
+        printf '%s\n' "$(git rev-parse --path-format=absolute --git-path objects)" \
+            > "$merge_scratch/.git/objects/info/alternates" || merge_refuse 'scratch object sharing failed'
+        git -C "$merge_scratch" read-tree --reset -u "$merge_tree" \
+            || merge_refuse 'scratch checkout failed'
+        (cd "$merge_scratch" && bin/slopmeister quality) \
+            || merge_refuse 'bin/slopmeister quality failed on merge tree'
+        (cd "$merge_scratch" && bin/slopmeister render --check) \
+            || merge_refuse 'bin/slopmeister render --check failed on merge tree'
+    fi
+)
+```

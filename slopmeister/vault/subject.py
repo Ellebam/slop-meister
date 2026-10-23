@@ -159,7 +159,7 @@ def freeze(root: Path, files: list[dict], destination: Path) -> DirectorySubject
 def copy_regular(source: Path, target: Path) -> None:
     """Copy one regular file without following a source or destination symlink."""
     target.parent.mkdir(parents=True, exist_ok=True)
-    source_fd = os.open(source, os.O_RDONLY | os.O_NOFOLLOW)
+    source_fd = os.open(source, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
         info = os.fstat(source_fd)
         if not stat.S_ISREG(info.st_mode):

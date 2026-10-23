@@ -77,37 +77,6 @@ def test_bloom_keeps_the_page_in_the_owning_worktree():
         assert token in source
 
 
-def test_merge_requires_current_base_and_pins_the_checked_head():
-    """Escaping bug: stale or replacement code could inherit an earlier green result."""
-    source = (ROOT / "src/skills/merge/SKILL.md").read_text()
-    fork_stop = source.index("If `isCrossRepository` is true, stop")
-    capture = source.index("Save `headRefOid` now")
-    checks = source.index("`gh pr checks <number>`")
-    all_skipped = source.index("Every check skipped, refuse")
-    compare = source.index("compare/<baseRefName>...<headRefOid>")
-    pinned_merge = source.index("--match-head-commit <headRefOid>")
-    assert fork_stop < capture < checks < all_skipped < compare < pinned_merge
-    assert source.count("compare/<baseRefName>...<headRefOid>") == 1
-    assert "Only `ahead` or `identical`" in source
-    assert "An API error or any other status is unproven" in source
-
-
-def test_merge_refreshes_only_a_conflict_free_current_task_branch_with_fresh_ci():
-    """Bug: a stale refresh changes another branch, resolves a conflict or reuses old CI."""
-    source = (ROOT / "src/skills/merge/SKILL.md").read_text()
-    for token in (
-        "worktree is clean",
-        "branch is `headRefName`",
-        "HEAD` equals `headRefOid`",
-        "git merge --no-edit",
-        "git merge --abort",
-        "Do not resolve",
-        "fresh CI",
-        "Never rebase or force-push",
-    ):
-        assert token in source
-
-
 def test_review_replace_is_outside_standing_allow_rules():
     claude = json.loads((ROOT / "plots/home/claude/settings.json.tmpl").read_text())
     allowed = claude["permissions"]["allow"]

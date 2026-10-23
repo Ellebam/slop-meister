@@ -51,6 +51,10 @@ Each workstation holds the two tier tokens and the Home Assistant route in owner
 
 [Secret requests](1password-access.md) owns `op run`, tier setup, trust limits and the desktop route, which the operator can order in any session. Selected service actions retain their separate native approval and credential route.
 
+## Browser prerequisites
+
+[Browser login](browser-login.md) keeps Orca as the default. Explicit Chrome needs installed Chrome and Node with WebSocket support. The operator can install the pinned optional page tool with `task browser:install`. Persistent authentication requires its separate explicit selection and is never enabled by onboarding.
+
 ## Grove
 
 Grove serves Bloom pages from a Linux agent host through private tailnet HTTPS on port 8443. Slopmeister owns the visual skill, worktree publication choice, client and shared receive/cleanup code. The host runs the confined Caddy reader, protected runtime and cleanup timer.
@@ -59,6 +63,6 @@ A plot declares `[target] bloom = "tailnet"` to permit publication. The default 
 
 The installed `/usr/local/bin/grove receive` accepts bounded UTF-8 HTML on stdin and prints one HTTPS URL with a random 128-bit filename. Both platform clients use this intake, so naming and retention have one owner. Linux calls it locally. Mac calls it through the pinned SSH route in `~/.ssh/slopmeister-remote.conf`. Mac settings at `~/.config/slopmeister/grove.json` name the explicit SSH alias as `host` and the expected HTTPS origin as `base_url`. The host's root-owned `/etc/slopmeister/grove.json` names `directory` and `base_url`.
 
-The [host guide](../host/README.md#grove-operation-and-recovery) owns the confined server, reviewed runtime installation, timer, HTTPS route and live checks. It preserves Home Assistant and unrelated routes.
+The [host guide](../host/README.md#grove-operation-and-recovery) owns the confined server, reviewed runtime installation, timer, HTTPS route and live checks. It preserves Home Assistant and unrelated routes. Its on-host `host:grove:doctor` checks reviewed snapshot bytes, units and loopback response boundaries without a deployment.
 
 `grove cleanup` removes pages older than seven days, then the oldest pages until managed HTML totals at most 64 MiB. This bounds page bytes, not all disk use. Publication cleans under the same lock. The hourly timer runs as the page owner. Interrupted-copy files are removed under the lock. Unsupported entries stay untouched and cause a diagnostic after ordinary cleanup. Publication refuses that state and returns the local path. Run `/usr/local/bin/grove cleanup` on the host to diagnose it, then resolve only entries you own. The worktree copy stays ignored and uncommitted. Unavailable hosting preserves it and reports the cause.

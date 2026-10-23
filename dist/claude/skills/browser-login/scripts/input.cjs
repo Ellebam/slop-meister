@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const LIMIT = 262144;
 const FRAME_LIMIT = 16 * 1024 * 1024;
 const DEADLINE = 25000;
+const CLEAR_DELAY = 2000;
 
 // One private connection. Values are protocol arguments, never executable source.
 async function connect(endpoint) {
@@ -48,11 +49,15 @@ async function connect(endpoint) {
 // This function runs in the inspected page. It never focuses or types into a control.
 function pageStep(step) {
   try {
-    if (location.origin !== step.origin || location.pathname !== step.path) return 'WRONG_DESTINATION';
     const roots = [document];
     for (let i = 0; i < roots.length; i++)
       for (const e of roots[i].querySelectorAll('*')) if (e.shadowRoot) roots.push(e.shadowRoot);
     const find = selector => roots.flatMap(root => [...root.querySelectorAll(selector)]);
+    if (step.mode === 'filled') {
+      if (find('iframe,frame').length) return 'UNINSPECTED_FRAME';
+      return step.selectors.some(s => find(s).some(e => e.value)) ? 'FILLED' : 'EMPTY';
+    }
+    if (location.origin !== step.origin || location.pathname !== step.path) return 'WRONG_DESTINATION';
     const visible = e => e.checkVisibility({visibilityProperty: true, opacityProperty: true});
     const exposed = e => {
       const r = e.getBoundingClientRect(), x = r.x + r.width / 2, y = r.y + r.height / 2;
@@ -67,13 +72,23 @@ function pageStep(step) {
       found[0].click();
       return 'CLICKED';
     }
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    if (step.mode === 'clear') {
+      for (const field of step.fields)
+        for (const node of find(field.selector)) {
+          if (!node.value?.includes(field.value)) continue;
+          setter.call(node, '');
+          node.dispatchEvent(new Event('input', {bubbles: true}));
+          node.dispatchEvent(new Event('change', {bubbles: true}));
+        }
+      return 'CLEARED';
+    }
     const nodes = step.fields.map(field => find(field.selector));
     if (nodes.some((n, i) => n.length !== 1 || n[0].nodeName !== 'INPUT' || n[0].disabled || n[0].readOnly || !visible(n[0]) || !exposed(n[0]) || !step.fields[i].types.includes(n[0].type))) return 'FIELD_UNAVAILABLE';
     const buttons = find(step.submit);
     if (buttons.length !== 1 || !visible(buttons[0]) || !exposed(buttons[0])) return 'SUBMIT_UNAVAILABLE';
     if (step.mode === 'check') return 'READY';
     if (step.mode === 'fill') {
-      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
       for (let i = 0; i < nodes.length; i++) {
         const node = nodes[i][0];
         setter.call(node, step.fields[i].value);
@@ -98,11 +113,38 @@ async function call(client, objectId, step) {
 }
 
 async function operate(client, request) {
+  if (request.action === 'pages') {
+    const {targetInfos} = await client.send('Target.getTargets');
+    return {pages: targetInfos.filter(t => t.type === 'page').map(t => t.targetId),
+      frames: targetInfos.some(t => t.type === 'iframe')};
+  }
   if (request.action === 'create') {
+    if (request.fresh) {
+      const {targetInfos} = await client.send('Target.getTargets');
+      if (targetInfos.some(target => target.type === 'page'))
+        return {result: 'BROWSER_BLOCKED', reason: 'BROWSER_PROFILE_RESTORED_TABS'};
+    }
     const target = await client.send('Target.createTarget', {url: 'about:blank', newWindow: true, background: true});
     const window = await client.send('Browser.getWindowForTarget', {targetId: target.targetId});
     await client.send('Browser.setWindowBounds', {windowId: window.windowId, bounds: {width: 1280, height: 900, windowState: 'normal'}});
     return target;
+  }
+  if (request.action === 'viewport') {
+    // The window frame differs by machine, so it is measured and added to the page size.
+    const read = async () => (await client.send('Runtime.evaluate', {
+      expression: '[innerWidth, innerHeight, outerWidth - innerWidth, outerHeight - innerHeight]', returnByValue: true
+    })).result.value;
+    const [, , frameWidth, frameHeight] = await read();
+    const {windowId} = await client.send('Browser.getWindowForTarget');
+    await client.send('Browser.setWindowBounds', {windowId, bounds: {
+      width: request.width + frameWidth, height: request.height + frameHeight, windowState: 'normal'}});
+    const deadline = Date.now() + 2000;
+    let size = await read();
+    while ((size[0] < request.width || size[1] < request.height) && Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      size = await read();
+    }
+    return {result: 'BROWSER_VIEWPORT', width: size[0], height: size[1]};
   }
   if (request.action === 'close') {
     await client.send('Browser.close');
@@ -141,6 +183,8 @@ async function operate(client, request) {
   const context = await client.send('Runtime.evaluate', {expression: 'globalThis', returnByValue: false});
   const objectId = context.result?.objectId;
   if (!objectId) throw new Error('PAGE_CONTEXT_UNAVAILABLE');
+  if (request.action === 'filled')
+    return {result: await call(client, objectId, {mode: 'filled', selectors: request.selectors})};
   const step = request.step;
   if (request.action === 'click' || request.action === 'click-text') {
     const result = await call(client, objectId, {...step, mode: request.action});
@@ -155,11 +199,22 @@ async function operate(client, request) {
     return {result: 'BROWSER_BLOCKED', phase: 'preflight', reason: ready,
       credential_input: false, submission_attempted: false};
   }
-  const filled = await call(client, objectId, {...step, mode: 'fill'});
-  if (filled !== 'FIELDS_VERIFIED') throw new Error(filled);
-  const submitted = await call(client, objectId, {...step, mode: 'submit'});
-  if (submitted !== 'SUBMITTED') throw new Error(submitted);
+  try {
+    const filled = await call(client, objectId, {...step, mode: 'fill'});
+    if (filled !== 'FIELDS_VERIFIED') throw new Error(filled);
+    const submitted = await call(client, objectId, {...step, mode: 'submit'});
+    if (submitted !== 'SUBMITTED') throw new Error(submitted);
+    await new Promise(resolve => setTimeout(resolve, CLEAR_DELAY));
+  } finally { await clear(client, step); }
   return {result: 'BROWSER_LOGIN_SUBMITTED'};
+}
+
+// Navigation may replace the context. A later page command independently checks for retained values.
+async function clear(client, step) {
+  try {
+    const context = await client.send('Runtime.evaluate', {expression: 'globalThis', returnByValue: false});
+    if (context.result?.objectId) await call(client, context.result.objectId, {...step, mode: 'clear'});
+  } catch { /* A replaced document no longer holds the step's controls. */ }
 }
 
 async function main() {

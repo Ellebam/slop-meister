@@ -1,11 +1,14 @@
 """Own browser lifecycle and dispatch page operations without native keyboard focus."""
 
+from contextlib import nullcontext
 import os
 from pathlib import Path
 import shutil
 import sys
 import tempfile
 
+from slopmeister.session import browser_chrome, browser_profile
+from slopmeister.session.browser_page import detach as detach
 from slopmeister.session.browser_state import (
     MARKER,
     PREFIX,
@@ -16,6 +19,7 @@ from slopmeister.session.browser_state import (
     identifier,
     metadata,
     save,
+    workspace,
 )
 from slopmeister.session.browser_state import environment as environment
 from slopmeister.session.browser_state import owned as owned
@@ -60,24 +64,23 @@ def allocate(root: Path, url: str, data: dict) -> None:
     cli(root, ["exec", "--page", data["page"], "--command", "open " + url])
 
 
-def start(url: str, browser: str = "orca") -> dict:
+def start(url: str, browser: str = "orca", *, persistent: bool = False) -> dict:
     https_url(url)
+    if persistent and browser != "chrome":
+        raise ValueError("BROWSER_PERSISTENCE_REQUIRES_CHROME")
     if browser == "orca":
         binaries()
     elif browser != "chrome":
         raise ValueError("BROWSER_ROUTE_REFUSED")
-    worktree = str(Path.cwd().resolve())
+    worktree = str(workspace())
     root = Path(tempfile.mkdtemp(prefix=PREFIX, dir=TEMP_ROOT)).resolve()
-    data = {"worktree": worktree, "browser": browser}
+    data = {"worktree": worktree, "browser": browser, "persistent": persistent}
     save(root, data)
     try:
-        if browser == "chrome":
-            from slopmeister.session import browser_chrome
-
-            browser_chrome.allocate(root, url, data)
-        else:
-            allocate(root, url, data)
+        _allocate(root, url, data)
     except (KeyError, ValueError) as error:
+        if str(error).startswith(("BROWSER_PROFILE_", "BROWSER_DATA_")):
+            raise ValueError(f"{error}; retain state {root} for cleanup") from None
         raise ValueError(f"BROWSER_START_FAILED: retain state {root} for cleanup") from error
     return {
         "result": "BROWSER_READY",
@@ -85,6 +88,17 @@ def start(url: str, browser: str = "orca") -> dict:
         "page": data["page"],
         "route": "Installed Google Chrome" if browser == "chrome" else "Orca integrated browser",
     }
+
+
+def _allocate(root: Path, url: str, data: dict) -> None:
+    if data["browser"] != "chrome":
+        allocate(root, url, data)
+        return
+    persistent = data.get("persistent", False)
+    with browser_profile.locked(browser_profile.location()) if persistent else nullcontext():
+        if persistent:
+            browser_profile.bind(root, data)
+        browser_chrome.allocate(root, url, data)
 
 
 def page_command(root: Path, action: str, url: str | None = None) -> dict:
@@ -110,8 +124,6 @@ def page_command(root: Path, action: str, url: str | None = None) -> dict:
 def request(root: Path, payload: dict) -> dict:
     data = metadata(root)
     if data.get("browser") == "chrome":
-        from slopmeister.session import browser_chrome
-
         engine, endpoint = browser_chrome.connection(root, data, payload["action"])
     else:
         if not data.get("page"):
@@ -123,11 +135,18 @@ def request(root: Path, payload: dict) -> dict:
 
 def close(root: Path) -> dict:
     data = metadata(root)
-    if data.get("browser") == "chrome":
-        from slopmeister.session import browser_chrome
+    return _close_chrome(root, data) if data.get("browser") == "chrome" else close_orca(root, data)
 
-        return browser_chrome.close(root, data)
-    return close_orca(root, data)
+
+def _close_chrome(root: Path, data: dict) -> dict:
+    detach(root, data)
+    if data.get("persistent") and data.get("profile_path"):
+        with browser_profile.locked(browser_profile.path(root, data)):
+            if data.get("pid") and browser_chrome.process(root, data) is not None:
+                browser_chrome.stop(root, data)
+            browser_profile.release(root, data)
+            return browser_chrome.close(root, data)
+    return browser_chrome.close(root, data)
 
 
 def close_orca(root: Path, data: dict) -> dict:

@@ -73,7 +73,11 @@ def test_both_tools_receive_only_validated_temporary_write_roots(tmp_path):
     env["TMPDIR"] = str(safe)
     workspace = tmp_path / "sessions/example-notes"
     install(env, "--directory", "example-notes", str(workspace))
-    expected = {str(Path("/tmp").resolve()), str(safe.resolve())}
+    expected = {
+        str(Path("/tmp").resolve()),
+        str(safe.resolve()),
+        str(workspace / ".slopmeister-tmp"),
+    }
     access = json.loads((workspace / ".claude/access-settings.json").read_text())
     codex = tomllib.loads((workspace / ".codex/config.toml").read_text())
     review = f"{ROOT}/bin/slopmeister review review *"

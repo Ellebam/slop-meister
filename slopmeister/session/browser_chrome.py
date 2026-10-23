@@ -5,12 +5,19 @@ import os
 from pathlib import Path
 import re
 import shutil
+import signal
 import stat
 import subprocess
 import sys
 import time
 
+from slopmeister.session import browser_profile as profiles
 from slopmeister.session import browser_state as state
+from slopmeister.session.browser_profile import prepare as prepare
+
+VIEWPORT = {"width": 1280, "height": 800}
+# Directories the task browser and its page tool create inside the state, all removed at close.
+OWNED = ("profile", "downloads", "playwright", "chrome-tmp")
 
 
 def binaries() -> tuple[Path, Path]:
@@ -35,7 +42,7 @@ def binaries() -> tuple[Path, Path]:
     if chrome is None or node is None:
         raise ValueError("BROWSER_PREREQUISITE: installed Chrome and Node with WebSocket required")
     engine = Path(node).resolve()
-    cwd = Path.cwd().resolve()
+    cwd = state.workspace()
     workspace = cwd not in {Path.home().resolve(), Path(cwd.anchor)} and engine.is_relative_to(cwd)
     if workspace or engine.is_relative_to(state.TEMP_ROOT):
         raise ValueError(
@@ -49,7 +56,7 @@ def process(root: Path, data: dict) -> str | None:
     if type(pid) is not int or pid <= 1:
         raise ValueError("BROWSER_CHROME_OWNER_REFUSED")
     done = subprocess.run(
-        ["/bin/ps", "-p", str(pid), "-o", "lstart=", "-o", "command="],
+        ["/bin/ps", "-p", str(pid), "-o", "lstart=", "-o", "stat=", "-o", "command="],
         capture_output=True,
         text=True,
         timeout=5,
@@ -59,9 +66,12 @@ def process(root: Path, data: dict) -> str | None:
         return None
     if done.returncode:
         raise ValueError("BROWSER_CHROME_OWNER_REFUSED")
-    marker = "--user-data-dir=" + str(root / "profile")
+    marker = "--user-data-dir=" + str(profiles.path(root, data))
     matches = re.search(re.escape(marker) + r"(?:\s|$)", done.stdout) is not None
     born = " ".join(done.stdout.split()[:5])
+    fields = done.stdout.split()
+    if len(fields) > 5 and fields[5].startswith("Z") and born == data.get("born"):
+        return None
     reused = bool(data.get("born")) and born != data["born"]
     if reused and not matches:
         return None
@@ -71,14 +81,16 @@ def process(root: Path, data: dict) -> str | None:
 
 
 def browser_endpoint(root: Path) -> str:
-    profile = (root / "profile").lstat()
+    saved = profiles.path(root, state.metadata(root))
+    profile = saved.lstat()
     if (
         not stat.S_ISDIR(profile.st_mode)
         or profile.st_uid != os.getuid()
         or profile.st_mode & 0o077
+        or saved.resolve() != saved
     ):
         raise ValueError("BROWSER_CHROME_ENDPOINT_REFUSED")
-    target = root / "profile" / "DevToolsActivePort"
+    target = saved / "DevToolsActivePort"
     info = target.lstat()
     if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_size > 1024:
         raise ValueError("BROWSER_CHROME_ENDPOINT_REFUSED")
@@ -96,7 +108,7 @@ def connection(root: Path, data: dict, action: str) -> tuple[Path, str]:
     endpoint = browser_endpoint(root)
     if endpoint != data.get("endpoint"):
         raise ValueError("BROWSER_CHROME_ENDPOINT_REFUSED")
-    if action not in {"create", "close"}:
+    if action not in {"create", "close", "pages"}:
         page = data.get("page", "")
         if not isinstance(page, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", page):
             raise ValueError("BROWSER_STATE_INCOMPLETE: close the saved state")
@@ -114,17 +126,36 @@ def allocate(root: Path, url: str, data: dict) -> None:
         raise ValueError("BROWSER_PREREQUISITE: Node with WebSocket support required")
     child = launch(root, data, chrome)
     ready(root, data, child)
-    data["page"] = state.request(root, node, {"endpoint": data["endpoint"], "action": "create"})[
-        "targetId"
-    ]
+    created = state.request(
+        root,
+        node,
+        {"endpoint": data["endpoint"], "action": "create", "fresh": bool(data.get("persistent"))},
+    )
+    if created.get("reason") == "BROWSER_PROFILE_RESTORED_TABS":
+        raise ValueError("BROWSER_PROFILE_RESTORED_TABS")
+    data["page"] = created["targetId"]
     state.save(root, data)
     engine, endpoint = connection(root, data, "open")
     state.request(root, engine, {"endpoint": endpoint, "action": "open", "url": url})
+    state.request(root, engine, {"endpoint": endpoint, "action": "viewport", **VIEWPORT})
+
+
+def retire_endpoint(profile: Path) -> None:
+    target = profile / "DevToolsActivePort"
+    try:
+        info = target.lstat()
+    except FileNotFoundError:
+        return
+    if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_nlink != 1:
+        raise ValueError("BROWSER_PROFILE_ENDPOINT_REFUSED")
+    target.unlink()
 
 
 def launch(root: Path, data: dict, chrome: Path) -> subprocess.Popen:
-    profile = root / "profile"
-    profile.mkdir(mode=0o700)
+    profile = prepare(root, data)
+    retire_endpoint(profile)
+    temporary = root / "chrome-tmp"
+    state.private_directory(temporary)
     child = subprocess.Popen(
         [
             str(chrome),
@@ -139,7 +170,7 @@ def launch(root: Path, data: dict, chrome: Path) -> subprocess.Popen:
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         cwd=root,
-        env=state.environment(profile),
+        env=state.environment(temporary),
         start_new_session=True,
         umask=0o077,
     )
@@ -164,26 +195,37 @@ def ready(root: Path, data: dict, child: subprocess.Popen) -> None:
     raise ValueError("BROWSER_CHROME_START_TIMEOUT")
 
 
-def close(root: Path, data: dict) -> dict:
-    if data.get("pid") and process(root, data) is not None:
-        if not data.get("endpoint"):
+def stop(root: Path, data: dict) -> None:
+    if not data.get("endpoint"):
+        with suppress(FileNotFoundError, ValueError):
             data["endpoint"] = browser_endpoint(root)
             state.save(root, data)
+    if data.get("endpoint"):
         with suppress(ValueError):
             engine, endpoint = connection(root, data, "close")
             state.request(root, engine, {"endpoint": endpoint, "action": "close"})
-        deadline = time.monotonic() + 5
-        while process(root, data) is not None:
-            if time.monotonic() >= deadline:
-                raise ValueError("BROWSER_CLOSE_UNCONFIRMED")
-            time.sleep(0.1)
-    if any(p.name not in {"profile", "owner.json", state.MARKER} for p in root.iterdir()):
+    else:
+        # An owned browser without a usable endpoint can only be stopped by signal.
+        if not data.get("born"):
+            raise ValueError("BROWSER_CHROME_OWNER_REFUSED")
+        os.kill(data["pid"], signal.SIGTERM)
+    deadline = time.monotonic() + 5
+    while process(root, data) is not None:
+        if time.monotonic() >= deadline:
+            raise ValueError("BROWSER_CLOSE_UNCONFIRMED")
+        time.sleep(0.1)
+
+
+def close(root: Path, data: dict) -> dict:
+    if data.get("pid") and process(root, data) is not None:
+        stop(root, data)
+    if any(p.name not in {*OWNED, "owner.json", state.MARKER} for p in root.iterdir()):
         raise ValueError("BROWSER_STATE_REFUSED")
-    profile = root / "profile"
-    if profile.is_symlink():
+    if any((root / name).is_symlink() for name in OWNED):
         raise ValueError("BROWSER_STATE_REFUSED")
-    if profile.exists():
-        shutil.rmtree(profile)
+    for name in OWNED:
+        if (root / name).exists():
+            shutil.rmtree(root / name)
     if state.credential_state(root):
         (root / state.MARKER).unlink()
     (root / "owner.json").unlink()

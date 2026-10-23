@@ -38,7 +38,7 @@ def _claude(line: str, worktree: Path, granted: list[str], temporary: set[str]) 
 
 def _codex(line: str, worktree: Path, granted: list[str], temporary: set[str]) -> None:
     """Codex receives exactly its grants through the workspace project config, never a flag."""
-    assert codex_writable(worktree) == {*granted, *temporary}
+    assert codex_writable(worktree) == {*granted, *temporary, str(worktree / ".slopmeister-tmp")}
     assert "--add-dir" not in line
 
 

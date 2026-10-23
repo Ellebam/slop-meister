@@ -104,6 +104,15 @@ COMMON = (
         "slopmeister/vault/runtime/repository.py",
         ".vault-git/lib/slopmeister_vault/repository.py",
     ),
+    Entry(
+        "slopmeister/vault/runtime/initialization.py",
+        ".vault-git/lib/slopmeister_vault/initialization.py",
+    ),
+    Entry("slopmeister/vault/runtime/links.py", ".vault-git/lib/slopmeister_vault/links.py"),
+    Entry(
+        "slopmeister/vault/runtime/environment.py",
+        ".vault-git/lib/slopmeister_vault/environment.py",
+    ),
     Entry("slopmeister/vault/runtime/lint.py", ".vault-git/lib/slopmeister_vault/lint.py"),
     Entry(
         "slopmeister/vault/runtime/conflicts.py",
@@ -111,6 +120,10 @@ COMMON = (
     ),
     Entry("slopmeister/vault/runtime/obsidian.py", ".vault-git/lib/slopmeister_vault/obsidian.py"),
     Entry("slopmeister/vault/runtime/retro.py", ".vault-git/lib/slopmeister_vault/retro.py"),
+    Entry(
+        "slopmeister/vault/runtime/retro_legacy.py",
+        ".vault-git/lib/slopmeister_vault/retro_legacy.py",
+    ),
     Entry("slopmeister/vault/runtime/exclude", ".vault-git/lib/slopmeister_vault/exclude"),
     Entry("slopmeister/vault/runtime/exclude", f"{VAULT_REPOSITORY}/info/exclude"),
 )

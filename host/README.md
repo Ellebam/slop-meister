@@ -30,7 +30,7 @@ The operator supplies Ubuntu, an existing agent login, Python 3.14, Docker with 
 
 Copy [the example inventory](ansible/inventory/example.yml) and [non-secret settings](ansible/vars.example.yml) to private files outside the checkout. Replace the host, login and time zone. `grove_python` defaults to `/usr/bin/python3.14`. Provision a supported interpreter at that path before deploying Grove.
 
-Keep credentials out of these files. Each deployment requires `HOST_INVENTORY` and `HOST_SETTINGS`. Both deployments take `HOST_REVISION`, defaulting to `HEAD`. Select a reviewed committed revision. Before invoking a runner, each target requires its host files, included taskfiles, root Taskfile, Python project metadata, lock and local uv/Python selectors to match that revision in both the working tree and index. Nonignored untracked inputs in those paths also refuse deployment. Ignored `host/.scratch/` remains available. Use a checkout with matching reviewed inputs for rollback. Grove archives the same resolved revision, removes its temporary archive afterward and verifies its archive digest and the pinned official Caddy checksum.
+Keep credentials out of these files. Each deployment requires `HOST_INVENTORY` and `HOST_SETTINGS`. Both deployments take `HOST_REVISION`, defaulting to `HEAD`. Select a reviewed committed revision. Before invoking a runner, each target requires its host files, included taskfiles, root Taskfile, Python project metadata, lock and local uv/Python selectors to match that revision in both the working tree and index. Nonignored untracked inputs in those paths also refuse deployment. Ignored `host/.scratch/` remains available. Use a checkout with matching reviewed inputs for rollback. Both deployments archive the resolved revision and remove their private temporary payload afterward. Home Assistant excludes ignored files and bytecode. Grove verifies its archive digest and the pinned official Caddy checksum.
 
 ```bash
 task host:ha:deploy HOST_INVENTORY=/absolute/inventory.yml HOST_SETTINGS=/absolute/settings.yml HOST_REVISION=<reviewed-commit>
@@ -55,7 +55,7 @@ HA manages HTTP proxy trust in its UI. In Settings, System, Network, HTTP server
 
 ## Home Assistant approval route
 
-The route receives a question and returns its decision. It never receives a 1Password token or resolves a secret. The requester gets two narrow webhook URLs and an answer credential, not a Home Assistant login token. The question webhook uses its unpredictable URL as its credential. The answer webhook also requires the bearer credential. Both URLs and the credential must stay private. Each webhook ID and the credential must contain at least 32 characters. Generate independent unpredictable values outside an agent session.
+The route receives a question and returns its decision. Update it before requesters that require its explicit `{"accepted": true}` receipt. Questions are bounded before notification. It never receives a 1Password token or resolves a secret. The requester gets two narrow webhook URLs and an answer credential, not a Home Assistant login token. The question webhook uses its unpredictable URL as its credential. The answer webhook also requires the bearer credential. Both URLs and the credential must stay private. Each webhook ID and the credential must contain at least 32 characters. Generate independent unpredictable values outside an agent session.
 
 After the first plain-HA deployment, the operator creates their Home Assistant account and registers the intended companion devices through the desktop and phone apps. Open Settings > People > Users and select that operator's account. Copy its user ID, shown as `ID`, as [Home Assistant documents](https://www.home-assistant.io/integrations/person/#configuration-variables). Use the user ID, not a person or entity ID. Enable Advanced mode in the profile if the Users tab is hidden. Use only the intended operator's notification services.
 
@@ -85,6 +85,8 @@ When upgrading a previous broker installation, the operator stops and disables t
 ## Grove operation and recovery
 
 [The Grove contract](../docs/agent-hosts.md#grove) owns publication settings, retention and the agent client. Deployment installs the reviewed intake and cleanup code under root ownership. The publisher owns the page directory. The separate reader has a read-only page mount in a jail, an execute-only Caddy binary and no access to host homes or secrets. The hourly cleanup timer runs as the publisher.
+
+On the Grove Linux host, run `task host:grove:doctor HOST_REVISION=<reviewed-commit>`. It compares the seven-member Git archive with installed snapshot bytes and checks units and bounded loopback rejection headers. It never executes installed code. `GROVE_ENTRY` and `GROVE_BACKEND_PORT` support custom paths and ports. Missing prerequisites fail. Default HEAD checks HEAD, not a discovered deployed version. This is not a controller-side probe.
 
 After an intended deployment, inspect `systemctl status grove.service grove-cleanup.timer`. A published page must return 200 through its verified HTTPS URL, its parent path 404, and writes must leave page bytes unchanged. Check the reader identity, jail, read-only mount and actual response CSP. Test the phone off Wi-Fi with Tailscale on. Static tests cannot establish these live observations.
 

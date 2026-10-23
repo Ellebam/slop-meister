@@ -1,6 +1,6 @@
 # Task summary
 
-Every large message a worker sends at the start or the end of work uses this guidance. That covers the one message of `sow`, the opening plan and closing report of a freeform session, the testing handoff, a halt, a blocked exit, the finalize report and the tracker close-out comment.
+Every large message a worker sends at the start or the end of work uses this guidance. That covers the one message of `sow`, the opening plan and closing report of a freeform session, the testing handoff, a halt, a blocked exit, the harvest or finalize report and the tracker closing comment.
 
 ## The operator summary
 

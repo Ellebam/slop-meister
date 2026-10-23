@@ -40,6 +40,7 @@ def _checkout(root: Path) -> Path:
     git(checkout, "commit", "-q", "--allow-empty", "-m", "init")
     (root / "evidence").mkdir()
     (root / "evidence/output.txt").write_text("actual command output\n")
+    (root / "evidence/draft.json").write_text(_verdict())
     for name in ("guide.md", "validation.md"):
         (root / name).write_text("Approved fixture inputs")
     return checkout
@@ -76,7 +77,7 @@ def _result(root: Path) -> dict:
 
 def test_opencode_pass_is_proven_from_its_native_session_and_cleaned_up(tmp_path, monkeypatch):
     """Bug: a pass without the native session, directory, prompt and model behind it."""
-    text = {"type": "text", "part": {"text": "```json\n" + _verdict() + "\n```"}}
+    text = {"type": "text", "part": {"text": "Completed the saved draft."}}
     root = _run(tmp_path, monkeypatch, {"events": [STOP[0], text, STOP[1]]})
     assert supervise.supervise(root) == 0
     result = _result(root)
@@ -145,8 +146,8 @@ def test_opencode_pass_is_proven_from_its_native_session_and_cleaned_up(tmp_path
             "events.jsonl:2",
         ),
         (
-            {"events": [*STOP, {"type": "text", "part": {"text": "not json"}}]},
-            "no verdict",
+            {"events": [*STOP, {"type": "text", "part": {"text": ""}}]},
+            "interrupted",
             "events.jsonl:3",
         ),
     ],
@@ -156,7 +157,7 @@ def test_opencode_pass_is_proven_from_its_native_session_and_cleaned_up(tmp_path
         "no-session",
         "tool-calls-end",
         "permission-refused",
-        "no-verdict",
+        "no-final-message",
     ],
 )
 def test_opencode_failures_are_named_blocked_reasons(tmp_path, monkeypatch, state, reason, pointer):

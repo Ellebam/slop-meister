@@ -17,6 +17,8 @@ from slopmeister.session import secret_approval, secret_tier
 from slopmeister.workstation import manifest
 from tests.support.fakes import fake_binary
 
+pytestmark = pytest.mark.xdist_group("secret-approval")
+
 ROOT = Path(__file__).resolve().parents[3]
 ONE, TWO = "ops_tier-one-synthetic", "ops_tier-two-synthetic"
 LISTS = {
@@ -38,13 +40,17 @@ class HomeAssistant(BaseHTTPRequestHandler):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         self.server.asked.append(body)
         self.server.decisions[body["id"]] = self.server.verdict
-        self.send_response(200)
+        self.send_response(self.server.ask_status)
         self.end_headers()
+        self.wfile.write(self.server.receipt)
 
     def do_GET(self):
-        self.send_response(200)
+        self.send_response(self.server.answer_status)
         self.end_headers()
-        self.wfile.write(json.dumps({"attributes": {"decisions": self.server.decisions}}).encode())
+        body = self.server.answer_raw
+        if body is None:
+            body = json.dumps({"attributes": {"decisions": self.server.decisions}}).encode()
+        self.wfile.write(body)
 
     def log_message(self, *args):
         pass
@@ -97,6 +103,8 @@ def machine(tmp_path):
     """The installed op on a machine with its files, and Home Assistant answering as told."""
     server = ThreadingHTTPServer(("127.0.0.1", 0), HomeAssistant)
     server.asked, server.decisions, server.verdict = [], {}, "approved"
+    server.ask_status = server.answer_status = 200
+    server.receipt, server.answer_raw = b'{"accepted": true}', None
     thread = threading.Thread(target=server.serve_forever)
     thread.start()
     server.home, server.path = installed(tmp_path)
@@ -191,3 +199,34 @@ def test_token_file_others_can_read_is_refused(machine):
         done.returncode == 1 and "must be a regular file of this user with mode 600" in done.stderr
     )
     assert real_calls(machine) == []
+
+
+@pytest.mark.parametrize("surface", ["run", "metadata"])
+@pytest.mark.parametrize(
+    "failure",
+    ["ask-empty", "ask-malformed", "ask-false", "ask-401", "answer-malformed", "answer-401"],
+)
+def test_route_failure_refuses_before_resolving_or_executing(machine, surface, failure):
+    if failure.startswith("ask-"):
+        machine.receipt = {
+            "ask-empty": b"",
+            "ask-malformed": b"{",
+            "ask-false": b'{"accepted": false}',
+            "ask-401": b"private response",
+        }[failure]
+        machine.ask_status = 401 if failure == "ask-401" else 200
+    else:
+        machine.answer_raw = b"private response"
+        machine.answer_status = 401 if failure == "answer-401" else 200
+    args = (
+        ["run", "--env-file=two.env", "--", *CHILD]
+        if surface == "run"
+        else ["metadata", "--vault", "Production"]
+    )
+    # Missing token proves the route refusal happens before any secret resolution.
+    (machine.home / secret_tier.DIRECTORY / "tier-two.token").unlink()
+    done = op(machine, "tier-two", "--", "op", *args)
+    assert done.returncode == 1 and done.stdout == ""
+    assert "route" in done.stderr and "private response" not in done.stderr
+    assert "Traceback" not in done.stderr and "tier-two.token" not in done.stderr
+    assert real_calls(machine) == [] and len(machine.asked) == 1

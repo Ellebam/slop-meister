@@ -10,61 +10,10 @@ import pytest
 from slopmeister.session import browser_login as browser
 from slopmeister.session import browser_runtime as runtime
 from slopmeister.session import browser_state as state
+from tests.unit.session.browser_fixtures import FIXTURE, SOCKET_FIXTURE
 
 HELPER = Path(__file__).resolve().parents[3] / "src/skills/browser-login/scripts/input.cjs"
 SECRET = "dummy-private-value"
-FIXTURE = """
-const {operate,pageStep}=require(process.argv[1]);
-const fault=process.argv[2];const secret='dummy-private-value';let clicks=0,events=0;
-class Input {
- constructor(id,type){this.id=id;this.type=type;this.nodeName='INPUT';this.isConnected=true;this.stored='';}
- get value(){return this.stored} set value(v){this.stored=v}
- checkVisibility(){return fault!=='hidden'}
- getBoundingClientRect(){return {x:0,y:0,width:10,height:10}}
- contains(e){return this===e}
- focus(){throw Error('native focus must not run')}
- dispatchEvent(){events++;if(fault==='changed')this.stored+='changed';if(fault==='gated')button.disabled=false;}
-}
-const field=new Input('field','password');
-const button={disabled:['gated','disabled'].includes(fault),isConnected:true,
- checkVisibility:()=>true,
- getBoundingClientRect:()=>({x:20,y:0,width:10,height:10}),contains:e=>e===button,
- click(){clicks++}};
-global.HTMLInputElement=Input;
-global.location={origin:fault==='origin'?'https://wrong.example':'https://example.com',pathname:'/login'};
-global.document={querySelectorAll:s=>s==='*'?[field,button]:s==='#field'?(fault==='duplicate'?[field,field]:[field]):s==='#submit'?(fault==='duplicate-submit'?[button,button]:[button]):[],elementFromPoint:x=>fault==='covered'?null:x<20?field:button};
-const requests=[];
-const client={async send(method,params){
- requests.push({method,params});
- if(method==='Runtime.evaluate')return {result:{objectId:'page'}};
- if(method!=='Runtime.callFunctionOn')throw Error('unexpected native input');
- if(params.functionDeclaration.includes(secret))throw Error('value in source');
- return {result:{value:pageStep(params.arguments[0].value)}};
-}};
-(async()=>{
- let result,failed=false;
- try{result=await operate(client,{action:'fill',step:{origin:'https://example.com',path:'/login',fields:[{selector:'#field',types:['password'],value:secret}],submit:'#submit'}})}catch{failed=true}
- console.log(JSON.stringify({result,failed,clicks,events,secretCalls:requests.filter(r=>JSON.stringify(r.params).includes(secret)).length,methods:requests.map(r=>r.method)}));
-})();
-"""
-
-SOCKET_FIXTURE = """
-const fault=process.argv[2];
-global.WebSocket=class {
- constructor(){this.listeners={};setImmediate(()=>this.listeners.open({}));}
- addEventListener(name,listener){this.listeners[name]=listener;}
- send(raw){
-  const request=JSON.parse(raw);
-  if(request.method!=='Accessibility.getFullAXTree')throw Error('wrong subject');
-  const name=fault==='large-output'?'x'.repeat(300000):'Login';
-  const extra=fault==='large-output'?'':fault==='oversize-frame'?'x'.repeat(17*1024*1024):
-    fault==='unicode-frame'?'é'.repeat(9*1024*1024):'x'.repeat(350000);
-  const result={nodes:[{ignored:false,role:{value:'button'},name:{value:name},extra}]};
-  setImmediate(()=>this.listeners.message({data:JSON.stringify({id:request.id,result})}));
- }
- close(){}
-};
-"""
 
 
 def node(*arguments, payload=None):
@@ -94,7 +43,7 @@ def test_page_bound_input_refuses_bad_state_without_native_focus(fault):
         assert data["secretCalls"] == 0 and data["events"] == 0
     if fault == "none":
         assert data["result"] == {"result": "BROWSER_LOGIN_SUBMITTED"}
-        assert data["events"] == 2
+        assert data["credentialRetained"] is False
 
 
 @pytest.mark.parametrize("raw", ["not-json", '{"endpoint":"file:///dummy-private-value"}'])
@@ -110,7 +59,7 @@ def test_submit_must_be_enabled_after_input_not_before_it(fault):
     result = node("-e", FIXTURE, str(HELPER), fault)
     assert result.returncode == 0, result.stderr
     data = json.loads(result.stdout)
-    assert data["events"] == 2
+    assert data["credentialRetained"] is False
     assert data["clicks"] == (1 if fault == "gated" else 0)
     assert data["failed"] == (fault == "disabled")
     if fault == "gated":
@@ -170,6 +119,7 @@ def test_entry_preserves_explicit_preflight_refusal(tmp_path, monkeypatch, capsy
         "credential_input": False,
         "submission_attempted": False,
     }
+    state.save(tmp_path, {"browser": "chrome", "worktree": str(tmp_path)})
     monkeypatch.setattr(runtime, "owned", lambda _: tmp_path)
     monkeypatch.setattr(runtime, "request", lambda *_: refusal)
     monkeypatch.setenv("BROWSER_LOGIN_USERNAME", SECRET)

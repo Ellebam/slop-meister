@@ -7,9 +7,9 @@ from pathlib import Path
 import selectors
 import signal
 import subprocess
-import tomllib
 from types import SimpleNamespace
 
+from slopmeister.launch import command as launch_command
 from slopmeister.session.service_actions.constants import PYTHON
 from tests.integration.install.helpers import unlock_deliveries
 from tests.integration.install.test_install_service_actions import _command, _fixture
@@ -141,11 +141,10 @@ def _settings(client, tool):
         config = (client.cwd / ".codex/config.toml").read_text()
         config += "\n[projects." + json.dumps(str(client.cwd)) + ']\ntrust_level="trusted"\n'
         (Path(client.env["CODEX_HOME"]) / "config.toml").write_text(config)
-        servers = tomllib.loads(config).get("mcp_servers", {})
         pins = [
             value
-            for alias in servers
-            for value in ("-c", f'mcp_servers.{alias}.tools.run.approval_mode="prompt"')
+            for pin in launch_command.native_pins(client.cwd / ".codex/config.toml")
+            for value in ("-c", pin)
         ]
         return replace(client, argv=[*client.argv[:-1], *pins, client.argv[-1]])
     home = Path(client.env["CLAUDE_CONFIG_DIR"]) / "settings.json"

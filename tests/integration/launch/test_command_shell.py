@@ -86,7 +86,7 @@ def _assert_supported_models(world, repo, record, native):
         (
             "claude",
             "bin/claude",
-            ["--effort", "high", "--allowedTools", "Bash(echo --model x)"],
+            ["--effort", "high"],
             _claude,
         ),
         ("codex", "home/.local/bin/codex", ["--config", 'notice="--model x"'], _codex),

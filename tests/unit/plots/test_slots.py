@@ -115,3 +115,53 @@ def test_literal_compose_spaces_and_metacharacters_are_not_shell_code():
 )
 def test_valid_port_boundaries_are_not_overrestricted(slots):
     assert validate(change("slots", slots), PATH)
+
+
+def test_setup_and_separate_tester_range_are_optional_and_reported():
+    slots = {
+        "max": 2,
+        "testers": 1,
+        "ports": {"WEB": 45100},
+        "setup": ["python3", "prepare.py"],
+        "setup_files": [".env.local", ".hooks/generated"],
+    }
+    data = validate(change("slots", slots), PATH)
+    assert data["slots"] == slots
+    assert "slots\ttesters\t1" in slot_rows(data)
+    assert 'setup\t-\t["python3", "prepare.py"]' in slot_rows(data)
+
+
+@pytest.mark.parametrize("testers", [-1, 100, True, "1"])
+def test_tester_count_is_a_bounded_integer(testers):
+    with pytest.raises(ValueError, match="slots.testers: expected an integer"):
+        validate(change("slots.testers", testers), PATH)
+
+
+def test_tester_range_participates_in_port_collisions_and_slot_limit():
+    slots = {"max": 2, "testers": 1, "ports": {"A": 45100, "B": 45102}}
+    with pytest.raises(ValueError, match="collide"):
+        validate(change("slots", slots), PATH)
+    slots = {"max": 99, "testers": 1, "ports": {"A": 45100}}
+    with pytest.raises(ValueError, match="together exceed"):
+        validate(change("slots", slots), PATH)
+
+
+@pytest.mark.parametrize("command", ["prepare", [], [""], ["x\n"], [1]])
+def test_setup_is_an_argument_array_without_control_characters(command):
+    with pytest.raises(ValueError, match="slots.setup: expected a nonempty argument array"):
+        validate(change("slots.setup", command), PATH)
+
+
+@pytest.mark.parametrize("output", ["/tmp/out", "../out", ".git/config", ".slot.env", "x//y"])
+def test_setup_output_paths_cannot_replace_metadata_or_escape(output):
+    slots = {**VALID["slots"], "setup": ["prepare"], "setup_files": [output]}
+    with pytest.raises(ValueError, match="relative output paths"):
+        validate(change("slots", slots), PATH)
+
+
+def test_setup_files_require_a_command_and_unique_names():
+    with pytest.raises(ValueError, match="requires setup"):
+        validate(change("slots.setup_files", [".env"]), PATH)
+    slots = {**VALID["slots"], "setup": ["prepare"], "setup_files": [".env", ".env"]}
+    with pytest.raises(ValueError, match="unique outputs"):
+        validate(change("slots", slots), PATH)

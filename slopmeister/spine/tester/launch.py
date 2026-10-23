@@ -3,7 +3,6 @@
 import argparse
 from dataclasses import dataclass, field
 import hashlib
-import json
 import os
 from pathlib import Path
 import re
@@ -18,8 +17,10 @@ from slopmeister.opencode import tester as opencode_tester
 from slopmeister.review.config import DEFAULT_CONFIG_PATH as DEFAULTS
 from slopmeister.review.redact import redact
 from slopmeister.review.run import project_child_env
+from slopmeister.slots import tester as slot_tester
 from slopmeister.spine import candidate as repository_candidate
 from slopmeister.spine.tester import runs
+from slopmeister.spine.tester.command import build_command as build_command
 from slopmeister.spine.tester.validate import SCENARIO, VERDICT_SCHEMA, scenario_ids
 from slopmeister.vault import subject as directory_subject
 
@@ -51,25 +52,6 @@ def evidence_home(cwd: Path, *, create: bool = True) -> Path:
     if create:
         home.mkdir(parents=True, exist_ok=True, mode=0o700)
     return home
-
-
-def build_command(run: dict, root: Path) -> list[str]:
-    if run["tool"] == "opencode":
-        return opencode_tester.command(run)
-    if run["tool"] == "codex":
-        return [
-            # Plugin refresh and the notify program outlive the CLI and trip the group check.
-            "codex", "exec", "--dangerously-bypass-approvals-and-sandbox", "--disable", "plugins",
-            "-C", run["checkout"], "--model", run["model"], "--config", "notify=[]",
-            "--config", f'model_reasoning_effort="{run["effort"]}"',
-            "--json", "--output-schema", str(root / "schema.json"),
-            "--output-last-message", str(root / "verdict.raw.json"), "-",
-        ]  # fmt: skip
-    return [
-        "claude", "-p", "--model", run["model"], "--effort", run["effort"],
-        "--permission-mode", "auto", "--tools", "Bash,Read,Glob,Grep", "--strict-mcp-config",
-        "--output-format", "stream-json", "--verbose", "--json-schema", json.dumps(VERDICT_SCHEMA),
-    ]  # fmt: skip
 
 
 def launch(args: argparse.Namespace) -> Path:
@@ -181,7 +163,8 @@ def _prepare(root: Path, run: dict, request: Launch) -> Path:
         _checkout(root, run, request)
         if run["tool"] == "claude":
             trust(TrustRequest("write", Path.home() / ".claude.json", run["checkout"]), "claude")
-        _start_supervisor(root, run)
+        with slot_tester.prepared(root, run, getattr(request.args, "slot_target", None)):
+            _start_supervisor(root, run)
     except (Exception, SystemExit) as error:
         (root / "report.md").write_text(
             f"Tester BLOCKED during preparation: {redact(str(error))}\nEvidence: {root}\n"
@@ -233,6 +216,7 @@ def _start_supervisor(root: Path, run: dict) -> None:
             stdout=log,
             stderr=log,
             start_new_session=True,
+            pass_fds=slot_tester.descriptors(run),
             env=opencode_tester.supervisor_env(run)
             if run["tool"] == "opencode"
             else project_child_env(),

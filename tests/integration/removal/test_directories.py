@@ -16,7 +16,9 @@ def test_locked_dispatcher_tree_does_not_survive_removal(workspace, invoke):
         action.mkdir(parents=True)
         (action / "entry.py").touch()
     lock_service_actions(retired, True)
-    result = invoke(retired)
+    refused = invoke(retired)
+    assert refused.returncode != 0 and "ignored work" in refused.stderr
+    result = invoke(retired, "--force")
     assert result.returncode == 0 and not retired.exists(), result.stderr
 
 

@@ -48,7 +48,9 @@ EXPLAIN = re.compile(
     r"versteh|erkl[aä]r|was meinst|warum|wieso",
     re.I,
 )
-FINALIZE = re.compile(r"(?:^|\s)[/$]finalize\b|^\s*finalize\b|<command-name>/finalize", re.I)
+FINALIZE = re.compile(
+    r"(?:^|\s)[/$](?:finalize|harvest)\b|^\s*finalize\b|<command-name>/(?:finalize|harvest)", re.I
+)
 RELAY = re.compile(r"^\s*Dispatcher here", re.I)
 KICKOFF_MODE = re.compile(r"^Mode:\s*(spine|freeform)\s*$", re.M)
 VALIDATION = "## Validation"

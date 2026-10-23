@@ -14,12 +14,18 @@ from tests.support.repos import git
         (["--model", "-bad"], "--model requires a nonempty value"),
         (["--tool", "codex", "--", "-cproject_root_markers=[]"], "override Slopmeister-owned"),
         (["--tool", "bogus"], "--tool must be claude, codex or opencode"),
+        (["--tool", "claude", "--", "--session-id=other"], "override Slopmeister-owned"),
+        (["--tool", "claude", "--", "--tools=Read"], "override Slopmeister-owned"),
+        (["--tool", "claude", "--", "--cloud"], "override Slopmeister-owned"),
+        (["--tool", "codex", "--", "resume"], "override Slopmeister-owned"),
     ],
 )
 def test_argument_refusal_precedes_fetch_and_preparation(tmp_path, tail, message):
     """Bug: a bad argument fetches a private issue or leaves a half-prepared worktree."""
     world = machine(tmp_path)
     repo = target(tmp_path / "repo")
+    plot = world.root / "plots/example-client/plot.toml"
+    plot.write_text(plot.read_text().replace('tasks = "manual"', 'tasks = "github"'))
     gh = tmp_path / "bin/gh"
     gh.write_text(f"#!/bin/sh\ntouch {tmp_path / 'fetched'}\n")
     gh.chmod(0o755)
@@ -154,3 +160,23 @@ def test_snapshot_ignores_git_lock_files(tmp_path):
     before = snapshot(repo)
     (repo / ".git/objects/maintenance.lock").write_text("held\n")
     assert snapshot(repo) == before
+
+
+def test_nested_repository_is_refused_before_preparation(tmp_path):
+    world = machine(tmp_path)
+    repo = target(tmp_path / "repo")
+    nested = repo / "nested"
+    nested.mkdir()
+    before = snapshot(repo)
+    result = launch(world, str(nested), "example-client", "example-client-nested", ok=False)
+    assert "not a non-bare git repository" in result.stderr
+    assert snapshot(repo) == before and not world.state.exists()
+
+
+def test_symlink_to_the_actual_repository_root_remains_supported(tmp_path):
+    world = machine(tmp_path)
+    repo = target(tmp_path / "repo")
+    link = tmp_path / "repo-link"
+    link.symlink_to(repo, target_is_directory=True)
+    result = launch(world, str(link), "example-client", "example-client-linked")
+    assert result.returncode == 0 and (repo / ".worktrees/example-client-linked").is_dir()

@@ -19,9 +19,11 @@ def plain_vault(tmp_path):
     return home, bin_dir, vault
 
 
-def report(plain_vault, platform):
+def report(plain_vault, platform, **env):
     home, bin_dir, vault = plain_vault
-    run = workstation(home, bin_dir, "doctor", "--vault", str(vault), SLOPMEISTER_PLATFORM=platform)
+    run = workstation(
+        home, bin_dir, "doctor", "--vault", str(vault), SLOPMEISTER_PLATFORM=platform, **env
+    )
     assert run.returncode == 0, run.stderr
     return {row["name"]: row for row in json.loads(run.stdout)}
 
@@ -105,7 +107,7 @@ def test_partial_drive_configuration_keeps_missing_requirements(plain_vault, mar
     path = plain_vault[0] / marker
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("fixture\n")
-    found = report(plain_vault, "linux")
+    found = report(plain_vault, "linux", PATH=str(plain_vault[1]))
     for name in ("tool:rclone", "vault-sync", "documents-sync", "vault-delete-guard"):
         assert found[name]["status"] == "problem"
     assert "vault-history" not in found and "vault-sweep" not in found

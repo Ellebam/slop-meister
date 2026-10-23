@@ -7,6 +7,7 @@ skill	dummy	shared	false	false
 skill	execute-plan	shared	false	false
 skill	finalize	shared	true	true
 skill	groom	shared	false	false
+skill	harvest	shared	true	true
 skill	implement	shared	false	false
 skill	leak-check	shared	false	false
 skill	local-qa	shared	false	false

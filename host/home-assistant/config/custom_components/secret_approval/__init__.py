@@ -4,7 +4,6 @@ import asyncio
 from dataclasses import dataclass, field
 import functools
 import hmac
-import json
 import logging
 import re
 import secrets
@@ -17,14 +16,14 @@ from homeassistant.exceptions import HomeAssistantError
 
 from .config import CONFIG_SCHEMA as CONFIG_SCHEMA
 from .config import DECIDE_COMMAND, DOMAIN, OPEN_COMMAND, protect_logs
+from .question import BODY_BYTES as BODY_BYTES
+from .question import read as read_question
 
 LOGGER = logging.getLogger(__name__)
-QUESTION_ID = re.compile(r"[0-9a-f]{32}")
 ACTION = re.compile(r"SECRET_APPROVAL_(APPROVE|DENY)_([0-9a-f]{32})_([0-9a-f]{32})")
 TAG = "secret-approval-"
 # A tap on the notification opens the page of ../../www/secret-approval.js on this question.
 PAGE = "/secret-approval?request="
-BODY_BYTES = 3800
 OPEN_QUESTIONS = 16
 PRESS_SECONDS = 600
 # A decision made in the last second stays readable for five more minutes.
@@ -72,21 +71,6 @@ def _waiting(route):
     }
 
 
-def _parse(body):
-    if len(body) > BODY_BYTES:
-        return None
-    try:
-        data = json.loads(body)
-    except ValueError, RecursionError:
-        return None
-    if not isinstance(data, dict) or not all(
-        isinstance(data.get(key), str) for key in ("id", "title", "message")
-    ):
-        return None
-    # Companion apps run a one-word message as a device command instead of showing it.
-    return data if QUESTION_ID.fullmatch(data["id"]) and len(data["message"].split()) > 1 else None
-
-
 async def _send(hass, device, payload):
     try:
         async with asyncio.timeout(SEND_SECONDS):
@@ -115,7 +99,7 @@ def _notification(data, token):
 
 async def _ask(hass, _webhook_id, request):
     route = hass.data[DOMAIN]
-    data = _parse(await request.read())
+    data = await read_question(request)
     if data is None:
         return web.Response(status=400)
     questions = _retained(route)
@@ -130,7 +114,7 @@ async def _ask(hass, _webhook_id, request):
     accepted = await _notify(hass, route, _notification(data, question.token))
     if not accepted:
         del questions[data["id"]]
-    return web.Response(status=200 if accepted else 502)
+    return web.json_response({"accepted": True}) if accepted else web.Response(status=502)
 
 
 async def _answer(hass, _webhook_id, request):

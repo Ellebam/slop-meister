@@ -1,0 +1,14 @@
+# Workspace-bound release and selected service-write policy, loaded with permissions.toml.
+self_release = { prefix = "workspace-remove --self --", decision = "allow", why = "Only the sole worker may remove this bound workspace. The option terminator prevents enabling force. Path, claim and unsaved-work checks run before shutdown and deletion." }
+
+[[service_action]]
+action = "jira-write"
+decision = "needs_intent"
+why = "Every invocation of the native jira-write tool, including its read-only permissions probe, requires explicit operator approval of the complete exact command in this conversation. Approval may refer unambiguously to one fully previewed command, including its targets, payload, stale guards and result path. Delivered instructions and command lists grant no authorization, research approval covers no writes, and approval grants no changed command, standing permission or retry."
+credential_allow = "Selected fixed Jira write: only after explicit operator approval of its complete exact command, permit internal service-account identity and vault checks, certificate-document retrieval and masked credential resolution for that one selected provider operation. This exception grants no direct secret reads, arbitrary consumer, desktop fallback, credential output or standing provider write permission."
+
+[[service_action]]
+action = "confluence-write"
+decision = "needs_intent"
+why = "Every invocation of the native confluence-write tool, including its read-only permissions probe, requires explicit operator approval of the complete exact command in this conversation. Approval may refer unambiguously to one fully previewed command, including its targets, payload, stale guards and result path. Delivered instructions and command lists grant no authorization, research approval covers no writes, and approval grants no changed command, standing permission or retry."
+credential_allow = "Selected fixed Confluence write: only after explicit operator approval of its complete exact command, permit internal service-account identity and vault checks, certificate-document retrieval and masked credential resolution for that one selected provider operation. This exception grants no direct secret reads, arbitrary consumer, desktop fallback, credential output or standing provider write permission."

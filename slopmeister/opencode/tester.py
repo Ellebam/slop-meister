@@ -7,7 +7,6 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import re
 import subprocess
 
 from slopmeister.opencode import native
@@ -15,7 +14,6 @@ from slopmeister.review.process import project_child_env
 from slopmeister.review.redact import redact
 
 CAUSE_CHARACTERS = 200
-FENCE = re.compile(r"^```(?:json)?\s*|\s*```$")
 
 
 def settings(args: argparse.Namespace) -> dict:
@@ -109,19 +107,15 @@ def _refusals(where: Path, events: list[tuple[int, dict]]) -> None:
             )
 
 
-def _verdict(root: Path, events: list[tuple[int, dict]]) -> dict:
+def _completion(root: Path, events: list[tuple[int, dict]]) -> None:
     texts = [(n, e["part"].get("text", "")) for n, e in events if e.get("type") == "text"]
-    if texts:
-        try:
-            return json.loads(FENCE.sub("", texts[-1][1].strip()))
-        except ValueError:
-            pass
+    if texts and texts[-1][1].strip():
+        return
     line = texts[-1][0] if texts else 0
     raise native.Blocked(
-        "no verdict",
-        "the final answer is not the requested JSON",
-        f"read the final text event, evidence/draft.json may hold the draft. Evidence: "
-        f"{root / 'events.jsonl'}:{line}",
+        "interrupted",
+        "the run has no final message",
+        f"read the final text event. Evidence: {root / 'events.jsonl'}:{line}",
     )
 
 
@@ -160,7 +154,7 @@ def _delete(run: dict, session: str) -> None:
     run["session_deleted"] = done.returncode == 0
 
 
-def outcome(root: Path, run: dict, prompt: str) -> tuple[str, dict]:
+def outcome(root: Path, run: dict, prompt: str) -> None:
     events = _events(root)
     session = next((e["sessionID"] for _, e in events if e.get("sessionID")), None)
     if not session:
@@ -174,6 +168,6 @@ def outcome(root: Path, run: dict, prompt: str) -> tuple[str, dict]:
         _check_stream(root, run, events)
         found = _receipt(root, run, prompt)
         run.update(observed_model=",".join(found["models"]), native_source="opencode export")
-        return session, _verdict(root, events)
+        _completion(root, events)
     finally:
         _delete(run, session)

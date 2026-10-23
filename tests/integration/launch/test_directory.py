@@ -38,7 +38,11 @@ def _claude_granted(session: Path, world: Machine, output: str) -> bool:
 
 
 def _codex_granted(session: Path, world: Machine, output: str) -> bool:
-    expected = {str(world.vault.resolve()), *temporary_roots(world)}
+    expected = {
+        str(world.vault.resolve()),
+        *temporary_roots(world),
+        str(session / ".slopmeister-tmp"),
+    }
     return "--add-dir" not in output and codex_writable(session) == expected
 
 

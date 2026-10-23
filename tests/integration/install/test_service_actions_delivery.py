@@ -119,8 +119,8 @@ def test_an_action_without_a_consumer_is_refused(tmp_path):
 def test_write_without_central_intent_policy_is_refused(tmp_path, action):
     """Bug: deleting the central policy quietly delivers a write with generic read approval."""
     root, profiles, path = fixture(tmp_path)
-    source = root / "src/permissions.toml"
-    source.write_text(source.read_text().split("[[service_action]]")[0])
+    source = root / "src/native-permissions.toml"
+    source.write_text(source.read_text().split("[[service_action]]")[0] + "service_action = []\n")
     source_action = action.replace("-write", "-read")
     written = profiles / "example" / (source_action + ".json")
     written.write_text(json.dumps(json.loads(path.read_text()) | {"action": source_action}))

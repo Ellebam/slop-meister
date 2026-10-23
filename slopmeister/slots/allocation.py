@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import os
 from pathlib import Path
 import re
@@ -12,45 +11,19 @@ import subprocess
 from slopmeister.errors import SlopmeisterError
 from slopmeister.paths import PLOTS, main_checkout
 from slopmeister.plots.declaration import load_all
+from slopmeister.slots.models import Claim as Claim
+from slopmeister.slots.models import Listener as Listener
+from slopmeister.slots.models import Live as Live
+from slopmeister.slots.models import Resource as Resource
 
 ALLOCATION = ".slot.env"
+TESTER_RECORD = "tester.json"
 NAME = re.compile(r"[a-z0-9][a-z0-9-]*")
 RESOURCE_QUERIES = (
     ("container", ("ps", "-a"), "{{.ID}}\t{{.Names}}\t{{.Status}}"),
     ("volume", ("volume", "ls"), "{{.Name}}\t{{.Name}}"),
     ("network", ("network", "ls"), "{{.ID}}\t{{.Name}}"),
 )
-
-
-@dataclass(frozen=True)
-class Live:
-    target: str
-    slot: int
-    name: str
-    worktree: Path
-
-
-@dataclass(frozen=True)
-class Listener:
-    port: int
-    pid: int
-    command: str
-
-
-@dataclass(frozen=True)
-class Resource:
-    kind: str
-    identifier: str
-    name: str
-    state: str = ""
-
-
-@dataclass(frozen=True)
-class Claim:
-    live: Live
-    data: Path
-    compose: Path | None
-    ports: dict[str, int]
 
 
 def declarations_path() -> Path:
@@ -87,6 +60,10 @@ def is_none(slots: dict) -> bool:
 
 def maximum(slots: dict) -> int:
     return slots.get("max", 6)
+
+
+def testers(slots: dict) -> int:
+    return slots.get("testers", 0)
 
 
 def compose_relative(slots: dict) -> str:
@@ -159,7 +136,11 @@ def main_root(argument: str) -> Path:
     if not candidate.is_dir():
         raise SlopmeisterError(f"target repository not found: {argument}")
     top = run(["git", "-C", str(candidate), "rev-parse", "--show-toplevel"], capture=True, ok=False)
-    if top.returncode:
+    if (
+        top.returncode
+        or not top.stdout.strip()
+        or Path(top.stdout.strip()).resolve() != candidate.resolve()
+    ):
         raise SlopmeisterError(f"not a non-bare git repository: {argument}")
     common = run(
         ["git", "-C", str(candidate), "rev-parse", "--path-format=absolute", "--git-common-dir"],
@@ -225,7 +206,7 @@ def resolve_compose(root: Path, relative: str) -> Path:
     return real
 
 
-def write(path: Path, claim: Claim) -> None:
+def content(claim: Claim) -> str:
     item, data, compose, ports = claim.live, claim.data, claim.compose, claim.ports
     rows = {
         "SLOT": str(item.slot),
@@ -236,4 +217,8 @@ def write(path: Path, claim: Claim) -> None:
         **({"SLOT_COMPOSE": str(compose)} if compose else {}),
         **{name: str(port) for name, port in ports.items()},
     }
-    path.write_text("".join(f"{name}={value}\n" for name, value in sorted(rows.items())))
+    return "".join(f"{name}={value}\n" for name, value in sorted(rows.items()))
+
+
+def write(path: Path, claim: Claim) -> None:
+    path.write_text(content(claim))

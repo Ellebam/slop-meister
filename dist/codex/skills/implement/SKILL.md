@@ -64,6 +64,7 @@ In scoped fix-pass mode, prove the edited lines with every affected suite and ac
 - Don't be sloppy. Read the whole error, check the whole diff, run every check the change affects, and put real output behind every claim you record.
 - The plan is the spec. If you disagree with it, raise it, do not silently diverge.
 - Read before you write. No exceptions.
+- After changing a name, rule, value or behaviour, search the repository for its second copy. Update or report each hit, keeping the existing scope and halt rules.
 - Tests are part of the work. If the plan forgot a test the change obviously needs, write it and say so.
 - Fail loudly. If a gate fails and the fix is not obvious, report it rather than making speculative changes.
 - No gold plating. No extra error handling, logging, comments, or annotations beyond what the plan and the surrounding code do.

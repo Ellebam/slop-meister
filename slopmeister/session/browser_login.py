@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 
+from slopmeister.session import browser_page, browser_profile
 from slopmeister.session import browser_runtime as runtime
 
 VARIABLES = {"BROWSER_LOGIN_USERNAME", "BROWSER_LOGIN_PASSWORD", "BROWSER_LOGIN_OTP"}
@@ -40,6 +41,12 @@ def fill(root: Path, args: argparse.Namespace) -> dict:
         {"selector": selector, "value": value, "types": types[variable]}
         for (selector, variable), (_, value) in zip(args.field, values, strict=True)
     ]
+    data = runtime.metadata(root)
+    browser_page.detach(root, data)
+    data["credential_fields"] = sorted(
+        set(data.get("credential_fields", [])) | {selector for selector, _ in args.field}
+    )
+    runtime.save(root, data)
     runtime.credential_state(root, create=True)
     return runtime.request(
         root,
@@ -90,10 +97,12 @@ def arguments(argv: list[str]) -> argparse.Namespace:
     start = sub.add_parser("start")
     start.add_argument("url")
     start.add_argument("--browser", choices=("orca", "chrome"), default="orca")
-    for name in ("run", "fill", "close"):
+    start.add_argument("--persistent", action="store_true")
+    sub.add_parser("clear-profile")
+    for name in ("run", "page", "fill", "close"):
         p = sub.add_parser(name)
         p.add_argument("state")
-        if name == "run":
+        if name in {"run", "page"}:
             p.add_argument("command", nargs=argparse.REMAINDER)
         elif name == "fill":
             p.add_argument("--url", required=True)
@@ -108,7 +117,11 @@ def main(argv: list[str]) -> int:
         root = runtime.owned(args.state) if hasattr(args, "state") else None
         match args.action:
             case "start":
-                result = runtime.start(args.url, args.browser)
+                result = runtime.start(args.url, args.browser, persistent=args.persistent)
+            case "clear-profile":
+                result = browser_profile.clear()
+            case "page":
+                result = browser_page.page(root, args.command)
             case "fill":
                 result = fill(root, args)
             case "close":

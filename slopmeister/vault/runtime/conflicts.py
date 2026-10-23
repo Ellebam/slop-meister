@@ -1,10 +1,11 @@
-"""The older versions the Drive sync sets aside when both sides edited one file."""
+"""Bisync conflicts and numbered Drive copies that need comparison."""
 
 from pathlib import Path
 import re
 
 # The suffix plots/home/drive/drive-sync.sh gives the older version, before the extension.
 COPY = re.compile(r"\.sync-conflict-[^./]+(\.[^./]+)?$")
+NUMBERED = re.compile(r"^(.*) \([1-9][0-9]*\)(\.(?!sync-conflict-)[^./]+)$")
 STEPS = """\
 merge each conflict copy from the vault folder, <note> is its name without the suffix:
   1. base: a committed version of <note> from before the edits of both files. Find it with
@@ -26,5 +27,24 @@ def copies(vault: Path, root: Path, recursive: bool = True) -> list[str]:
     return sorted(
         str(path.relative_to(vault))
         for path in (root.rglob if recursive else root.glob)("*")
-        if COPY.search(path.name) and path.is_file() and _visible(path, vault)
+        if COPY.search(path.name)
+        and not NUMBERED.fullmatch(path.name)
+        and path.is_file()
+        and _visible(path, vault)
     )
+
+
+def numbered(vault: Path, root: Path, recursive: bool = True) -> list[str]:
+    """Comparison candidates, only when the unnumbered file exists beside the copy."""
+    found = []
+    for path in (root.rglob if recursive else root.glob)("*"):
+        match = NUMBERED.fullmatch(path.name)
+        if not match or path.is_symlink() or not path.is_file() or not _visible(path, vault):
+            continue
+        base = path.with_name("".join(match.groups()))
+        if base.is_file() and not base.is_symlink():
+            found.append(
+                f"{path.relative_to(vault)}: numbered copy candidate, "
+                f"compare with {base.relative_to(vault)} and keep both until reviewed"
+            )
+    return sorted(found)

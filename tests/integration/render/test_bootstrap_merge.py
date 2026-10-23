@@ -23,37 +23,32 @@ def test_bootstrap_merge_keeps_zero_checks_outside_the_normal_gate():
 def test_bootstrap_finalize_checks_before_issue_close():
     """Bug: finalize writes to GitHub before checking absent or unproven CI."""
     source = (ROOT / "src/skills/finalize/SKILL.md").read_text()
-    preflight = source[: source.index("### 2. Project document duties")]
+    preflight = source[: source.index("## Continue")]
     assert "CI is absent or uncertain, stop" in preflight
     assert "gh pr checks <number>" in preflight
     assert "A refusal stops finalize" in preflight
 
 
-def test_finalize_refreshes_before_waiting_and_closes_a_github_issue_after_the_merge():
-    """Bug: a refused merge closes its issue, or stale code waits before refresh."""
-    merge = (ROOT / "src/skills/merge/SKILL.md").read_text()
-    order = [
-        "Before the first check or wait",
-        "only to count the checks",
-        "Otherwise refresh at once",
-        "gh pr checks <number> --watch",
-        "compare/<baseRefName>...<headRefOid>",
-    ]
-    assert sorted(order, key=merge.index) == order
+def test_finalize_delegates_only_after_its_completed_task_gates():
+    """Compatibility must not bypass acceptance, document pre-flight or exact integration proof."""
     finalize = (ROOT / "src/skills/finalize/SKILL.md").read_text()
-    order = ["### 3. Ship", "### 4. Merge", "### 5. Close the task", "### 6. Close out"]
-    assert sorted(order, key=finalize.index) == order
-    assert "after step 4 verified the merged state" in finalize
+    harvest = (ROOT / "src/skills/harvest/SKILL.md").read_text()
+    assert "testing acceptance" in finalize and "verification only" in finalize
+    assert "Missing or failed proof stops the sequence" in finalize
+    assert finalize.index("## Pre-flight") < finalize.index("## Continue")
+    assert harvest.index("## 3. The branch") < harvest.index("## 4. The ticket")
+    assert "A tracker closes only after step 3 verified the merged state" in harvest
 
 
-def test_finalize_endings_never_act_on_a_repository_we_do_not_own():
-    """Bug: finalize writes to a customer repository or discards an unmerged branch."""
+def test_finalize_endings_preserve_foreign_repositories_and_unmerged_branches():
+    """The compatibility ending must retain its no-merge authority and branch protection."""
     text = (ROOT / "src/skills/finalize/SKILL.md").read_text()
-    endings = text[text.index("## Endings") : text.index("## Steps")]
-    assert "confirm read-only that the PR is open" in endings
-    assert "never closes, merges or edits" in endings
-    assert "git branch -d <branch>" in text
-    assert "never use `-D`" in text
+    endings = text[text.index("## Endings") : text.index("## Pre-flight")]
+    assert "Verify read-only that the pull request is open" in endings
+    assert "Never close, merge or edit" in endings
+    assert "Keep both branches while the pull request is open" in endings
+    harvest = (ROOT / "src/skills/harvest/SKILL.md").read_text()
+    assert "git branch -d <branch>" in harvest and "never use `-D`" in harvest
 
 
 def test_merge_requires_action_specific_approval_after_refusal():
@@ -61,3 +56,9 @@ def test_merge_requires_action_specific_approval_after_refusal():
     source = (ROOT / "src/skills/merge/SKILL.md").read_text()
     assert "do not retry it and do not work around it" in source
     assert "reply that names the merge" in source
+
+
+def test_integration_requires_exact_commit_proof_without_workflow_dispatch():
+    source = (ROOT / "src/skills/merge/integration.md").read_text()
+    assert "dispatch a release or deployment workflow" in source
+    assert "pending, failed, cancelled or skipped gate is not success" in source

@@ -28,7 +28,7 @@ PAYLOADS = (
     "slopmeister/session/launch_identity.py",
 )
 UV = """#!/usr/bin/env python3
-import json, os, pathlib, sys
+import json, os, pathlib, sys, time
 args = sys.argv[1:]
 with open(os.environ["DEPLOY_LOG"], "a") as log:
     log.write(json.dumps(args) + "\\n")
@@ -36,7 +36,24 @@ if args[0] == "export":
     pathlib.Path(args[args.index("--output-file") + 1]).write_text("# synthetic requirements\\n")
 else:
     assert "ansible-playbook" in args
+    if args[-1].endswith("home-assistant.yml"):
+        payload = next((json.loads(a) for a in args if a.startswith("{")), {})
+        assert "home_assistant_service_dir" in payload, "runner did not receive reviewed archive"
+        root = pathlib.Path(payload["home_assistant_service_dir"])
+        files = {
+            p.relative_to(root).as_posix(): p.read_text()
+            for p in root.rglob("*") if p.is_file()
+        }
+        record = {
+            "root": str(root), "files": files,
+            "mode": root.parent.parent.stat().st_mode & 0o777,
+        }
+        pathlib.Path(os.environ["DEPLOY_LOG"] + ".payload").write_text(json.dumps(record))
     print("ANSIBLE_STANDIN_REACHED")
+    if os.environ.get("DEPLOY_READY"):
+        pathlib.Path(os.environ["DEPLOY_READY"]).write_text("ready")
+        time.sleep(5)
+    sys.exit(int(os.environ.get("DEPLOY_EXIT", "0")))
 """
 
 
@@ -148,3 +165,36 @@ def test_ignored_scratch_and_unrelated_changes_do_not_block(deployment, target):
     assert result.returncode == 0, result.stdout + result.stderr
     assert "ANSIBLE_STANDIN_REACHED" in result.stdout
     assert scratch.read_text() == "synthetic private scratch\n"
+
+
+@pytest.mark.parametrize("exit_code", [0, 17])
+def test_ha_uses_reviewed_bytes_and_removes_its_archive_after_runner_exit(
+    deployment, monkeypatch, exit_code
+):
+    repo, _, log = deployment
+    with (repo / ".git/info/exclude").open("a") as stream:
+        stream.write("*.pyc\nignored-payload.txt\n")
+    ignored = repo / "host/home-assistant/config/__pycache__/module.pyc"
+    ignored.parent.mkdir()
+    ignored.write_bytes(b"unreviewed bytecode")
+    extra = repo / "host/home-assistant/ignored-payload.txt"
+    extra.write_text("unreviewed payload")
+    monkeypatch.setenv("DEPLOY_EXIT", str(exit_code))
+    result = deploy(deployment, "ha")
+    assert (result.returncode == 0) == (exit_code == 0), result.stdout + result.stderr
+    assert "ANSIBLE_STANDIN_REACHED" in result.stdout
+    payload = json.loads(Path(str(log) + ".payload").read_text())
+    assert payload["files"] == {"config/www/secret-approval.js": "reviewed fixture\n"}
+    assert payload["mode"] == 0o700
+    assert not Path(payload["root"]).exists()
+    assert (
+        ignored.read_bytes() == b"unreviewed bytecode" and extra.read_text() == "unreviewed payload"
+    )
+
+
+def test_ha_archive_ignores_ambient_tar_options(deployment, monkeypatch):
+    monkeypatch.setenv("TAR_OPTIONS", "--exclude=*")
+    result = deploy(deployment, "ha")
+    assert result.returncode == 0, result.stdout + result.stderr
+    payload = json.loads(Path(str(deployment[2]) + ".payload").read_text())
+    assert payload["files"] == {"config/www/secret-approval.js": "reviewed fixture\n"}

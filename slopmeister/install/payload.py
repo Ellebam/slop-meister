@@ -7,19 +7,13 @@ import json
 import os
 from pathlib import Path
 import re
-import shlex
 import stat
 
-from slopmeister.install import snapshot as session_snapshot
-from slopmeister.install.models import InstallContext, PayloadContext, ToolPayload
+from slopmeister.install.models import PayloadContext, ToolPayload
+from slopmeister.install.native_payload import add_native_payload as add_native_payload
 from slopmeister.install.preflight import refuse, safe_path
 from slopmeister.plots import load_all
-from slopmeister.render.settings import native_tools
 
-GIT_HISTORY_COMMANDS = ("commit", "merge", "rebase", "cherry-pick", "revert", "am", "pull")
-# Sessions commit their recorded vault paths when they hand back finished work. Only this
-# subcommand, which takes named paths, runs without a question, see docs/vault-version-control.md.
-VAULT_COMMIT = "slopmeister-vault commit"
 DENY_COMMIT = (
     "Agent commit permission for this plot is deny: the agent has no standing authority to create "
     "commits or push, and only the operator can tell it to. When the operator explicitly asks for "
@@ -142,107 +136,3 @@ def payload(context: PayloadContext) -> tuple[dict[str, tuple[bytes, int]], dict
     if not isinstance(settings, dict):
         refuse("rendered Claude settings must be an object")
     return files, settings
-
-
-def add_native_payload(context: InstallContext) -> None:
-    settings = context.settings
-    settings["claudeMdExcludes"] = settings.get("claudeMdExcludes", []) + [
-        str(context.repo / "**"),
-        *(str(Path(path) / "**") for path in context.grants),
-    ]
-    _add_git_approval(context)
-    permissions = settings.pop("permissions", {})
-    binary = shlex.quote(str(context.root / "bin/slopmeister"))
-    review = f"{binary} review review *"
-    permissions.setdefault("allow", []).append(f"Bash({review})")
-    permissions["allow"].append(f"Bash({VAULT_COMMIT} *)")
-    permissions.setdefault("ask", []).append(f"Bash({binary} review replace *)")
-    permissions.setdefault("deny", []).append("Edit(~/.local/state/slopmeister/**)")
-    writable = _temporary_roots()
-    editable = list(dict.fromkeys((str(context.repo), *context.grants, *writable)))
-    permissions["allow"].extend("Edit(/" + path + "/**)" for path in editable)
-    permissions.setdefault("additionalDirectories", []).extend([*context.grants, *writable])
-    hooks = settings.pop("hooks", {})
-    root = context.state_dir / session_snapshot.DIRECTORY
-    session_snapshot.bake(context.files, root)
-    _add_settings(context, (permissions, hooks, writable, review))
-
-
-def _temporary_roots() -> list[str]:
-    system = Path("/tmp").resolve()
-    roots = [str(system)]
-    raw = os.environ.get("TMPDIR")
-    if not raw:
-        return roots
-    candidate = Path(raw)
-    if not candidate.is_absolute() or not candidate.is_dir():
-        refuse("TMPDIR must be an absolute existing directory")
-    candidate = candidate.resolve()
-    mac = re.fullmatch(r"/private/var/folders/[^/]+/[^/]+/T(?:/.*)?", str(candidate))
-    temporary = candidate == system or candidate.is_relative_to(system) or bool(mac)
-    unsafe = candidate == Path.home().resolve() or candidate.stat().st_uid != os.getuid()
-    if not temporary or unsafe:
-        refuse("TMPDIR must be a current-user macOS temporary directory")
-    if str(candidate) not in roots:
-        roots.append(str(candidate))
-    return roots
-
-
-def _codex_rules(context: InstallContext) -> None:
-    review = [str(context.root / "bin/slopmeister"), "review", "review"]
-    for name, command, why in (
-        ("review.rules", review, "Slopmeister read-only cross-tool review"),
-        ("vault-commit.rules", VAULT_COMMIT.split(), "Slopmeister named-path vault commit"),
-    ):
-        rule = (
-            f'prefix_rule(pattern={json.dumps(command)}, decision="allow", justification="{why}")\n'
-        )
-        context.files[f".codex/rules/{name}"] = (rule.encode(), 0o644)
-
-
-def _add_settings(context: InstallContext, values: tuple[dict, dict, list[str], str]) -> None:
-    permissions, hooks, writable, review = values
-    if not context.directory and context.permission == context.shipping == "allow":
-        path = Path("skills/update-prs") / "scripts" / "update.py"
-        pattern = json.dumps(["python3", str(context.repo / ".agents" / path)])
-        rule = f'prefix_rule(pattern={pattern}, decision="allow", justification="Bot PR writes")\n'
-        context.files[".codex/rules/update-pr.rules"] = (rule.encode(), 0o644)
-        claude = context.repo / ".claude" / path
-        permissions.setdefault("allow", []).append(f"Bash(python3 {claude} *)")
-    # Launched Claude sessions run without the Bash sandbox, see docs/plot-shape.md. Stated
-    # explicitly because --settings wins over a home setting that would otherwise re-enable it.
-    access = {"permissions": permissions, "hooks": hooks, "sandbox": {"enabled": False}}
-    if "autoMode" in context.settings:
-        access["autoMode"] = context.settings.pop("autoMode")
-    context.files[".claude/access-settings.json"] = ((json.dumps(access) + "\n").encode(), 0o644)
-    settings = json.dumps(context.settings, indent=2) + "\n"
-    context.files[".claude/settings.json"] = (settings.encode(), 0o644)
-    _codex_rules(context)
-    context.files[".codex/config.toml"] = (native_tools(context, writable), 0o644)
-
-
-def _add_git_approval(context: InstallContext) -> None:
-    if context.directory:
-        return
-    commands = list(GIT_HISTORY_COMMANDS) if context.permission == "deny" else []
-    commands.append("push")
-    patterns = []
-    for command in commands:
-        patterns.extend((["git", command], ["git", "-C", str(context.repo), command]))
-    if context.permission != "allow" or context.shipping != "allow":
-        ship = Path("skills", "ship", "scripts", "ship.py")
-        patterns.extend(
-            ["python3", str(context.repo / tree / ship)] for tree in (".agents", ".claude")
-        )
-    rules = [
-        "prefix_rule(pattern="
-        + json.dumps(pattern)
-        + ', decision="prompt", justification="Explicit operator intent required")'
-        for pattern in patterns
-    ]
-    asks = ["Bash(" + " ".join(pattern) + " *)" for pattern in patterns]
-    context.files[".codex/rules/git-permission.rules"] = (
-        ("\n".join(rules) + "\n").encode(),
-        0o644,
-    )
-    context.settings.setdefault("permissions", {}).setdefault("ask", []).extend(asks)

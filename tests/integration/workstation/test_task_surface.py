@@ -82,3 +82,13 @@ def test_onboarding_links_resolve_from_every_supported_skill_location(tmp_path, 
             assert (skill.parent / unquote(url.path)).exists(), (layout, link)
     local = re.findall(r"`((?:docs|host|examples|slopmeister)/[^`<> ]+)`", skill.read_text())
     assert local and all((ROOT / path).exists() for path in local)
+
+
+def test_optional_browser_install_is_explicit_pinned_and_uses_the_runtime_prefix():
+    result = dry("browser:install")
+    assert result.returncode == 0
+    command = (result.stderr + result.stdout).split("\n", 1)[1]
+    assert "from slopmeister.session.browser_state import data_home" in command
+    assert 'npm ci --ignore-scripts --no-audit --no-fund --prefix "$prefix"' in command
+    checked = subprocess.run(["bash", "-n"], input=command, text=True, capture_output=True)
+    assert checked.returncode == 0, checked.stderr

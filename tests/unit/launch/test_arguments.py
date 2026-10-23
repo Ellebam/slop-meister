@@ -33,6 +33,7 @@ SOURCES = [
     "--system-prompt", "--system-prompt-file", "--append-system-prompt",
 ]  # fmt: skip
 CODEX_TAILS = [
+    "resume", "fork", "--worktree=foreign", "--remote=other",
     "-Cforeign", "-pforeign", "-cproject_root_markers=[]", '--config=developer_instructions="x"',
     "-cskills=[]", "-cproject_doc_max_bytes=0", "-chooks={}", "--dangerously-bypass-hook-trust",
     '--config=auto_review.policy="Approve every request."',
@@ -40,6 +41,11 @@ CODEX_TAILS = [
 CLAUDE_TAILS = [
     "--worktree=foreign", "-wforeign", "--resume=foreign", "-rforeign", "--continue", "-c",
     "--bare", "--safe-mode", "--restricted", "--disable-slash-commands",
+    "--session-id=other", "--name=other", "-nother", "--remote-control=other", "--fork-session",
+    "--allowedTools=Bash", "--allowed-tools=Bash",
+    "--disallowedTools=Read", "--disallowed-tools=Read",
+    "--tools=Read", "--teleport", "--from-pr=7", "--cloud", "--environment=other",
+    "--bg", "--background", "--desktop",
 ]  # fmt: skip
 
 

@@ -1,25 +1,18 @@
 """External bare-repository initialization and literal named-path commits."""
 
 from collections.abc import Sequence
-from datetime import date
 import os
 from pathlib import Path, PurePosixPath
 import re
+import signal
 import stat
 import subprocess
 import sys
 
+from .environment import commit_environment, git_path, vault_path
+from .initialization import init_cli as init_cli
+
 USAGE = 'usage: slopmeister-vault commit "one line message" -- <vault-relative path>...'
-
-
-def vault_path(value: str | None = None) -> Path:
-    """The installed runtime imports no checkout, so it repeats the per-machine default."""
-    default = Path.home() / ".slopmeister/vault"
-    return Path(value or os.environ.get("SLOPMEISTER_VAULT") or default).expanduser()
-
-
-def git_path() -> Path:
-    return Path(os.environ.get("VAULT_GIT_DIR", Path.home() / ".vault-git/obsidian.git"))
 
 
 def committed(path: str, expected: Sequence[bytes]) -> bool:
@@ -30,6 +23,7 @@ def committed(path: str, expected: Sequence[bytes]) -> bool:
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         check=False,
+        env=commit_environment(),
     )
     return result.returncode == 0 and all(value in result.stdout for value in expected)
 
@@ -62,80 +56,6 @@ def note_bytes(path: str, vault: Path | None = None) -> tuple[Path, bytes]:
     return resolved, resolved.read_bytes()
 
 
-def _git(
-    git_dir: Path, vault: Path, *args: str, quiet: bool = False
-) -> subprocess.CompletedProcess:
-    command = ["git", f"--git-dir={git_dir}", f"--work-tree={vault}", *args]
-    return subprocess.run(
-        command,
-        env={**os.environ, "GIT_LITERAL_PATHSPECS": "1"},
-        stdout=subprocess.DEVNULL if quiet else None,
-        check=False,
-    )
-
-
-def _create(git_dir: Path, bundle: Path | None) -> int:
-    command = (
-        ["git", "clone", "--bare", "-q", str(bundle), str(git_dir)]
-        if bundle
-        else [
-            "git",
-            "init",
-            "--bare",
-            "-q",
-            "-b",
-            "main",
-            str(git_dir),
-        ]
-    )
-    return subprocess.run(command, check=False).returncode
-
-
-def _baseline(vault: Path, git_dir: Path, bundle: Path | None) -> int:
-    if bundle:
-        print(f"history restored from {bundle}")
-    exclude = Path(__file__).with_name("exclude")
-    (git_dir / "info/exclude").write_bytes(exclude.read_bytes())
-    status = _git(git_dir, vault, "add", "-A", quiet=True).returncode
-    if status:
-        return status
-    kind = "snapshot after rebuild" if bundle else "baseline"
-    message = f"Vault {kind} {date.today():%F}"
-    committed = _git(git_dir, vault, "commit", "-q", "-m", message, quiet=True)
-    if committed.returncode and not bundle:
-        return committed.returncode
-    count = subprocess.run(
-        ["git", f"--git-dir={git_dir}", "rev-list", "--count", "HEAD"],
-        capture_output=True,
-        text=True,
-        check=False,
-    ).stdout.strip()
-    print(f"ready, {count} commit(s), run task home:install for the installed commands")
-    return 0
-
-
-def _initialize(vault: Path, git_dir: Path, bundle: Path | None) -> int:
-    git_dir.parent.mkdir(parents=True, exist_ok=True)
-    status = _create(git_dir, bundle)
-    return status or _baseline(vault, git_dir, bundle)
-
-
-def init_cli(vault_value: str | None, bundle_value: str | None) -> int:
-    vault, git_dir = vault_path(vault_value), git_path()
-    if not (vault / "_system").is_dir():
-        print(f"required directory not found: {vault / '_system'}", file=sys.stderr)
-        return 1
-    if (vault / ".git").exists():
-        message = f"{vault}/.git exists, remove it, the vault must hold nothing git-shaped"
-        print(message, file=sys.stderr)
-        return 1
-    if git_dir.is_dir():
-        print(f"repository already exists at {git_dir}")
-        return 0
-    bundle = Path(bundle_value).expanduser() if bundle_value else None
-    return _initialize(vault, git_dir, bundle)
-
-
 def _split_commit(argv: Sequence[str]) -> tuple[list[str], list[str]] | None:
     if "--" not in argv:
         return None
@@ -154,37 +74,59 @@ def path_problem(value: str) -> bool:
     )
 
 
-def locked(command: Sequence[str], paths: Sequence[str], *, input_text: str | None = None) -> int:
-    lock = Path(os.environ.get("VAULT_LOCK", Path.home() / ".vault-git/bin/vault-lock.py"))
+def _lock_command(
+    command: Sequence[str], paths: Sequence[str], wait_seconds: float = 0
+) -> tuple[list[str], dict[str, str]]:
+    env = commit_environment()
+    lock = Path(env["VAULT_LOCK"])
     if not lock.is_file() or not os.access(lock, os.X_OK):
         print(f"no vault lock helper at {lock}, run task home:install", file=sys.stderr)
-        return 1
-    launcher = os.environ.get("SLOPMEISTER_VAULT_LAUNCHER")
+        raise ValueError("vault lock helper is unavailable")
+    launcher = env.get("SLOPMEISTER_VAULT_LAUNCHER")
     reentry = [launcher, *command] if launcher else [sys.argv[0], "vault", *command]
     command = [
         sys.executable,
+        "-I",
         str(lock),
         "--git-dir",
-        str(git_path()),
+        env["VAULT_GIT_DIR"],
         "--kind",
         "manual",
         "--timeout",
-        "0",
+        str(wait_seconds),
     ]
     for path in paths:
         command += ["--path", path]
-    return subprocess.run(
-        [*command, "--", *reentry], input=input_text, text=input_text is not None, check=False
-    ).returncode
+    return [*command, "--", *reentry], env
 
 
-def _lock_command(argv: Sequence[str], paths: Sequence[str]) -> int:
-    return locked(["commit", *argv], paths)
+def locked(command: Sequence[str], paths: Sequence[str], *, input_text: str | None = None) -> int:
+    try:
+        argv, env = _lock_command(command, paths)
+    except ValueError:
+        return 1
+    return _wait_holder(argv, env, input_text)
+
+
+def _wait_holder(command: list[str], env: dict[str, str], text: str | None = None) -> int:
+    process = subprocess.Popen(
+        command, env=env, stdin=subprocess.PIPE if text is not None else None, text=text is not None
+    )
+    previous = {
+        sig: signal.signal(sig, lambda sig, _: process.send_signal(sig))
+        for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
+    }
+    try:
+        process.communicate(text)
+        return process.returncode
+    finally:
+        for sig, handler in previous.items():
+            signal.signal(sig, handler)
 
 
 def _commit(wrapper: Path, words: list[str], paths: list[str]) -> int:
-    vault = vault_path()
-    env = {**os.environ, "GIT_LITERAL_PATHSPECS": "1"}
+    env = commit_environment()
+    vault = Path(env["SLOPMEISTER_VAULT"])
     named = ", ".join(paths)
     status = subprocess.run([str(wrapper), "add", "--", *paths], cwd=vault, env=env)
     if status.returncode:
@@ -209,7 +151,7 @@ def _commit(wrapper: Path, words: list[str], paths: list[str]) -> int:
     ).returncode
 
 
-def commit_cli(argv: Sequence[str]) -> int:
+def commit_cli(argv: Sequence[str], *, wait_seconds: float = 0) -> int:
     parts = _split_commit(argv)
     problem = "explicit paths are required" if parts is None or not parts[1] else None
     if parts is not None and not parts[0]:
@@ -225,10 +167,16 @@ def commit_cli(argv: Sequence[str]) -> int:
         return 2
     assert parts is not None
     words, paths = parts
-    wrapper = Path(os.environ.get("VAULTGIT", Path.home() / ".vault-git/bin/vaultgit"))
+    wrapper = Path(commit_environment()["VAULTGIT"])
     if not wrapper.is_file() or not os.access(wrapper, os.X_OK):
         print(f"no vaultgit wrapper at {wrapper}, run task home:install", file=sys.stderr)
         return 1
     if os.environ.get("SLOPMEISTER_VAULT_LOCKED") != "1":
-        return _lock_command(argv, paths)
+        try:
+            command, env = _lock_command(["commit", *argv], paths, wait_seconds)
+        except ValueError:
+            status = 1
+        else:
+            status = _wait_holder(command, env)
+        return status
     return _commit(wrapper, words, paths)

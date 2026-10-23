@@ -20,7 +20,7 @@ Every agent produces a little slop. Slopmeister gives the farm some fences. Writ
 
 - **Sow.** Give a worker a task, its own branch and fixed instructions.
 - **Tend.** The worker builds, tests and receives an independent review.
-- **Harvest.** Inspect the evidence, accept testing and choose when to finalize.
+- **Harvest.** Inspect the evidence, accept testing and explicitly invoke `/harvest` or `$harvest` when the session should end.
 
 ## Quick start
 
@@ -73,10 +73,12 @@ sequenceDiagram
     W->>O: Independent testing and diff review
     O-->>W: Evidence and findings
     W->>You: Testing handoff
-    You->>W: Accept testing, then finalize
+    You->>W: Accept testing, then harvest
 ```
 
 The **plot** describes a project's rules, task source and permissions. The **field** in your vault holds its knowledge. Workers **sow** a plan, **groom** documentation, **prune** unnecessary work and check whether the result is **ripe**. **Bloom** explains complex work visually, and optional **Grove** hosting lets you read those pages on your phone.
+
+Plots can declare setup commands and [separate service allocations for independent testers](docs/slots.md#independent-testers). [Approved peer mailboxes](src/skills/plot-session/communicate.md) support coordination without turning messages into permission. Harvest keeps a [separate session retro](docs/vault-version-control.md#session-retros-and-legacy-logs); finalize and close-out remain available with their existing limits.
 
 A worker receives a fixed copy of its instructions. Changing the sources affects later sessions. Commit, shipping, publication and stronger actions retain their separate permission boundaries.
 
@@ -104,7 +106,7 @@ Secrets use two tiers on macOS and Ubuntu. Tier one resolves through a local 1Pa
 
 The 1Password desktop integration is the second route. You can order it for an exact command in any session, including when Home Assistant is unavailable. [Secret requests](docs/1password-access.md) explains setup, approvals and limits.
 
-Workers can [sign into websites in isolated browsers](docs/browser-login.md) under the existing secret-tier rules. [Item metadata search](docs/1password-access.md#item-metadata) finds 1Password item titles without reading values. Metadata search always requires your explicit instruction and a Home Assistant approval.
+Workers can [sign into websites in isolated browsers](docs/browser-login.md) under the existing secret-tier rules. Explicitly selected persistent Chrome sessions can reuse authentication without a new credential approval. [Item metadata search](docs/1password-access.md#item-metadata) finds 1Password item titles without reading values. Metadata search always requires your explicit instruction and a Home Assistant approval.
 
 [Phone access](docs/phone-access.md) covers the Claude app and Orca Mobile. Tailscale provides private access to the optional Linux services. Pairing, certificates and real approvals need checks on your own devices.
 
@@ -112,7 +114,7 @@ Workers can [sign into websites in isolated browsers](docs/browser-login.md) und
 
 [GitHub releases](https://github.com/Ellebam/slop-meister/releases) identify tested versions. [Release maintenance](docs/releases.md) explains automatic tags and releases.
 
-Updates come by **pulling this repository and reinstalling the selected entries**. Review incoming changes, preserve your optional choices, and follow [Updates](src/skills/workstation/SKILL.md#updates). Existing workers keep their fixed configuration until a normal redispatch.
+Updates come by **pulling this repository and reinstalling the selected entries**. Review incoming changes, preserve your optional choices, and follow [Updates](src/skills/workstation/SKILL.md#updates). Existing workers and redispatches keep their fixed configuration. Start a fresh workspace to receive updated instructions.
 
 This project is shared **as it is**, under the [MIT license](LICENSE). It requires your accounts, subscriptions and operator decisions. Static tests do not prove a fresh machine's logins, phone pairing, certificate issuance or real secret approvals. Work through those checks during onboarding.
 

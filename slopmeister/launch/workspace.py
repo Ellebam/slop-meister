@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
+import stat
 import subprocess
 
 from slopmeister.install import cli as install
+from slopmeister.install.check import state_directory
 from slopmeister.install.trust import TrustRequest, trust
 from slopmeister.launch.model import REPORT, Launch, Stop, call, die, plain
 from slopmeister.paths import vault as selected_vault
+from slopmeister.removal import SCRATCH
 
 
 def git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -221,3 +225,25 @@ def adopt(launch: Launch) -> None:
     call(install.main, ["--check", launch.plot, str(launch.wt), *launch.grants])
     trust_check(launch)
     _output_paths(launch)
+
+
+def capabilities(launch: Launch) -> None:
+    """Use the saved delivery contract; redispatch never upgrades its fixed consumer."""
+    directory, _ = state_directory(launch.wt)
+    state = json.loads((directory / "state.json").read_text())
+    launch.native_server_pins = state.get("native_server_pins", False)
+    if type(launch.native_server_pins) is not bool:
+        raise die("invalid saved native-server capability")
+    if "scratch" not in state:
+        return
+    if state["scratch"] != SCRATCH:
+        raise die("invalid saved scratch ownership")
+    path = launch.wt / SCRATCH
+    info = path.lstat()
+    if (
+        not stat.S_ISDIR(info.st_mode)
+        or info.st_uid != os.getuid()
+        or stat.S_IMODE(info.st_mode) != 0o700
+    ):
+        raise die("saved session scratch must be a private owned directory")
+    launch.scratch = path

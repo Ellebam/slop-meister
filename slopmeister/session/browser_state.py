@@ -13,6 +13,7 @@ from uuid import UUID
 PREFIX = "slopmeister-browser-"
 TEMP_ROOT = Path("/tmp").resolve()
 MARKER = "credentials-used"
+MAX_PREFERENCES_BYTES = 16 * 1024 * 1024
 
 
 def identifier(value: str) -> str:
@@ -28,18 +29,20 @@ def save(root: Path, metadata: dict) -> None:
 
 
 def metadata(root: Path) -> dict:
-    target = root / "owner.json"
-    info = target.lstat()
-    if (
-        not stat.S_ISREG(info.st_mode)
-        or info.st_uid != os.getuid()
-        or info.st_nlink != 1
-        or info.st_mode & 0o077
-        or info.st_size > 16384
-    ):
-        raise ValueError("BROWSER_STATE_REFUSED")
-    data = json.loads(target.read_text())
+    try:
+        data = private_json(root / "owner.json", 16384, "BROWSER_STATE_REFUSED")
+    except OSError, ValueError:
+        raise ValueError("BROWSER_STATE_REFUSED") from None
     if not isinstance(data, dict) or not isinstance(data.get("worktree"), str):
+        raise ValueError("BROWSER_STATE_REFUSED")
+    persistent = data.get("persistent", False)
+    fields = data.get("credential_fields", [])
+    if (
+        type(persistent) is not bool
+        or (persistent and data.get("browser") != "chrome")
+        or not isinstance(fields, list)
+        or not all(isinstance(value, str) for value in fields)
+    ):
         raise ValueError("BROWSER_STATE_REFUSED")
     browser = data.get("browser", "orca")
     if browser not in {"orca", "chrome"}:
@@ -158,3 +161,79 @@ def request(root: Path, engine: Path, payload: dict) -> dict:
     if not helper.is_file():
         raise ValueError("BROWSER_HELPER_UNAVAILABLE")
     return execute(root, [str(engine), str(helper)], payload)
+
+
+def workspace() -> Path:
+    value = os.environ.get("SLOPMEISTER_SESSION_WORKSPACE", "")
+    return (
+        Path(value).resolve()
+        if value and Path(value).is_absolute() and Path(value).is_dir()
+        else Path.cwd().resolve()
+    )
+
+
+def data_home() -> Path:
+    path = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share")
+    if not path.is_absolute() or path.resolve() != path:
+        raise ValueError("BROWSER_DATA_DIRECTORY_REFUSED")
+    return path / "slopmeister"
+
+
+def private_directory(path: Path) -> None:
+    if not path.is_absolute() or path.resolve() != path:
+        raise ValueError("BROWSER_PROFILE_REFUSED")
+    path.mkdir(mode=0o700, exist_ok=True)
+    info = path.lstat()
+    if (
+        not stat.S_ISDIR(info.st_mode)
+        or info.st_uid != os.getuid()
+        or info.st_mode & 0o077
+        or path.resolve() != path
+    ):
+        raise ValueError("BROWSER_PROFILE_REFUSED")
+
+
+def private_json(path: Path, limit: int, reason: str):
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, "rb") as stream:
+        info = os.fstat(stream.fileno())
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or info.st_uid != os.getuid()
+            or info.st_nlink != 1
+            or info.st_mode & 0o077
+            or info.st_size > limit
+        ):
+            raise ValueError(reason)
+        body = stream.read(limit + 1)
+    if len(body) > limit:
+        raise ValueError(reason)
+    try:
+        return json.loads(body)
+    except RecursionError:
+        raise ValueError(reason) from None
+
+
+def profile_preferences(path: Path) -> dict:
+    try:
+        data = private_json(path, MAX_PREFERENCES_BYTES, "BROWSER_PROFILE_PREFERENCES_REFUSED")
+    except FileNotFoundError:
+        return {}
+    except json.JSONDecodeError, UnicodeError:
+        raise ValueError("BROWSER_PROFILE_DAMAGED: preserve the profile") from None
+    if not isinstance(data, dict):
+        raise ValueError("BROWSER_PROFILE_DAMAGED: preserve the profile")
+    return data
+
+
+def clear_empty_window_area(preferences: dict) -> None:
+    browser = preferences.get("browser")
+    if not isinstance(browser, dict):
+        return
+    placement = browser.get("window_placement")
+    if not isinstance(placement, dict):
+        return
+    area = [placement.get("work_area_" + key) for key in ("left", "top", "right", "bottom")]
+    # A disconnected desktop can save an empty monitor area that Chrome cannot restore.
+    if all(type(value) is int for value in area) and (area[2] <= area[0] or area[3] <= area[1]):
+        del browser["window_placement"]

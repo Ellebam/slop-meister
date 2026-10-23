@@ -9,6 +9,8 @@ import pytest
 
 from slopmeister.session import secret_approval, secret_tier
 
+pytestmark = pytest.mark.xdist_group("secret-approval")
+
 REQUEST = {
     "env": {"DEMO": "op://Production/Item/credential"},
     "argv": ["deploy", "the host"],
@@ -28,6 +30,7 @@ class HomeAssistant(BaseHTTPRequestHandler):
         self.send_response(302 if self.path == "/moved" else 200)
         self.send_header("Location", "/ask")
         self.end_headers()
+        self.wfile.write(self.server.receipt)
 
     def do_GET(self):
         self.server.read.append(self.headers.get("Authorization"))
@@ -43,6 +46,7 @@ class HomeAssistant(BaseHTTPRequestHandler):
 def home_assistant(monkeypatch):
     server = ThreadingHTTPServer(("127.0.0.1", 0), HomeAssistant)
     server.asked, server.read, server.answer = [], [], {"decisions": {}}
+    server.receipt = b'{"accepted": true}'
     thread = threading.Thread(target=server.serve_forever)
     thread.start()
     monkeypatch.setattr(secret_approval, "POLL_SECONDS", 0.01)
@@ -92,10 +96,11 @@ def test_denial_is_read_as_denial(home_assistant):
     assert secret_approval.decision(home_assistant.settings, "mine") == "denied"
 
 
-def test_answer_that_is_not_the_map_is_silence(home_assistant):
+def test_answer_that_is_not_the_map_is_refused(home_assistant):
     """Bug: an error page or a list from Home Assistant crashes the wait or approves."""
     home_assistant.answer = ["approved"]
-    assert secret_approval.decision(home_assistant.settings, "mine") == "timed out"
+    with pytest.raises(ValueError, match="answer route returned an invalid reply"):
+        secret_approval.decision(home_assistant.settings, "mine")
 
 
 def test_question_reaches_home_assistant_once(home_assistant):
@@ -138,3 +143,17 @@ def test_route_file_must_hold_two_safe_addresses(tmp_path, monkeypatch, settings
     path.chmod(0o600)
     with pytest.raises(ValueError, match="does not hold the route"):
         secret_approval.route()
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    [b"", b"{", b"{}", b"[]", b'{"accepted": false}', b'{"accepted": 1}', b'{"accepted": "true"}'],
+)
+def test_question_needs_an_explicit_true_receipt(home_assistant, receipt):
+    home_assistant.receipt = receipt
+    with pytest.raises(secret_approval.Unreachable, match="ask route returned an invalid reply"):
+        secret_approval.ask(home_assistant.settings, secret_approval.question(REQUEST))
+    assert len(home_assistant.asked) == 1
+    home_assistant.receipt = b'{"accepted": true}'
+    secret_approval.ask(home_assistant.settings, secret_approval.question(REQUEST))
+    assert len(home_assistant.asked) == 2

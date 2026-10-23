@@ -1,6 +1,14 @@
 version: '3'
 
+vars:
+  GROVE_ARCHIVE_PATHS: >-
+    slopmeister/__init__.py slopmeister/session/__init__.py
+    slopmeister/session/bloom.py slopmeister/session/bloom_storage.py
+    slopmeister/session/git_environment.py slopmeister/session/remote_ssh.py
+    slopmeister/session/launch_identity.py
+
 env:
+  GROVE_ARCHIVE_PATHS: '{{.GROVE_ARCHIVE_PATHS}}'
   ANSIBLE_CONFIG: '{{.ROOT_DIR}}/host/ansible/ansible.cfg'
   HOST_INVENTORY: '{{.HOST_INVENTORY | default ""}}'
   HOST_SETTINGS: '{{.HOST_SETTINGS | default ""}}'
@@ -79,7 +87,8 @@ tasks:
     desc: Deploy protected Home Assistant to an explicitly selected host
     cmds:
       - |
-        set -eu
+        bash -eu <<'DEPLOY'
+        unset TAR_OPTIONS
         : "${HOST_INVENTORY:?Set HOST_INVENTORY to your private inventory}"
         : "${HOST_SETTINGS:?Set HOST_SETTINGS to your non-secret settings file}"
         revision=$(git rev-parse --verify --end-of-options "$HOST_REVISION^{commit}")
@@ -92,14 +101,25 @@ tasks:
         test -z "$untracked" || {
           echo 'Host deployment inputs must match HOST_REVISION; untracked input found' >&2; exit 1;
         }
+        umask 077
+        mkdir -p host/.scratch
+        scratch=$(mktemp -d "$PWD/host/.scratch/home-assistant.XXXXXXXX")
+        trap 'rm -rf "$scratch"' EXIT
+        trap 'exit 130' INT
+        trap 'exit 143' TERM
+        git archive --format=tar --output="$scratch/payload.tar" "$revision" host/home-assistant
+        tar -xf "$scratch/payload.tar" -C "$scratch"
+        payload=$(python3 -c 'import json,sys; print(json.dumps({"home_assistant_service_dir": sys.argv[1]}))' \
+          "$scratch/host/home-assistant")
         uv run --locked --group host ansible-playbook -i "$HOST_INVENTORY" \
-          -e "@$HOST_SETTINGS" host/ansible/playbooks/home-assistant.yml
+          -e "@$HOST_SETTINGS" -e "$payload" host/ansible/playbooks/home-assistant.yml
+        DEPLOY
 
   grove:deploy:
     desc: Install a reviewed Grove runtime and its private HTTPS route
     cmds:
       - |
-        set -eu
+        bash -eu <<'DEPLOY'
         : "${HOST_INVENTORY:?Set HOST_INVENTORY to your private inventory}"
         : "${HOST_SETTINGS:?Set HOST_SETTINGS to your non-secret settings file}"
         revision=$(git rev-parse --verify --end-of-options "$HOST_REVISION^{commit}")
@@ -115,11 +135,92 @@ tasks:
         mkdir -p host/.scratch
         scratch=$(mktemp -d "$PWD/host/.scratch/grove.XXXXXXXX")
         trap 'rm -rf "$scratch"' EXIT
-        git archive --format=tar "$revision" slopmeister/__init__.py slopmeister/session/__init__.py \
-          slopmeister/session/bloom.py slopmeister/session/bloom_storage.py \
-          slopmeister/session/git_environment.py slopmeister/session/remote_ssh.py \
-          slopmeister/session/launch_identity.py > "$scratch/runtime.tar"
+        read -r -a archive_paths <<< "$GROVE_ARCHIVE_PATHS"
+        git archive --format=tar "$revision" -- "${archive_paths[@]}" > "$scratch/runtime.tar"
         checksum=$(sha256sum "$scratch/runtime.tar" | cut -d ' ' -f 1)
         uv run --locked --group host ansible-playbook -i "$HOST_INVENTORY" \
           -e "@$HOST_SETTINGS" -e "grove_archive=$scratch/runtime.tar" \
           -e "grove_archive_sha256=$checksum" host/ansible/playbooks/grove.yml
+        DEPLOY
+
+
+  grove:doctor:
+    desc: Check reviewed Grove snapshot bytes and bounded loopback responses on its Linux host
+    env:
+      GROVE_ENTRY: '{{.GROVE_ENTRY | default "/usr/local/bin/grove"}}'
+      GROVE_BACKEND_PORT: '{{.GROVE_BACKEND_PORT | default "8769"}}'
+    cmds:
+      - |
+        bash -eu <<'DOCTOR'
+        refuse() { printf 'grove:doctor: FAIL %s\n' "$1" >&2; exit 1; }
+        [ "$(uname -s)" = Linux ] || refuse 'prerequisite: run on the Grove Linux host'
+        for unit in grove.service grove-cleanup.service grove-cleanup.timer; do
+          [ "$(systemctl show "$unit" -p LoadState --value)" = loaded ] ||
+            refuse "prerequisite: $unit is not installed"
+        done
+        systemctl is-active --quiet grove.service grove-cleanup.timer || refuse 'service or timer is inactive'
+        port=$GROVE_BACKEND_PORT
+        [[ "$port" =~ ^[0-9]{1,5}$ ]] && ((10#$port > 0 && 10#$port <= 65535)) ||
+          refuse 'invalid GROVE_BACKEND_PORT'
+        entry=$GROVE_ENTRY
+        [ -f "$entry" ] && [ "$entry" = "$(realpath -- "$entry")" ] ||
+          refuse 'entry is missing, relative or linked'
+        literal=$(sed -nE 's/^sys\.path\[:0\] = \[str\(Path\((.*)\)\)\]$/\1/p' "$entry")
+        [ "$(printf '%s\n' "$literal" | wc -l)" -eq 1 ] && [ -n "$literal" ] ||
+          refuse 'snapshot entry is missing or ambiguous'
+        snapshot=$(python3 - "$literal" <<'PYTHON'
+        import ast, sys
+        from pathlib import Path
+        try:
+            value = ast.literal_eval(sys.argv[1])
+            path = Path(value) if isinstance(value, str) else None
+            if path is None or not path.is_absolute() or ".." in path.parts:
+                raise ValueError()
+            print(path)
+        except (ValueError, SyntaxError, RecursionError):
+            sys.exit("grove:doctor: FAIL malformed snapshot path")
+        PYTHON
+        )
+        [ -d "$snapshot" ] && [ "$snapshot" = "$(realpath -- "$snapshot")" ] ||
+          refuse 'snapshot is missing or linked'
+        revision=$(git rev-parse --verify --end-of-options "$HOST_REVISION^{commit}")
+        umask 077
+        mkdir -p host/.scratch
+        scratch=$(mktemp -d "$PWD/host/.scratch/grove-doctor.XXXXXXXX")
+        trap 'rm -rf "$scratch"' EXIT
+        trap 'exit 130' INT
+        trap 'exit 143' TERM
+        unset TAR_OPTIONS
+        read -r -a archive_paths <<< "$GROVE_ARCHIVE_PATHS"
+        git archive --format=tar "$revision" -- "${archive_paths[@]}" > "$scratch/runtime.tar"
+        checksum=$(sha256sum "$scratch/runtime.tar" | cut -d ' ' -f 1)
+        [ "${snapshot##*/}" = "$checksum" ] || refuse 'entry digest differs from HOST_REVISION'
+        mkdir "$scratch/expected"
+        tar -xf "$scratch/runtime.tar" -C "$scratch/expected"
+        for tree in "$snapshot" "$scratch/expected"; do
+          special=$(find "$tree" -mindepth 1 ! -type d ! -type f -print -quit) || refuse 'snapshot cannot be inspected'
+          [ -z "$special" ] || refuse 'snapshot contains a linked or nonregular member'
+        done
+        diff -qr --no-dereference -- "$scratch/expected" "$snapshot" >/dev/null ||
+          refuse 'snapshot members or bytes differ from the reviewed archive'
+        git show "$revision:host/ansible/roles/grove/templates/Caddyfile.j2" > "$scratch/Caddyfile"
+        awk '$1 ~ /^(Content-Security-Policy|X-Content-Type-Options|Referrer-Policy|Cache-Control)$/ {
+          name=$1; sub(/^[[:space:]]*[^[:space:]]+[[:space:]]+/, ""); sub(/^"/, ""); sub(/"$/, "");
+          print name ": " $0
+        }' "$scratch/Caddyfile" > "$scratch/headers"
+        [ "$(wc -l < "$scratch/headers")" -eq 4 ] || refuse 'reviewed response policy is incomplete'
+        for path in / /../etc/passwd /%2e%2e/etc/passwd /..%2fetc%2fpasswd; do
+          headers=$(curl --silent --show-error --path-as-is --noproxy '*' \
+            --connect-timeout 2 --max-time 5 --output /dev/null --dump-header - \
+            "http://127.0.0.1:$port$path") || refuse 'loopback transport failed'
+          headers=$(printf '%s' "$headers" | tr -d '\r')
+          printf '%s\n' "$headers" | grep -Eq '^HTTP/1\.[01] 404 ' || refuse 'loopback path was not refused'
+          printf '%s\n' "$headers" | grep -Eiq '^Server: Caddy[[:space:]]*$' || refuse 'unexpected loopback server'
+          while IFS= read -r required; do
+            count=$(printf '%s\n' "$headers" | grep -ic "^${required%%:*}:" || true)
+            [ "$count" -eq 1 ] && printf '%s\n' "$headers" | grep -Fxiq -- "$required" ||
+              refuse 'loopback response headers differ from the reviewed policy'
+          done < "$scratch/headers"
+        done
+        printf 'grove:doctor: snapshot %s matches HOST_REVISION; units and loopback checks passed\n' "$checksum"
+        DOCTOR

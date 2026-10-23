@@ -51,7 +51,10 @@ def test_public_down_removes_a_worktree_that_holds_a_readonly_tree(tmp_path):
     with (repository / ".git/info/exclude").open("a") as exclude:
         exclude.write("tmp/\n")
     _readonly_tree(worktree, outside)
-    down = _down(env, repository)
+    refused = _down(env, repository)
+    assert refused.returncode != 0 and "ignored work" in refused.stderr
+    assert (worktree / "tmp/go-mod/pkg/module.go").read_text() == "package pkg\n"
+    down = _down(env, repository, "--force")
     assert down.returncode == 0, down.stdout + down.stderr
     assert "slopmeister-slot1 released, data worktree" in down.stdout
     assert not worktree.exists() and not (tmp_path / "slots/slopmeister-slot1").exists()

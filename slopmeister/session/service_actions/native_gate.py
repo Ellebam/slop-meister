@@ -74,34 +74,44 @@ def _codex(binding: dict, argv: list[str], alias: str) -> None:
         raise ValueError(NATIVE_ERROR)
     if any(value != "on-request" for value in _values(argv, "--ask-for-approval", "-a")):
         raise ValueError(NATIVE_ERROR)
-    _codex_overrides(_values(argv, "--config", "-c"), alias)
     config = Path(binding["workspace"]) / ".codex/config.toml"
-    data = tomllib.loads(config.read_text())
+    servers = tomllib.loads(config.read_text()).get("mcp_servers", {})
     try:
-        decision = data["mcp_servers"][alias]["tools"]["run"]["approval_mode"]
+        decision = servers[alias]["tools"]["run"]["approval_mode"]
     except KeyError:
         raise ValueError(f"{NATIVE_ERROR}: ask") from None
     if decision != "prompt":
         raise ValueError(f"{NATIVE_ERROR}: ask")
+    _codex_overrides(_values(argv, "--config", "-c"), alias, servers)
 
 
-def _codex_overrides(overrides: list[str], alias: str) -> None:
+def _server_override(override: str, alias: str, servers: dict) -> str | None:
+    document = tomllib.loads(override)
+    table = document.get("mcp_servers")
+    if set(document) != {"mcp_servers"} or not isinstance(table, dict) or len(table) != 1:
+        raise ValueError(NATIVE_ERROR)
+    name, server = next(iter(table.items()))
+    if server == {"enabled": False} and name != alias:
+        return None
+    key = override.partition("=")[0].strip()
+    shape = tomllib.loads(key + "=0")["mcp_servers"]
+    whole = isinstance(shape, dict) and shape.get(name) == 0
+    if not whole or not isinstance(server, dict) or server != servers.get(name):
+        raise ValueError(NATIVE_ERROR)
+    return name
+
+
+def _codex_overrides(overrides: list[str], alias: str, servers: dict) -> None:
     pins = set()
     for override in overrides:
-        key, separator, value = override.partition("=")
-        key = key.strip()
-        value = value.strip().strip("\"'")
-        root = key.split(".", 1)[0].strip("\"'")
-        if root == "mcp_servers":
-            parts = key.split(".")
-            if (
-                len(parts) != 5
-                or parts[1] not in ("jira_write", "confluence_write")
-                or (parts[2:] != ["tools", "run", "approval_mode"] or value != "prompt")
-            ):
-                raise ValueError(NATIVE_ERROR)
-            pins.add(parts[1])
-        if not separator or root in ("profiles", "projects", "auto_review"):
+        key, separator, raw = override.partition("=")
+        value = raw.strip().strip("\"'")
+        if not separator:
+            raise ValueError(NATIVE_ERROR)
+        root = next(iter(tomllib.loads(key.strip() + "=0")))
+        if root == "mcp_servers" and (pin := _server_override(override, alias, servers)):
+            pins.add(pin)
+        if root in ("profiles", "projects", "auto_review"):
             raise ValueError(NATIVE_ERROR)
         if root in ("approval_policy", "approvals_reviewer"):
             expected = ("on-request",) if root == "approval_policy" else ("auto_review", "user")

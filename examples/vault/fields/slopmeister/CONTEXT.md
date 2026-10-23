@@ -9,7 +9,7 @@ This is a starting index. Replace the placeholders with the project’s actual o
 | Working rules | The session’s delivered instructions and the vault writing guidelines |
 | Open work and current state | The declared task source, or To-Do/example-notes.md for the notes example |
 | Decisions | Add the owning decision note when a decision exists |
-| History | The repository history and _system/retro-log.md |
+| History | The repository history, _system/retros/README.md and the legacy _system/retro-log.md |
 
 ## Repositories
 

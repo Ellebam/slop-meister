@@ -44,25 +44,24 @@ def test_readonly_cache_cleanup_keeps_evidence_and_outside_files(supervised_run,
 
 
 @pytest.mark.parametrize("status", ["pass", "fail", "blocked"])
-def test_cleanup_failure_records_redacted_error_after_saving_original_outcome(
+def test_collect_stays_pending_during_cleanup_and_then_reports_its_redacted_error(
     supervised_run, verdict, status, monkeypatch, capsys
 ):
     root, _, _ = supervised_run
     verdict["scenarios"][0]["verdict"] = status
-    original_result = []
+    pending = []
 
     def refuse(path, **kwargs):
         assert path == root / "checkout"
-        original_result.append(json.loads((root / "result.json").read_text()))
-        assert original_result[0]["status"] == status
+        pending.append(collect(root, 0))
         raise OSError("cleanup failed password=private-fixture-value")
 
     monkeypatch.setattr(shutil, "rmtree", refuse)
     expected = 0 if status == "pass" else 1
     assert supervise(root) == expected
+    assert pending == [3] and "PENDING" in capsys.readouterr().out
     result = json.loads((root / "result.json").read_text())
     assert result["status"] == status and result["exit_code"] == expected
-    assert result.keys() - original_result[0].keys() == {"checkout_cleanup_error"}
     assert "password=[REDACTED]" in result["checkout_cleanup_error"]
     assert "private-fixture-value" not in (root / "result.json").read_text()
     assert (root / "checkout").is_dir()
@@ -91,8 +90,10 @@ def test_process_record_failure_after_start_never_deletes_checkout(supervised_ru
 
 
 def test_checkout_root_symlink_cannot_delete_or_chmod_retained_evidence(supervised_run):
-    root, _, _ = supervised_run
+    root, world, _ = supervised_run
     evidence = root / "evidence"
+    runs.save(evidence / "draft.json", world.verdict)
+    world.save_draft = False
     (evidence / "retained.txt").write_text("retained proof")
     evidence.chmod(0o555)
     checkout = root / "checkout"
@@ -108,3 +109,46 @@ def test_checkout_root_symlink_cannot_delete_or_chmod_retained_evidence(supervis
         assert stat.S_IMODE(evidence.stat().st_mode) == 0o555
     finally:
         evidence.chmod(0o700)
+
+
+def _allocate(root, monkeypatch):
+    from slopmeister.slots import allocation, tester
+
+    data = root.parent / "slots/scratch-slot1"
+    monkeypatch.setenv("SLOT_STATE_DIR", str(data.parent))
+    monkeypatch.setattr(allocation, "main_root", lambda argument: root.parent)
+    monkeypatch.setattr(allocation, "bound_ports", lambda: [])
+    monkeypatch.setattr(tester.occupants, "census", lambda checkout: [])
+
+    def claim(root, run, target):
+        data.mkdir(parents=True)
+        item = allocation.Claim(
+            allocation.Live("scratch", 1, "scratch-tester-one", root / "checkout"),
+            data,
+            None,
+            {"WEB": 42001},
+        )
+        item = tester._initialize(item, {"run": str(root), "repository": str(root.parent)})
+        allocation.write(data / allocation.ALLOCATION, item)
+        return item
+
+    monkeypatch.setattr(tester, "_claim", claim)
+    (root / "checkout/.git/info").mkdir(parents=True)
+    return tester, data
+
+
+@pytest.mark.parametrize("status", ["pass", "fail", "blocked"])
+def test_every_terminal_verdict_releases_the_exact_idle_slot(
+    supervised_run, verdict, status, monkeypatch
+):
+    root, _, _ = supervised_run
+    tester, data = _allocate(root, monkeypatch)
+    verdict["scenarios"][0]["verdict"] = status
+    run = json.loads((root / "run.json").read_text())
+    run["cwd"] = str(root.parent)
+    with tester.prepared(root, run, "scratch"):
+        assert supervise(root) == (0 if status == "pass" else 1)
+        assert not data.exists()
+        assert not (root / "checkout").exists()
+    result = json.loads((root / "result.json").read_text())
+    assert result["status"] == status and "checkout_cleanup_error" not in result
