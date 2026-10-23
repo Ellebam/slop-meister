@@ -209,6 +209,9 @@ def _checkout(root: Path, run: dict, request: Launch) -> None:
 
 
 def _start_supervisor(root: Path, run: dict) -> None:
+    env = opencode_tester.supervisor_env(run) if run["tool"] == "opencode" else project_child_env()
+    if "slot" in run:
+        env["SLOT_STATE_DIR"] = str(Path(run["slot"]["state"]).parent)
     with (root / "supervisor.log").open("w") as log:
         subprocess.Popen(
             runs.command(str(runs.ENTRY), "_supervise", "--run", str(root)),
@@ -217,9 +220,7 @@ def _start_supervisor(root: Path, run: dict) -> None:
             stderr=log,
             start_new_session=True,
             pass_fds=slot_tester.descriptors(run),
-            env=opencode_tester.supervisor_env(run)
-            if run["tool"] == "opencode"
-            else project_child_env(),
+            env=env,
         )
 
 
