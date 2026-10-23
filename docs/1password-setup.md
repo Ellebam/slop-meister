@@ -20,4 +20,3 @@ The operator runs both in their own terminal on the target machine, where `op` i
 To rotate a token, replace it in the token vault, run `task op:setup` on each machine and revoke the old token in 1Password. 1Password cannot change the vaults or rights of an existing service account, so a changed tier needs a new account and the same steps.
 
 The machine-side program is `~/.local/bin/op` with `~/.local/lib/slopmeister-op`, installed by `task home:install` and checked by `task check`'s drift report.
-

@@ -54,4 +54,3 @@ Documentation scenarios use the current task's guide and separate operator conse
 The full spine needs no harness. Every real task runs it, including a real opposite-tool tester. The scoped close-out contract is proven by fresh Slopmeister directory sessions that the tester drives from the task's test guide, and link and containment behavior is deterministic under `tests/integration/vault/`.
 
 The launcher accepts individual Codex `mcp_servers.<name>.enabled=false` overrides for disabling inherited connections. Enabling, replacing or bundling connection settings remains refused. These invocation options leave the normal account configuration unchanged.
-

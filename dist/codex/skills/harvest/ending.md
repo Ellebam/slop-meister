@@ -21,4 +21,3 @@ A slot worktree, one carrying `.slot.env`, runs `<saved-absolute-Slopmeister>/bi
 Both commands refuse unsaved or unknown work. Add `--force` only when the operator explicitly accepted losing what the refusal names. Both keep the local branch. A refusal before shutdown leaves the session running. A later refusal can leave the worker stopped and the workspace retained; the surviving caller reads the result log before choosing a retry.
 
 A directory session cannot remove itself. End with the report and name `task workspace:remove -- <absolute session directory>` for the dispatcher.
-

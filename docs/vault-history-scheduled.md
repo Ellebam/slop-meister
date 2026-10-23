@@ -38,4 +38,3 @@ The launchd file and the applet exist on the Mac only. On Linux `vault-commit.ti
 | `vault transaction busy` | Another vault commit held the lease. The next run retries. |
 | `no repository`, `no vault lock helper` | Run the doctor and follow `vault-repository` or `home-install`. |
 | No line at 08:00 or 20:00 | Follow `launchd:local.vault-commit` in the doctor, on Linux `vault-sweep`. |
-

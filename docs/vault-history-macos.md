@@ -28,4 +28,3 @@ The [installer](../slopmeister/workstation/install.py) leaves an existing applet
 osacompile -o ~/.vault-git/VaultCommit.app \
   -e 'do shell script "/bin/bash " & quoted form of (POSIX path of (path to home folder)) & ".vault-git/bin/vault-commit.sh"'
 ```
-
