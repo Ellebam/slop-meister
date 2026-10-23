@@ -1,5 +1,13 @@
 # Releases
 
+## Upgrading to 0.3.0
+
+Update the Home Assistant approval route before upgrading workstation requesters. The requester now requires an explicit receipt from the server. Follow the [approval protocol and setup](1password-access.md) for the update order.
+
+Existing workers retain their fixed configuration. Start a fresh workspace to receive the updated instructions, as described in [Updates](../README.md#updates-and-limits). [Persistent browser authentication](browser-login.md#optional-persistent-authentication) remains optional and requires explicit operator authorization. New [session retros](vault-version-control.md#session-retros-and-legacy-logs) use separate notes, while explicit legacy-log commands and public path overrides remain available. Existing logs are not migrated automatically.
+
+## Publishing
+
 Set `project.version` in [pyproject.toml](../pyproject.toml) to the next `X.Y.Z` version. Run `uv lock` and include the lockfile update in the same commit. Use three nonnegative integers without leading zeroes or a prerelease suffix. Keep the version unchanged for commits that do not need a release. The first version is `0.1.0`.
 
 The [check workflow](../.github/workflows/check.yml) publishes a normal GitHub release with generated notes after a push to `main` passes lint, quality, portable tests and all four [host checks](../host/README.md#check-without-deployment). It creates `vX.Y.Z` at the exact commit those jobs tested. It does not publish a package or deploy services. Native and live workstation tests remain separate.

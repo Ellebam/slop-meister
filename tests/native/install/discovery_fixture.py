@@ -178,6 +178,8 @@ def commit_repository(fixture):
 
 
 def write_product(fixture):
+    for name in ("permissions.toml", "native-permissions.toml"):
+        put(fixture.product / "src" / name, (ROOT / "src" / name).read_text())
     for name in ("bin", "slopmeister"):
         shutil.copytree(ROOT / name, fixture.product / name)
     put(

@@ -35,3 +35,23 @@ tasks:
         msg: Prepare ~/.config/slopmeister/op-approval.env with mode 0600, see docs/1password-access.md
     cmds:
       - op run --env-file="$HOME/.config/slopmeister/op-approval.env" -- bin/slopmeister workstation op-setup approval
+
+  browser:install:
+    desc: Install the pinned optional browser page tool from its committed lockfile
+    cmds:
+      - |
+        bash -eu <<'INSTALL'
+        umask 077
+        prefix=$(python3 - <<'PYTHON'
+        import sys
+        from slopmeister.session.browser_state import data_home
+        path = data_home() / "playwright"
+        if path.resolve() != path:
+            sys.exit("linked page-tool destination refused")
+        print(path)
+        PYTHON
+        )
+        mkdir -p "$prefix"
+        cp slopmeister/session/playwright/package.json slopmeister/session/playwright/package-lock.json "$prefix/"
+        npm ci --ignore-scripts --no-audit --no-fund --prefix "$prefix"
+        INSTALL

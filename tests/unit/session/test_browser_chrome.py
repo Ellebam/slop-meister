@@ -203,7 +203,7 @@ def test_chrome_process_does_not_inherit_credentials_or_runtime_overrides(tmp_pa
         assert options["stdout"] == options["stderr"] == subprocess.DEVNULL
         assert "--user-data-dir=" + str(tmp_path / "profile") in argv
         assert "--no-startup-window" in argv
-        assert options["env"]["TMPDIR"] == str(tmp_path / "profile")
+        assert options["env"]["TMPDIR"] == str(tmp_path / "chrome-tmp")
         return Child()
 
     monkeypatch.setattr(chrome.subprocess, "Popen", spawn)
@@ -225,6 +225,7 @@ def test_repository_node_shim_is_not_an_installed_runtime(tmp_path, monkeypatch)
 
 
 def test_home_directory_can_use_its_installed_node(tmp_path, monkeypatch):
+    monkeypatch.delenv("SLOPMEISTER_SESSION_WORKSPACE", raising=False)
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.chdir(home)

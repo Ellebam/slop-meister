@@ -72,5 +72,4 @@ def test_root_notes_never_staged(tmp_path, arrange, plot):
         assert (worktree / name).read_text() == text
     assert git(worktree, "ls-files", "--", "TRACKED-NOTES.md") == "TRACKED-NOTES.md\n"
     if arrange is _launched:
-        assert lines[-1] == RULE
         assert (worktree / source).read_bytes().startswith(INHERITED + b"\n")

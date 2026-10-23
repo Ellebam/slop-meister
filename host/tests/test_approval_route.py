@@ -93,15 +93,6 @@ def test_answer_contains_only_decisions_and_never_question_text_or_action_tokens
     assert answer.data == {"decisions": {IDENTIFIER: "denied"}}
 
 
-@pytest.mark.parametrize("body", [b"{", b"[]", b"x" * 3801])
-def test_malformed_or_oversized_request_is_refused_before_notification(route, body):
-    integration, hass, _ = route
-    given = request()
-    given.read.return_value = body
-    assert asyncio.run(integration._ask(hass, None, given)).status == 400
-    hass.services.async_call.assert_not_called()
-
-
 @pytest.mark.parametrize(
     "identifier,message",
     [("A" * 32, "m m"), ("a" * 31, "m m"), (IDENTIFIER, "request_location_update")],

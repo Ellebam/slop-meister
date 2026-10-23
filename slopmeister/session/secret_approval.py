@@ -5,10 +5,12 @@ request ID. Home Assistant records the first press of the operator's own user un
 only `approved` under this request's ID releases anything.
 """
 
+from http.client import HTTPException
 import json
 import secrets
 import shlex
 import time
+from urllib.error import HTTPError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
@@ -104,9 +106,24 @@ def _exchange(request: Request) -> bytes:
 def ask(settings: dict[str, str], body: dict) -> None:
     headers = {"Content-Type": "application/json"}
     try:
-        _exchange(Request(settings["ask_url"], json.dumps(body).encode(), headers, method="POST"))
-    except (OSError, ValueError) as error:
-        raise Unreachable(str(getattr(error, "reason", None) or error)) from None
+        data = json.loads(
+            _exchange(
+                Request(settings["ask_url"], json.dumps(body).encode(), headers, method="POST")
+            )
+        )
+    except HTTPError as error:
+        reason = (
+            "refused authentication (HTTP 401)"
+            if error.code == 401
+            else f"returned HTTP {error.code}"
+        )
+        raise Unreachable(f"ask route {reason}") from None
+    except ValueError, HTTPException, RecursionError:
+        raise Unreachable("ask route returned an invalid reply") from None
+    except OSError:
+        raise Unreachable("ask route is unavailable") from None
+    if not isinstance(data, dict) or data.get("accepted") is not True:
+        raise Unreachable("ask route returned an invalid reply")
 
 
 def answer(settings: dict[str, str], identifier: str) -> str:
@@ -114,11 +131,21 @@ def answer(settings: dict[str, str], identifier: str) -> str:
     headers = {"Authorization": "Bearer " + settings["token"]}
     try:
         data = json.loads(_exchange(Request(settings["answer_url"], headers=headers)))
-        # A Home Assistant state carries the map under its attributes.
-        decisions = data.get("attributes", data).get("decisions", {})
-        found = decisions.get(identifier, "")
-    except OSError, ValueError, AttributeError:
+    except HTTPError as error:
+        if error.code == 401:
+            raise ValueError("answer route refused authentication (HTTP 401)") from None
         return ""
+    except ValueError, HTTPException, RecursionError:
+        raise ValueError("answer route returned an invalid reply") from None
+    except OSError:
+        return ""
+    # A Home Assistant state carries the map under its attributes.
+    if isinstance(data, dict):
+        data = data.get("attributes", data)
+    decisions = data.get("decisions") if isinstance(data, dict) else None
+    if not isinstance(decisions, dict):
+        raise ValueError("answer route returned an invalid reply")
+    found = decisions.get(identifier, "")
     return found if found in DECISIONS else ""
 
 

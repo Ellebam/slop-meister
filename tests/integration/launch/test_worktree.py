@@ -29,7 +29,7 @@ def test_prepared_worktree_is_clean_untracked_and_rooted(tmp_path):
     repo = target(tmp_path / "repo")
     (repo / "sub").mkdir()
     git(repo, "config", "branch.autoSetupMerge", "always")
-    launch(world, str(repo / "sub"), "example-client", "example-client-wt1")
+    launch(world, str(repo), "example-client", "example-client-wt1")
     worktree = repo / ".worktrees/example-client-wt1"
     assert not (repo / "sub/.worktrees").exists()
     assert git(repo, "status", "--porcelain") == ""

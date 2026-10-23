@@ -80,7 +80,7 @@ def declaration(launch: Launch) -> None:
 
 
 def repository(launch: Launch) -> None:
-    """Canonicalized to the working-tree root, the issue fetch runs gh inside it."""
+    """Require the supplied repository root before fetching an issue or preparing a worktree."""
     if launch.directory:
         return
     home = os.environ.get("HOME", "")
@@ -90,7 +90,11 @@ def repository(launch: Launch) -> None:
     top = subprocess.run(
         ["git", "-C", spelled, "rev-parse", "--show-toplevel"], capture_output=True, text=True
     )
-    if top.returncode or not top.stdout.strip():
+    if (
+        top.returncode
+        or not top.stdout.strip()
+        or Path(top.stdout.strip()).resolve() != Path(spelled).resolve()
+    ):
         raise die(f"not a non-bare git repository: {launch.repo_arg}")
     launch.repo = Path(top.stdout.strip())
 

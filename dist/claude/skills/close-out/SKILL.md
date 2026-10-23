@@ -1,11 +1,11 @@
 ---
-description: "Close-out: verify the task's vault maintenance, record the retro and tracker report, and remove its notes. Operator-invoked, before finalize cleanup. Not a merge or task close."
+description: "Close-out: verify the task's vault maintenance, record the retro and tracker report, and remove its notes. Operator-invoked compatibility route. Not a merge or task close."
 disable-model-invocation: true
 ---
 
 # Close-out
 
-Run only on the operator's instruction, directly at a freeform handback or through finalize. Complete these duties before finalize removes the worktree. A pause keeps the notes and runs no close-out. Stop only for the record states duty 1 names.
+Run only on the operator's instruction for this narrow compatibility route. Harvest and finalize use their own ending; do not run close-out again after either. A pause keeps the notes and runs no close-out. Stop only for the record states duty 1 names.
 
 Write one retro entry per finished task, using the notes to retain earlier sessions' lessons. A re-ticketed task records its entry when that ticket finalizes.
 
@@ -40,10 +40,10 @@ The entry goes to the cross-project log in the vault, `_system/retro-log.md`, th
 ```bash
 printf '%s\n' '<went well>' '<went wrong>' '<worth changing>' \
   | slopmeister-vault retro --repo <repository> --task '<task identifier>' \
-      --title '<task title>' --tool '<Claude Code or Codex>' --model <model>
+      --title '<task title>' --tool '<Claude Code or Codex>' --model <model> --note _system/retro-log.md
 ```
 
-A finalize re-run skips this duty when the log already carries this task's heading. The command deletes replayed spills only after Git contains their entries. When the own entry cannot be verified and committed, any appended Markdown remains dirty, the existing spill queue retains the input and the command exits 1 naming the note and spill for the next agent. Record those paths in notes, summarize the next action in the handoff, and do not retry by hand. The next close-out on this machine with vault access replays every spill before its own entry.
+A close-out re-run skips this duty when the log already carries this task's heading. The command deletes replayed spills only after Git contains their entries. When the own entry cannot be verified and committed, any appended Markdown remains dirty, the existing spill queue retains the input and the command exits 1 naming the note and spill for the next agent. Record those paths in notes, summarize the next action in the handoff, and do not retry by hand. The next close-out on this machine with vault access replays every spill before its own entry.
 
 A project that keeps its own retro log appends the same entry to both, its own log in that log's shape and the vault log through the installed command, and its plot says where the project's log is. A freeform session, research, debugging, a one-off audit, gets its entry when the operator types this procedure at its end, the three lines describe the session that happened.
 
@@ -51,7 +51,7 @@ A project that keeps its own retro log appends the same entry to both, its own l
 
 Where we own the tracker, post one comment using the [task summary](../execute-plan/task-summary.md), including the existing retro lines and how to see the result. Report the state known at this point, without claiming that later cleanup has happened. Where we do not own the tracker, the same content is the report to the operator, who carries it into the field's system.
 
-For GitHub, require the project's existing commit and shipping allow permissions and pin the comment to the explicit repository and issue, using the saved launcher association where present. Invoking close-out, directly or through finalize, authorizes this prescribed comment without another permission question. It authorizes no new issue selection, extra progress comments or claim release. A pause does not run close-out and retains its claim.
+For GitHub, require the project's existing commit and shipping allow permissions and pin the comment to the explicit repository and issue, using the saved launcher association where present. Invoking close-out authorizes this prescribed comment without another permission question. It authorizes no new issue selection, extra progress comments or claim release. A pause does not run close-out and retains its claim.
 
 ## 4. The notes file
 
@@ -59,13 +59,13 @@ Before deleting notes, retain otherwise-lost recovery records outside the worktr
 
 ## 5. The handoff
 
-Use the [task summary](../execute-plan/task-summary.md), retaining unanswered questions and unresolved recovery or housekeeping. When the worth-changing line names a concrete tooling defect, use the owning project's context to locate its tracker. Include an existing issue reference or a one-line proposed title in the handoff, and file nothing. Keep exact recovery records in files and cite surviving evidence. Finalize delivers the handoff once cleanup is known, or before a slot session's self-cleanup with that cleanup reported as pending. The self-cleanup closes a slot session. The dispatcher or operator closes any other session.
+Use the [task summary](../execute-plan/task-summary.md), retaining unanswered questions and unresolved recovery or housekeeping. When the worth-changing line names a concrete tooling defect, use the owning project's context to locate its tracker. Include an existing issue reference or a one-line proposed title in the handoff, and file nothing. Keep exact recovery records in files and cite surviving evidence. Deliver the handoff before any separately authorized cleanup, stating only verified results. This procedure does not close the worker or remove its workspace.
 
 ## Rules
 
 - Never write to the canonical log while testing, the fixture goes to a dedicated note the test removes.
 - Never create anything git-shaped in the vault.
-- No merge, no ticket close, no status change here, those are finalize's and need the operator.
+- No merge, no ticket close, no status change here, those belong to harvest or finalize and need the operator.
 - Every finished task, no exceptions, a task that finalizes without an entry is the blind spot this procedure exists to remove.
 
 ## Arguments

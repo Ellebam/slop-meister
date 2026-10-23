@@ -48,14 +48,25 @@ class World:
     event_text: str = ""
     newline: str = "\n"
     invalid_event: str = ""
+    final: dict | str | None = None
+    save_draft: bool = True
+    completed: bool = True
 
     def events(self) -> list[dict]:
+        final = self.verdict if self.final is None else self.final
         if self.tool == "claude":
             return [
                 {"type": "system", "subtype": "init", "session_id": self.session},
-                {"type": "result", "is_error": False, "structured_output": self.verdict},
+                *(
+                    [{"type": "result", "is_error": False, "structured_output": final}]
+                    if self.completed
+                    else []
+                ),
             ]
-        return [{"type": "thread.started", "thread_id": self.session}, {"type": "turn.completed"}]
+        return [
+            {"type": "thread.started", "thread_id": self.session},
+            *([{"type": "turn.completed"}] if self.completed else []),
+        ]
 
     def killpg(self, group: int, sig: int) -> None:
         assert group == GROUP, "cleanup targeted an unrelated process group"
@@ -80,7 +91,11 @@ class FakeProcess:
             line = json.dumps({**event, "fixture_text": world.event_text}, ensure_ascii=False)
             self.output.write(line + world.newline)
         self.output.write(world.invalid_event)
-        runs.save(self.root / "verdict.raw.json", world.verdict)
+        runs.save(
+            self.root / "verdict.raw.json", world.verdict if world.final is None else world.final
+        )
+        if world.save_draft:
+            runs.save(self.root / "evidence/draft.json", world.verdict)
         self.output.flush()
         if world.timeout:
             raise subprocess.TimeoutExpired("fake-tester", timeout)

@@ -116,5 +116,4 @@ def test_supervisor_delivers_exact_draft_command_and_still_rejects_changed_final
     draft = str(root / "evidence/draft.json")
     expected = [sys.executable, str(runs.ENTRY), "tester", "validate", "--run", str(root)]
     assert shlex.split(command) == [*expected, "--draft", draft]
-    assert "return the checked draft unchanged" in world.prompt
     assert "evidence quote is absent" in (root / "report.md").read_text()

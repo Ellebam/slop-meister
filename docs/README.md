@@ -16,6 +16,7 @@ New here? Start with the [project overview](../README.md), then follow [one sess
 | Command a configured remote host from the Mac or phone | [Remote dispatch](remote-dispatch.md) |
 | Launch or resume a worker | [The dispatcher's first run](session-walkthrough.md#prepare-and-dispatch), then [the launcher procedure](../src/skills/plot-session/SKILL.md) |
 | Set up Orca, its phone pairing and what agents may drive in it | [Orca onboarding](orca.md) |
+| End or hand back a session | [Harvest](../src/skills/harvest/SKILL.md), with [finalize and close-out compatibility](skills.md) |
 | Remove a retired workspace or recover failed removal | [Workspace removal](workspace-removal.md) |
 | Prepare dependency update PRs for operator dispatch | [Dependency update loop](update-prs.md) |
 | Read or change GitLab issues, epics and merge requests | [GitLab through glab](gitlab.md) |
@@ -25,7 +26,7 @@ New here? Start with the [project overview](../README.md), then follow [one sess
 | Find a 1Password item by title without reading values | [Item metadata search](1password-access.md#item-metadata) |
 | Add a project | [Onboard a project](context-layer.md#onboard-a-project) |
 | Prepare project secrets | [1Password integration](1password.md) |
-| Run parallel stacks | [Slots](slots.md) |
+| Run parallel stacks and service testers | [Slots](slots.md) |
 | Try Atlassian service actions against local Jira and Confluence | [Atlassian sandbox](atlassian-sandbox.md) |
 | Start a dispatcher from a phone, or recover one after a restart | [Phone access on macOS and Ubuntu](phone-access.md) |
 | Set up another agent machine, or learn what every agent machine must do | [Agent machines](agent-hosts.md) |
@@ -35,7 +36,7 @@ New here? Start with the [project overview](../README.md), then follow [one sess
 | Change configuration and check it | [Contributing](../CONTRIBUTING.md) |
 | Choose checks, read failures or measure QA time | [Testing and evidence](testing.md) |
 | Configure consent for Slopmeister and vault reviews | [Review consent](review-consent.md) |
-| Maintain affected repository docs and vault knowledge | [Groom](../src/skills/groom/SKILL.md), during work or a scoped freeform request |
+| Maintain affected repository docs and vault knowledge | [Groom](../src/skills/groom/SKILL.md), during work, direct harvest or a scoped request |
 | Start with a local vault, then save or recover changes | [Vault setup and history](vault-version-control.md) |
 | Add optional Google Drive sync | [Document access and sync](drive-access.md) |
 | Read and file mirrored documents or use Drive in the browser | [Document access](drive-access.md) |

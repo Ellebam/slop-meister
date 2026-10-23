@@ -7,7 +7,7 @@ import shutil
 
 from slopmeister.errors import SlopmeisterError
 from slopmeister.paths import ROOT
-from slopmeister.slots import allocation
+from slopmeister.slots import allocation, tester
 
 
 def static() -> int:
@@ -24,8 +24,9 @@ def static() -> int:
             continue
         compose = allocation.compose_relative(slots)
         suffix = f", compose {compose}" if compose else ""
+        suffix += f", {allocation.testers(slots)} tester slots" if allocation.testers(slots) else ""
         print(f"{target}: {allocation.maximum(slots)} slots{suffix}")
-        for number in range(1, allocation.maximum(slots) + 1):
+        for number in range(1, allocation.maximum(slots) + allocation.testers(slots) + 1):
             ports = allocation.expand(slots, number)
             print(f"  slot {number}: " + " ".join(f"{key}={value}" for key, value in ports.items()))
             for port in ports.values():
@@ -95,7 +96,7 @@ def _slot(item: allocation.Live) -> None:
 
 def live(repo: str) -> int:
     root = allocation.main_root(repo)
-    current = allocation.live(root)
+    current = [*allocation.live(root), *tester.live(root)]
     for item in current:
         _slot(item)
     if not current:

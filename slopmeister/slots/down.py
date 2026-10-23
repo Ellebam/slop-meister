@@ -3,47 +3,21 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass, replace
+from dataclasses import replace
 import os
 from pathlib import Path
 import shutil
 import sys
 import time
 
-from slopmeister.errors import SlopmeisterError, UsageError
+from slopmeister.errors import SlopmeisterError
 from slopmeister.launch import closure
 from slopmeister.launch.model import Launch, Stop
 from slopmeister.paths import ROOT
-from slopmeister.slots import allocation, claimed, leftover
+from slopmeister.slots import allocation, claimed, leftover, setup, tester
+from slopmeister.slots.down_arguments import Request as Request
+from slopmeister.slots.down_arguments import parse as parse
 from slopmeister.threads import occupants
-
-USAGE = "usage: slopmeister slots down <repo> <target> <name> [--force] [--slot <n>] [--self]"
-
-
-@dataclass(frozen=True)
-class Request:
-    repo: str
-    target: str
-    name: str
-    force: bool
-    wanted: str
-    own: bool = False
-
-
-def parse(argv: Sequence[str]) -> Request:
-    args = list(argv)
-    if len(args) < 3:
-        raise UsageError(USAGE)
-    repo, target, name, *tail = args
-    flags, wanted = set(), ""
-    while tail:
-        if tail[0] in ("--force", "--self"):
-            flags.add(tail.pop(0))
-        elif tail[0] == "--slot" and len(tail) >= 2:
-            wanted, tail = tail[1], tail[2:]
-        else:
-            raise UsageError(USAGE)
-    return Request(repo, target, name, "--force" in flags, wanted, "--self" in flags)
 
 
 def _occupied(worktree: Path, project: str) -> None:
@@ -149,9 +123,9 @@ def _worktree_slot(request: Request, worktree: Path) -> int:
         ["git", "-C", str(worktree), "status", "--porcelain"], capture=True
     ).stdout.strip()
     if dirty and not request.force:
-        raise SlopmeisterError(
-            f"worktree {worktree} has uncommitted work, pass --force to confirm deletion"
-        )
+        raise SlopmeisterError(f"uncommitted work in {worktree}; pass --force to confirm deletion")
+    if not request.force:
+        setup.check_ignored_output(worktree, owned)
     return owned.slot
 
 
@@ -166,7 +140,8 @@ def _context(request: Request) -> tuple[dict, Path, Path, int]:
         raise SlopmeisterError(f"{worktree} is a symlink and is never followed, refusing")
     if worktree.is_dir() and Path.cwd().resolve().is_relative_to(worktree.resolve()):
         raise SlopmeisterError(f"refusing to tear down this shell's worktree; run from {root}")
-    claimed.refuse(worktree, request.target)
+    if not (request.own and claimed.handback_recorded(worktree)):
+        claimed.refuse(worktree, request.target)
     if worktree.is_dir() and not leftover.found(worktree):
         return slots, root, worktree, _worktree_slot(request, worktree)
     if not request.wanted:
@@ -206,6 +181,11 @@ def _stop_worker(request: Request, root: Path, worktree: Path) -> None:
 
 def main(argv: Sequence[str]) -> int:
     request = parse(argv)
+    if data := tester.find(request.target, request.name, request.wanted):
+        if request.own or request.force:
+            raise SlopmeisterError("tester recovery takes neither --self nor --force")
+        tester.recover(data, allocation.main_root(request.repo), request.wanted)
+        return 0
     if not request.own:
         return _release(request)
     _, root, worktree, _ = _context(request)
@@ -214,6 +194,7 @@ def main(argv: Sequence[str]) -> int:
         print(f"slot: releasing {request.name}, this worker stops now, result in {log}")
         return 0
     _stop_worker(request, root, worktree)
+    claimed.complete_handback(worktree, root)
     return _release(replace(request, own=False))
 
 

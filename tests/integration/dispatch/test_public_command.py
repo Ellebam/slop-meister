@@ -47,9 +47,7 @@ def _assert_dispatch(world, tool, name, model):
         "checkout.\n"
     )
     assert text == prefix + source + suffix
-    grants = json.loads((workspace / ".claude/access-settings.json").read_text())
-    expected = {str(ROOT.resolve()), str(world.vault.resolve()), *temporary_roots(world)}
-    assert set(grants["permissions"]["additionalDirectories"]) == expected
+    _assert_grants(world, workspace)
     assert f"'--model' '{model}'" in result.stdout
     assert "model_context_window" not in result.stdout
     assert "\033]6;1;bg;" not in result.stdout
@@ -60,6 +58,17 @@ def _assert_dispatch(world, tool, name, model):
     else:
         assert "'--no-daemon'" in result.stdout
         assert "--add-dir" not in result.stdout
+
+
+def _assert_grants(world, workspace):
+    grants = json.loads((workspace / ".claude/access-settings.json").read_text())
+    expected = {
+        str(ROOT.resolve()),
+        str(world.vault.resolve()),
+        *temporary_roots(world),
+        str(workspace / ".slopmeister-tmp"),
+    }
+    assert set(grants["permissions"]["additionalDirectories"]) == expected
     assert codex_writable(workspace) == expected
 
 

@@ -20,7 +20,8 @@ For several machines, run --since on each and pipe all lines into one --table.
 
 Stages follow actions: the first turn end, the plan review command, the first source
 edit, the first full gate, the test guide file, a saved tester run, the ship command,
-the diff review command, the closing report and the operator's finalize.
+the diff review command, the closing report and the operator's harvest or finalize.
+The historical finalize event name is retained.
 
 Limits. The line between implement and proof is approximate. A review launched from a
 script is not seen. A full gate is recognized as `task check` or `slopmeister check`

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import os
+from pathlib import Path
 import tomllib
 
 from slopmeister import paths
@@ -24,17 +26,36 @@ def _tail(launch: Launch) -> str:
     return model + "".join(" " + shq(arg) for arg in launch.extra)
 
 
-def _native_approvals(launch: Launch) -> str:
-    config = launch.wt / ".codex/config.toml"
-    if not config.is_file():
-        return ""
-    servers = tomllib.loads(config.read_text()).get("mcp_servers", {})
-    return "".join(
-        " -c "
-        + shq(
-            f'mcp_servers.{name}.tools.run.approval_mode="{server["tools"]["run"]["approval_mode"]}"'
+def _inline(value: object) -> str:
+    if isinstance(value, dict):
+        return (
+            "{"
+            + ", ".join(
+                f"{json.dumps(key, ensure_ascii=False)}={_inline(item)}"
+                for key, item in value.items()
+            )
+            + "}"
         )
+    return json.dumps(value, ensure_ascii=False)
+
+
+def native_pins(config: Path, whole: bool = True) -> list[str]:
+    if not config.is_file():
+        return []
+    servers = tomllib.loads(config.read_text()).get("mcp_servers", {})
+    if whole:
+        return [f"mcp_servers.{name}={_inline(server)}" for name, server in servers.items()]
+    return [
+        f"mcp_servers.{name}.tools.run.approval_mode={json.dumps(server['tools']['run']['approval_mode'])}"
         for name, server in servers.items()
+        if "run" in server.get("tools", {})
+    ]
+
+
+def _native_approvals(launch: Launch) -> str:
+    return "".join(
+        " -c " + shq(pin)
+        for pin in native_pins(launch.wt / ".codex/config.toml", launch.native_server_pins)
     )
 
 
@@ -64,7 +85,7 @@ def line(launch: Launch) -> str:
     env = f"env CODEX_HOME={shq(str(launch.codex_home))} {BROKER_MARK} "
     return (
         f"cd {wt} && {env}{shq(str(launch.codex_bin))} --no-daemon{CODEX_APPROVAL}"
-        f"{CODEX_SANDBOX[paths.platform()]}{_tail(launch)}{_native_approvals(launch)}"
+        f"{CODEX_SANDBOX[paths.platform()]}{_native_approvals(launch)}{_tail(launch)}"
         f"{CODEX_ROOTS} -C {wt} {prompt}"
     )
 
@@ -72,7 +93,10 @@ def line(launch: Launch) -> str:
 def write(launch: Launch) -> None:
     """The first && of the launch line becomes the exec."""
     first, rest = launch.line.split(" && ", 1)
-    lines = ["#!/bin/zsh -l", f"{first} && exec {rest}"]
+    lines = ["#!/bin/zsh -l", f"export SLOPMEISTER_SESSION_WORKSPACE={shq(str(launch.wt))}"]
+    if launch.scratch is not None:
+        lines.append(f"export TMPDIR={shq(str(launch.scratch))}")
+    lines.append(f"{first} && exec {rest}")
     descriptor = os.open(launch.command_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(descriptor, "w") as stream:
         stream.write("\n".join(lines) + "\n")

@@ -114,6 +114,9 @@ class Launch:
     session_id: str = ""
     line: str = ""
     open_attempted: bool = False
+    native_pending: bool = False
+    native_server_pins: bool = True
+    scratch: Path | None = None
 
     @property
     def directory(self) -> bool:

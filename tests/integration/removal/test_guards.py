@@ -26,7 +26,7 @@ def test_unsaved_work_is_removed_only_after_explicit_force(workspace, invoke, sn
 def test_active_or_unreadable_claim_never_loses_its_workspace(workspace, invoke, snapshot, phase):
     repo, worktree, _ = workspace
     receipt = repo / ".git/worktrees/scratch/slopmeister-config/issue.json"
-    receipt.parent.mkdir()
+    receipt.parent.mkdir(exist_ok=True)
     receipt.write_text("{" if phase == "corrupt" else json.dumps({"phase": phase, "issue": 7}))
     before = snapshot(worktree)
     result = invoke(worktree, "--force")
@@ -37,7 +37,7 @@ def test_active_or_unreadable_claim_never_loses_its_workspace(workspace, invoke,
 def test_missing_git_link_does_not_hide_an_active_claim(workspace, invoke, snapshot):
     repo, worktree, _ = workspace
     receipt = repo / ".git/worktrees/scratch/slopmeister-config/issue.json"
-    receipt.parent.mkdir()
+    receipt.parent.mkdir(exist_ok=True)
     receipt.write_text(json.dumps({"phase": "claimed", "issue": 7}))
     (worktree / ".git").unlink()
     before = snapshot(worktree)
@@ -50,7 +50,7 @@ def test_worktree_local_receipt_cannot_release_the_metadata_claim(workspace, inv
     """Bug: a worker-created released receipt hid its active claim from both cleanup routes."""
     repo, worktree, _ = workspace
     receipt = repo / ".git/worktrees/scratch/slopmeister-config/issue.json"
-    receipt.parent.mkdir()
+    receipt.parent.mkdir(exist_ok=True)
     receipt.write_text(json.dumps({"phase": "claimed", "issue": 7}))
     local = worktree / ".slopmeister-config/issue.json"
     local.parent.mkdir()
@@ -123,7 +123,7 @@ def test_saved_slot_allocation_refuses_when_its_local_file_is_lost(workspace, in
     """Bug: losing the local allocation let plain removal strand the saved slot resources."""
     repo, worktree, _ = workspace
     state = repo / ".git/worktrees/scratch/slopmeister-config/state.json"
-    state.parent.mkdir()
+    state.parent.mkdir(exist_ok=True)
     state.write_text(json.dumps({"allocation": ".slot.env", "plot": "slopmeister"}))
     before = snapshot(worktree)
     result = invoke(worktree, "--force")

@@ -10,6 +10,12 @@ from slopmeister.session.service_actions import native_gate
 from slopmeister.session.service_actions.constants import PYTHON, PYTHON_FLAGS
 from tests.integration.install.helpers import consumer
 
+SERVER = (
+    '[mcp_servers.jira_write]\ncommand="/writer"\nargs=[]\n'
+    '[mcp_servers.jira_write.tools.run]\napproval_mode="prompt"\n'
+)
+PIN = 'mcp_servers.jira_write={command="/writer",args=[],tools={run={approval_mode="prompt"}}}'
+
 
 @pytest.mark.parametrize("direct", [False, True])
 def test_native_only_write_refuses_before_credential_resolution(tmp_path, monkeypatch, direct):
@@ -52,9 +58,9 @@ def test_native_client_cannot_disable_the_write_gate(tmp_path, override):
     """Bug: CLI override spellings silently disable the native write approval boundary."""
     config = tmp_path / ".codex/config.toml"
     config.parent.mkdir()
-    config.write_text('[mcp_servers.jira_write.tools.run]\napproval_mode="prompt"\n')
+    config.write_text(SERVER)
     binding = {"workspace": str(tmp_path)}
-    argv = ["codex", "-c", 'mcp_servers.jira_write.tools.run.approval_mode="prompt"', *override]
+    argv = ["codex", "-c", PIN, *override]
     with pytest.raises(ValueError, match="NATIVE_APPROVAL_REQUIRED"):
         native_gate._codex(binding, argv, "jira_write")
 
@@ -117,7 +123,7 @@ def test_codex_refuses_a_client_without_effective_approval_pin(tmp_path):
     """Bug: on-disk prompt rules are mistaken for the config actually loaded by the caller."""
     config = tmp_path / ".codex/config.toml"
     config.parent.mkdir()
-    config.write_text('[mcp_servers.jira_write.tools.run]\napproval_mode="prompt"\n')
+    config.write_text(SERVER)
     with pytest.raises(ValueError, match="NATIVE_APPROVAL_REQUIRED"):
         native_gate._codex({"workspace": str(tmp_path)}, ["codex"], "jira_write")
 
@@ -128,8 +134,8 @@ def test_native_client_accepts_its_pinned_native_approval(tmp_path, flag, review
     """Bug: override validation rejects the launcher's safe approval settings."""
     config = tmp_path / ".codex/config.toml"
     config.parent.mkdir()
-    config.write_text('[mcp_servers.jira_write.tools.run]\napproval_mode="prompt"\n')
-    pin = 'mcp_servers.jira_write.tools.run.approval_mode="prompt"'
+    config.write_text(SERVER)
+    pin = PIN
     argv = ["codex", *([flag, pin] if flag in ("-c", "--config") else [flag + pin])]
     argv += ["-aon-request", "-c", f'approvals_reviewer="{reviewer}"']
     native_gate._codex({"workspace": str(tmp_path)}, argv, "jira_write")
@@ -201,3 +207,40 @@ def test_native_adapter_refuses_an_ordinary_input_file(tmp_path, monkeypatch):
     monkeypatch.setattr(native_gate, "_host", lambda *_args: None)
     with pytest.raises(ValueError, match="NATIVE_APPROVAL_REQUIRED"):
         native_gate.require_host(tmp_path, {"tool": "codex"})
+
+
+def test_other_delivered_server_pins_and_disable_only_overrides_are_preserved(tmp_path):
+    config = tmp_path / ".codex/config.toml"
+    config.parent.mkdir()
+    config.write_text(SERVER + '[mcp_servers.optional]\ncommand="/reader"\nargs=[]\n')
+    argv = [
+        "codex",
+        "-c",
+        PIN,
+        "-c",
+        'mcp_servers.optional={command="/reader",args=[]}',
+        "-c",
+        "mcp_servers.optional.enabled=false",
+    ]
+    native_gate._codex({"workspace": str(tmp_path)}, argv, "jira_write")
+    argv += ["-c", "mcp_servers.jira_write.enabled=false"]
+    with pytest.raises(ValueError, match="NATIVE_APPROVAL_REQUIRED"):
+        native_gate._codex({"workspace": str(tmp_path)}, argv, "jira_write")
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        'mcp_servers.jira_write={command="/other"}',
+        'mcp_servers.jira_write.tools.run.approval_mode="prompt"',
+        '"mcp_servers" . jira_write.command="/other"',
+    ],
+)
+def test_server_replacement_or_partial_pin_is_refused(tmp_path, override):
+    config = tmp_path / ".codex/config.toml"
+    config.parent.mkdir()
+    config.write_text(SERVER)
+    with pytest.raises(ValueError, match="NATIVE_APPROVAL_REQUIRED"):
+        native_gate._codex(
+            {"workspace": str(tmp_path)}, ["codex", "-c", PIN, "-c", override], "jira_write"
+        )

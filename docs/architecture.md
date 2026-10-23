@@ -40,9 +40,13 @@ A launched session receives fixed copies of what it needs and never follows late
 
 The same boundary serves vault access from repository worktrees and temporary directory sessions. The installer copies `slopmeister/vault/runtime/` byte-for-byte to `~/.vault-git/lib/slopmeister_vault/` and installs one small launcher at `~/.vault-git/bin/slopmeister-vault`. Markdown bytes and external Git own correctness. Its optional `obsidian` pass-through allows only read-only index and UI operations and bounds their process group. The launcher selects an absolute Python 3.14 path, Homebrew's on the Mac and the system's on Linux, and never imports a checkout. The scheduled whole-vault sweep remains the separate Bash job used by its existing applet.
 
+Native startup preflight drives each client protocol with the delivered writer configuration before opening a worker. Existing deliveries retain their saved pin format and scratch ownership on redispatch. Slot setup and tester allocations share the slot owner; setup output digests and tester leases prevent unsafe cleanup.
+
+The vault runtime separates path/environment selection, initialization, link resolution and retro routes so each module stays within budget. Legacy log callers remain explicit. Permission rendering reads general commands from `src/permissions.toml` and workspace-bound/service policies from `src/native-permissions.toml`, each with one source.
+
 The quality checker enforces both snapshot boundaries: `slopmeister/session/` and `slopmeister/vault/runtime/` may import only the standard library and their own subtree. A delivered module that reaches into the rest of the package fails the gate.
 
-The optional `host` dependency group holds Ansible and its validation tools. Browser dependencies are pinned separately under `host/`. They do not widen the agent runtime or the delivered session library. [Host services](../host/README.md) owns installation and operator bootstrap.
+The optional `host` dependency group holds Ansible and its validation tools. Host browser-test dependencies are pinned under `host/`; the optional page-control CLI is pinned under `slopmeister/session/playwright/`. They do not widen the agent runtime or the delivered session library. [Host services](../host/README.md) owns installation and operator bootstrap.
 
 ## Dependency rules
 
@@ -72,7 +76,7 @@ The quality checker resolves absolute and relative imports and enforces these ru
 
 Words are whitespace-separated, including tables and code. Repository documents have no line cap. Shared and plot-owned skill entrypoints retain their runtime-source line cap. Ruff also enforces statement and branch limits, import order and formatting. Shellcheck uses the inventory's Bash classification, including extensionless plot launchers.
 
-`quality-allowlist.json` holds operator-approved exceptions with a path, metric, owner, rationale, exact ceiling and lower target. Targets are at most 400 lines or 2,000 words. Growth, missing paths and obsolete entries fail. Two repository documents have word exceptions, each capped at its delivered size. `bin/slopmeister quality --inventory` shows the exceptions and runtime `oversized_400` count.
+`quality-allowlist.json` holds operator-approved exceptions with a path, metric, owner, rationale, exact ceiling and lower target. Targets are at most 400 lines or 2,000 words. Growth, missing paths and obsolete entries fail. The remaining service-actions reference has a word exception capped at its delivered size. `bin/slopmeister quality --inventory` shows the exceptions and runtime `oversized_400` count.
 
 ## Tests
 

@@ -2,19 +2,19 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-import json
 import os
 from pathlib import Path
-import shutil
 import subprocess
 import sys
 
 from slopmeister.errors import SlopmeisterError, UsageError
+from slopmeister.launch import arguments, remote, target
 from slopmeister.launch import cli as launch_cli
-from slopmeister.launch import remote
-from slopmeister.slots import allocation, rollback
+from slopmeister.launch.model import Stop
+from slopmeister.slots import allocation, rollback, setup
+from slopmeister.slots.compose import _compose_up
 
 
 @dataclass(frozen=True)
@@ -24,6 +24,9 @@ class Request:
     name: str
     wanted: str
     launcher: list[str]
+    checkout: Path | None = None
+    prepare: Callable[[allocation.Claim], allocation.Claim] | None = None
+    tester: bool = False
 
 
 def parse(argv: Sequence[str]) -> Request:
@@ -52,9 +55,14 @@ def _candidate(request: Request, candidates: list[int], used: set[int]) -> int |
         residue = allocation.state_path() / f"{request.target}-slot{number}"
         if not residue.exists():
             return number
+        name = "<name>"
+        if (residue / allocation.TESTER_RECORD).is_file() and (
+            residue / allocation.ALLOCATION
+        ).is_file():
+            name = allocation.read(residue / allocation.ALLOCATION).name
         message = (
             f"slot {number} of target '{request.target}' holds residue at {residue}, release "
-            f"it with: task slot:down -- {request.repo} {request.target} <name> --slot {number}"
+            f"it with: task slot:down -- {request.repo} {request.target} {name} --slot {number}"
         )
         if request.wanted:
             raise SlopmeisterError(message)
@@ -71,8 +79,12 @@ def _available(request: Request, root: Path, slots: dict) -> int:
             f"--slot must be 1 to {maximum} for target '{request.target}', got '{request.wanted}'"
         )
     candidates = [int(request.wanted)] if request.wanted else list(range(1, maximum + 1))
+    if testers := request.tester and allocation.testers(slots):
+        candidates = list(range(maximum + 1, maximum + testers + 1))
     if (found := _candidate(request, candidates, {item.slot for item in held})) is not None:
         return found
+    if testers:
+        raise SlopmeisterError(f"every tester slot of target '{request.target}' is in use")
     raise SlopmeisterError(
         f"every slot of target '{request.target}' is live or holds residue, "
         f"{maximum} declared, release one first"
@@ -109,6 +121,7 @@ def _context(request: Request) -> tuple[dict, Path, Path, str]:
 
 
 def _claim_compose(root: Path, live: allocation.Live, relative: str) -> Path | None:
+    """Root is the checkout the stack runs from, a tester's being the tested commit."""
     if not relative:
         return None
     project = f"{live.target}-slot{live.slot}"
@@ -133,9 +146,10 @@ def _claim(request: Request, slots: dict, root: Path) -> allocation.Claim:
             )
     project = f"{request.target}-slot{number}"
     data = allocation.state_path() / project
-    live = allocation.Live(request.target, number, request.name, root / ".worktrees" / request.name)
-    relative = allocation.compose_relative(slots)
-    compose = _claim_compose(root, live, relative)
+    live = allocation.Live(
+        request.target, number, request.name, request.checkout or root / ".worktrees" / request.name
+    )
+    compose = _claim_compose(request.checkout or root, live, allocation.compose_relative(slots))
     data.parent.mkdir(parents=True, exist_ok=True)
     try:
         data.mkdir()
@@ -143,59 +157,28 @@ def _claim(request: Request, slots: dict, root: Path) -> allocation.Claim:
         raise SlopmeisterError(f"could not claim {data}, a concurrent up or residue") from error
     claim = allocation.Claim(live, data, compose, ports)
     try:
+        if request.prepare:
+            claim = request.prepare(claim)
         allocation.write(data / allocation.ALLOCATION, claim)
     except Exception:
-        shutil.rmtree(data, ignore_errors=True)
+        rollback.discard(claim)
         raise
     return claim
 
 
-def _compose_up(claim: allocation.Claim) -> None:
-    if not claim.compose:
-        return
-    relative = claim.compose.relative_to(claim.live.worktree)
-    compose = allocation.resolve_compose(claim.live.worktree, str(relative))
-    env = str(claim.data / allocation.ALLOCATION)
-    project = f"{claim.live.target}-slot{claim.live.slot}"
-    prefix = ["--env-file", env, "-f", str(compose), "-p", project]
-    result = allocation.compose([*prefix, "up", "-d", "--wait", "--wait-timeout", "60"], ok=False)
-    if result.returncode and not _compose_ready(prefix):
-        raise SlopmeisterError(result.stderr.strip() or "docker compose failed")
-
-
-def _compose_ready(prefix: list[str]) -> bool:
-    services = allocation.compose([*prefix, "config", "--services"], ok=False)
-    state = allocation.compose([*prefix, "ps", "--all", "--format", "json"], ok=False)
-    if services.returncode or state.returncode:
-        return False
-    try:
-        rows = [json.loads(line) for line in state.stdout.splitlines()]
-    except json.JSONDecodeError:
-        return False
-    if len(rows) == 1 and isinstance(rows[0], list):
-        rows = rows[0]
-    if not rows:
-        return False
-    expected = set(services.stdout.split())
-    found = {row.get("Service") for row in rows if isinstance(row, dict)}
-    return bool(expected) and found == expected and all(_service_ready(row) for row in rows)
-
-
-def _service_ready(row: dict) -> bool:
-    return (row.get("State") == "running" and row.get("Health", "") in ("", "healthy")) or (
-        row.get("State") == "exited" and row.get("ExitCode") == 0
-    )
-
-
 def _handoff(request: Request, root: Path, claim: allocation.Claim) -> tuple[int, bool]:
+    slots = allocation.definition(request.target)
     path = claim.data / allocation.ALLOCATION
     command = [str(root), request.target, request.name, *request.launcher]
+
+    def prepared(launch):
+        _compose_up(claim)
+        setup.run(claim, slots)
+
     if not os.environ.get("SLOT_LAUNCHER"):
-        return launch_cli.run(
-            command, prepared=lambda launch: _compose_up(claim), worktree_file=str(path)
-        )
-    if claim.compose:
-        raise SlopmeisterError("SLOT_LAUNCHER cannot start a declared Compose project")
+        return launch_cli.run(command, prepared=prepared, worktree_file=str(path))
+    if claim.compose or slots.get("setup"):
+        raise SlopmeisterError("SLOT_LAUNCHER cannot prepare declared Compose or setup")
     env = dict(os.environ, PLOT_SESSION_WORKTREE_FILE=str(path))
     try:
         return subprocess.run([os.environ["SLOT_LAUNCHER"], *command], env=env).returncode, True
@@ -204,10 +187,20 @@ def _handoff(request: Request, root: Path, claim: allocation.Claim) -> tuple[int
         return 1, True
 
 
+def _check_arguments(request: Request) -> None:
+    try:
+        launch = arguments.parse([request.repo, request.target, request.name, *request.launcher])
+        target.policy(launch)
+        arguments.check_tool_arguments(launch)
+    except Stop as error:
+        raise SlopmeisterError(error.text, error.code) from error
+
+
 def main(argv: Sequence[str]) -> int:
     if (code := remote.launch(argv, ["slots", "up"])) is not None:
         return code
     request = parse(argv)
+    _check_arguments(request)
     slots, root, worktree, start = _context(request)
     claim = _claim(request, slots, root)
     project = f"{request.target}-slot{claim.live.slot}"
@@ -221,7 +214,7 @@ def main(argv: Sequence[str]) -> int:
         return code
     if code:
         print(
-            f"slot: launcher failed; a worker may be live in {worktree}. Resources of "
+            f"slot: launcher failed; a client may be live in {worktree}. Resources of "
             f"{project} stay up; inspect the worker before teardown.",
             file=sys.stderr,
         )

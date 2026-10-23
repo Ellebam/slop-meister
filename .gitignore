@@ -8,3 +8,4 @@ tmp/
 .venv/
 .ruff_cache/
 node_modules/
+/.slopmeister-tmp/

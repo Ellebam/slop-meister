@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+import shlex
 import subprocess
 import sys
 
@@ -15,12 +16,32 @@ VAULT_RUNTIME_FILES = (
     "__init__.py",
     "__main__.py",
     "repository.py",
+    "initialization.py",
+    "environment.py",
+    "links.py",
     "lint.py",
     "conflicts.py",
     "obsidian.py",
     "retro.py",
+    "retro_legacy.py",
     "exclude",
 )
+
+
+def portable_launcher(home: Path) -> Path:
+    launcher = home / ".vault-git/bin/slopmeister-vault"
+    launcher_text = launcher.read_text()
+    assert launcher_text == (ROOT / "plots/vault/bin/slopmeister-vault").read_text()
+    assert "/usr/local/bin/python3.14 /usr/bin/python3.14; do" in launcher_text
+    assert 'exec "$python" -I -c' in launcher_text
+    # Keep the installed body intact, with this runner's interpreter as its fixed path.
+    launcher.write_text(
+        launcher_text.replace(
+            "/opt/homebrew/bin/python3.14 /usr/local/bin/python3.14 /usr/bin/python3.14",
+            shlex.quote(sys.executable),
+        )
+    )
+    return launcher
 
 
 def test_installed_vault_runtime_uses_exact_snapshot_and_safe_python_command(tmp_path):
@@ -28,31 +49,36 @@ def test_installed_vault_runtime_uses_exact_snapshot_and_safe_python_command(tmp
     assert workstation(home, bin_dir, "install", "--all").returncode == 0
     (bin_dir / "python3").unlink()
     fake_binary(bin_dir, "python3", "echo intercepted >&2; exit 91")
-    launcher = home / ".vault-git/bin/slopmeister-vault"
-    launcher_text = launcher.read_text()
-    assert "/usr/local/bin/python3.14 /usr/bin/python3.14; do" in launcher_text
-    assert 'exec "$python" -P -s -m slopmeister_vault "$@"' in launcher_text
-    installed = home / ".vault-git/lib/slopmeister_vault"
+    launcher = portable_launcher(home)
     hostile = tmp_path / "hostile"
     (hostile / "slopmeister_vault").mkdir(parents=True)
     (hostile / "slopmeister_vault/__main__.py").write_text("print('hostile package')\n")
     (hostile / "argparse.py").write_text("raise RuntimeError('hostile argparse')\n")
+    (hostile / "startup").write_text("echo hostile shell >&2; exit 91\n")
     result = subprocess.run(
-        [sys.executable, "-P", "-s", "-m", "slopmeister_vault", "--help"],
+        [str(launcher), "--help"],
         cwd=hostile,
         env={
             **os.environ,
             "HOME": str(home),
             "PATH": str(bin_dir),
-            "PYTHONPATH": str(installed.parent),
+            "PYTHONPATH": str(hostile),
+            "BASH_ENV": str(hostile / "startup"),
         },
         capture_output=True,
         text=True,
     )
     assert result.returncode == 0 and "hostile" not in result.stdout + result.stderr
+
+
+def test_installed_runtime_copies_every_required_module(tmp_path):
+    home, bin_dir = machine(tmp_path)
+    assert workstation(home, bin_dir, "install", "--all").returncode == 0
+    installed = home / ".vault-git/lib/slopmeister_vault"
     for name in VAULT_RUNTIME_FILES:
-        source = ROOT / "slopmeister/vault/runtime" / name
-        assert (installed / name).read_bytes() == source.read_bytes()
+        assert (installed / name).read_bytes() == (
+            ROOT / "slopmeister/vault/runtime" / name
+        ).read_bytes()
 
 
 def test_the_launcher_is_also_on_path_under_the_name_the_allow_rules_use(tmp_path):

@@ -83,6 +83,20 @@ def test_invoking_checkout_owns_snapshot(tmp_path, plot, delivery, arrange):
         world, str(repo), plot, name, "--tool", "codex", cli=cli, PLOT_DECLARATIONS=declared
     )
     worktree = repo / ".worktrees" / name
+    _assert_delivery(branch, worktree, (plot, source))
+    assert codex_writable(worktree) == {
+        str(world.vault.resolve()),
+        *temporary_roots(world),
+        str(worktree / ".slopmeister-tmp"),
+    }
+    assert "--add-dir" not in result.stdout
+    _commit_application(worktree)
+    assert git(repo, "rev-parse", "HEAD") == before
+    assert git(repo, "status", "--porcelain", "--untracked-files=all") == ""
+
+
+def _assert_delivery(branch, worktree, selection):
+    plot, source = selection
     delivered = source.removeprefix(f"targets/{plot}/")
     for tool, native, agreement in (
         ("claude", ".claude", "CLAUDE.md"),
@@ -93,8 +107,3 @@ def test_invoking_checkout_owns_snapshot(tmp_path, plot, delivery, arrange):
         assert (worktree / native / delivered).read_bytes() == (
             branch / f"dist/{tool}" / source
         ).read_bytes()
-    assert codex_writable(worktree) == {str(world.vault.resolve()), *temporary_roots(world)}
-    assert "--add-dir" not in result.stdout
-    _commit_application(worktree)
-    assert git(repo, "rev-parse", "HEAD") == before
-    assert git(repo, "status", "--porcelain", "--untracked-files=all") == ""

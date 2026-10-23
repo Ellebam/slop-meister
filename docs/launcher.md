@@ -30,19 +30,13 @@ Every plot gets the same delivery, from the Slopmeister checkout that runs the l
 - Taskfiles, Makefiles, scripts, ordinary documents and nested instruction files stay editable. Native launch controls keep nested instruction files from being loaded.
 - The original configuration stays in Git history and the upstream checkout. Nothing is installed into the upstream checkout or the vault.
 
+Fresh deliveries create and record a private `.slopmeister-tmp` directory and export it as the worker's `TMPDIR`. Only that recorded directory is disposable scratch. Existing deliveries keep their previous temporary-directory behavior; redispatch neither creates nor adopts a same-named directory.
+
 Root `*-NOTES.md` task notes are hidden from Git by an exclusion rule every new worktree receives, and Slopmeister's own `.gitignore` covers fresh clones. A plot's own ignore rules can override it, and `git add -f` still stages an intentional root notes file.
 
 ## How each tool starts
 
-| Tool | Start | Delivery proof |
-|---|---|---|
-| Claude Code, the default | `--remote-control=<name>` so the phone can reach it, `-n <name>` for the prompt box and `/resume` picker, a pinned `--session-id`, `--strict-mcp-config` with no MCP servers, the plot through `--append-system-prompt-file`, `--setting-sources user,project` to skip local settings, and protected settings through `--settings`. | The kickoff as a user message in the transcript under the selected Claude store's `projects/`, `~/.claude/projects/` unless `CLAUDE_CONFIG_DIR` is set. |
-| Codex, `--tool codex` | A standalone `--no-daemon` process with the launcher's pinned `CODEX_HOME`, at the prepared root with `project_root_markers=["AGENTS.md"]` and no fallback instruction files. Codex has no name flag, so the session name is the kickoff's first line. | The kickoff in the rollout under `$CODEX_HOME/sessions/`. The report prints a matching resume command. |
-| OpenCode, `--tool opencode` | The kickoff as `--prompt`, Claude-compatibility files off, permission rules passed inline. No extra tool arguments, no trust store, no `--redispatch` or `--abandon`. | `opencode export` of the one session carrying the kickoff. See [OpenCode](opencode.md). |
-
-Claude also excludes memory discovery under the workspace and granted roots through `claudeMdExcludes`. Codex has no strict MCP switch, so turn off unused user-scope servers in `~/.codex/config.toml` with `enabled = false`, and on the Claude side remove them with `claude mcp remove <name> -s user`. The launcher refuses native tail arguments that would override these controls, the working directory or the configuration sources. The [startup measurement method](startup-context.md) shows how to count what a session actually loads.
-
-Every Claude session runs in auto permission mode without the Bash sandbox, see [the permission contract](#the-permission-contract). The dispatcher keeps its full MCP surface. Its delivered `autoMode.allow` exception permits only a `task plot-session`, `task slot:up` or `task dispatch` launch you requested in the conversation.
+[Native worker startup](launcher-native.md) owns the client arguments, delivery evidence, protected selectors and write-tool preflight. Existing model, effort and disable-only options remain available.
 
 ## File access and trust
 
@@ -75,13 +69,13 @@ Remove retired worktrees and directory sessions through [workspace removal](work
 
 Orca terminal creation failures print its code, `timeout`, `unreadable_reply` or `execution_failed` on one line. Only `selector_not_found` permits retries within 60 seconds, including call timeouts. Every failure then polls, because a terminal may exist.
 
-`--redispatch` preserves the workspace, branch, files, notes, configuration and slot. It validates identity, configuration, native settings, permission and delivery exclusion before stopping the worker. Mismatches leave the worker running. It records and stops the agent and descendants child-first, then verifies their exit. It closes the saved terminal only after stopping a live predecessor, because idle tabs may be someone's shell. The new conversation receives the kickoff and retains the fixed snapshot.
+`--redispatch` preserves the workspace, branch, files, notes, configuration and slot. It validates identity, configuration, native settings, permission, delivery exclusion and required native-tool startup before stopping the worker. Mismatches leave the worker running. It records and stops the agent and descendants child-first, then verifies their exit. It closes the saved terminal only after stopping a live predecessor, because idle tabs may be someone's shell. The new conversation receives the kickoff and retains the fixed snapshot.
 
 A workspace from before the removal of the Git guard refuses redispatch, and `git config --worktree --unset core.hooksPath` restores ordinary Git there. Independently running services keep running, those owned by the old agent may need restarting.
 
 ## The permission contract
 
-[`src/permissions.toml`](../src/permissions.toml) is the one source of what every launched session may run. Each entry has a command prefix, a decision and a `why`, and the renderer turns it into Claude settings, [Codex rules](../dist/codex/rules/permissions.rules) and the OpenCode permission map. Add a permission there and run `bin/slopmeister render`, never in a tool's own file. An unknown decision, a prefix under two decisions or a missing `why` fails the render.
+[`src/permissions.toml`](../src/permissions.toml) owns shared command rules. [`src/native-permissions.toml`](../src/native-permissions.toml) owns workspace-bound release and selected service policies. Each entry has a command prefix, a decision and a `why`, and the renderer turns it into Claude settings, [Codex rules](../dist/codex/rules/permissions.rules) and the OpenCode permission map. Change its owning source and run `bin/slopmeister render`, never in a tool's own file. An unknown decision, a prefix under two decisions or a missing `why` fails the render.
 
 | Decision | Effect |
 |---|---|
@@ -93,7 +87,9 @@ An unlisted command falls back to the tool's own judgment. Kickoff text, includi
 
 **No Bash sandbox for Claude.** macOS Seatbelt broke pipes, process listing, `TMPDIR` and Git credentials, so delivery sets `"sandbox": {"enabled": false}`. Secret denies, intent rules and native approval still apply. Codex keeps `on-request`, network access on macOS and no sandbox on Linux. [Secret requests](1password-access.md) need network access.
 
-**Helpers.** The ship, claim and close-out helpers call `gh` inside their own process, which no command rule matches, so `needs_intent` on `gh pr create` or `gh issue comment` restricts only an agent typing them.
+**Helpers.** The ship and claim helpers call `gh` inside their own process, which no command rule matches, so `needs_intent` on `gh pr create` or `gh issue comment` restricts only an agent typing them.
+
+The installed self-release allow is bound to exactly `workspace-remove --self -- <this workspace>`. It does not authorize a different path or force. The command still checks the caller, claims and unsaved work.
 
 **Service actions.** A plot's optional `service_actions` list delivers only the selected fixed read and write actions and their private profiles, see [service actions](service-actions.md). Codex launches use `on-request` with `auto_review`, Claude keeps auto mode and explicit asks for those actions.
 

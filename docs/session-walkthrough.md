@@ -79,7 +79,7 @@ flowchart LR
     end
     subgraph accept["Accept"]
         direction TB
-        S8["8 · Ship and hand off"] --> S9["9 · You test"] --> S10["10 · You finalize"]
+        S8["8 · Ship and hand off"] --> S9["9 · You test"] --> S10["10 · You harvest"]
     end
     decide --> build --> accept
     classDef you fill:#f5c26b,stroke:#b7791f,color:#1a1a1a
@@ -96,7 +96,7 @@ flowchart LR
 | 7 | [fix pass](../src/skills/implement/SKILL.md) | Makes only the fixes that survived `prune` and proves them again. | |
 | 8 | [hand off](../src/skills/execute-plan/SKILL.md) | Ships the fixed branch where allowed and reports with the existing guide. | |
 | 9 | testing | | Accept the tester's verdict and run any checks the guide leaves to you. |
-| 10 | [finalize](../src/skills/finalize/SKILL.md) | | Type `/finalize` or `$finalize`. |
+| 10 | [harvest](../src/skills/harvest/SKILL.md) | | Explicitly invoke `/harvest` or `$harvest`. Finalize remains a completed-task compatibility entry. |
 
 After your one answer, the worker goes straight through to the report on its own, following [execute-plan](../src/skills/execute-plan/SKILL.md). The report lists every review and tester finding in one line, applied or dropped with the reason, and you can reopen any of them. The worker halts earlier only for a security must-fix, a wrong approach, drift from the ticket, a fix outside the scope, a second tester failure or an error it cannot diagnose. The tester runs against the exact commit and returns pass, fail or blocked with quoted evidence, and the worker never regrades it.
 
@@ -106,7 +106,7 @@ Permanent tests follow the shared [test-purpose rule](../src/skills/implement/SK
 
 Plots that require [groom](../src/skills/groom/SKILL.md) use it for affected repository docs and vault notes. Plans name the documents and actions. Maintenance finishes before proof, and both reviews check it. Freeform records the list in session notes.
 
-**Finalize is yours.** Green CI or an open PR cannot authorize a merge. In plots requiring groom, finalize first checks document delivery and refuses gaps without repairs. It then checks review, ships, [merges](../src/skills/merge/SKILL.md) after green checks on the current base, closes the issue only after the merge, and runs [close-out](../src/skills/close-out/SKILL.md). Close-out verifies completed maintenance in those plots, follows other plots' rules, records the retro and comments on the issue.
+**Harvest is yours.** Green CI or an open PR cannot authorize it. Explicit `/harvest` or `$harvest` selects an ending based on the saved state. Finished spine work retains testing acceptance and merge/integration gates. Unfinished work can ship an open PR and hand back its issue after guarded shutdown. Unsaved or unpushed work keeps the workspace. Direct harvest can repair routine document gaps through groom. Finalize retains its verification-only document pre-flight and completed-task alternatives. Close-out remains a separate narrow report and legacy-retro route.
 
 ## Pause and resume
 
@@ -118,14 +118,14 @@ When a worker must be replaced, first have it confirm its state is saved, then r
 task plot-session -- <slopmeister root> slopmeister slopmeister-120-session-names --redispatch --tool claude < kickoff.md
 ```
 
-The launcher stops the old worker and starts a fresh conversation in the same workspace, with the same fixed configuration. The new worker reads Git, the notes file and the tester and review paths recorded there, then resumes at the first unfinished step without rerunning proof or reviews. After a crash, only what's on disk survives.
+The launcher verifies the saved workspace and required native-tool startup before it stops the old worker and starts a fresh conversation in the same workspace, with the same fixed configuration. The new worker reads Git, the notes file and the tester and review paths recorded there, then resumes at the first unfinished step without rerunning proof or reviews. After a crash, only what's on disk survives.
 
 ## What remains afterwards
 
-| Kept | Removed by finalize |
+| Kept | Removed by successful harvest cleanup |
 |---|---|
-| Merged pull request and closed issue with its comment | Task notes file |
-| Retro entry in the vault's `_system/retro-log.md` | Task worktree and branch |
+| Pull request, issue and comment in the state the ending permits | Task notes, only after proof and recovery records are retained |
+| Session retro under `_system/retros/`, with legacy logs retained | Task worktree; the local branch stays |
 | Review results under the repository's Git directory, `slopmeister-config/reviews/` | |
 | Tester runs under `~/.local/state/slopmeister/spine-tests/` | |
 | Claude transcript or Codex rollout | |

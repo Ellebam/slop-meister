@@ -35,7 +35,8 @@ def action_context(tmp_path, actions, profile_root=None):
 def fixture(tmp_path):
     root = tmp_path / "slopmeister"
     (root / "src").mkdir(parents=True)
-    shutil.copyfile(ROOT / "src/permissions.toml", root / "src/permissions.toml")
+    for name in ("permissions.toml", "native-permissions.toml"):
+        shutil.copyfile(ROOT / "src" / name, root / "src" / name)
     source = root / "slopmeister/session/service_actions"
     source.mkdir(parents=True)
     for name in CONSUMER_FILES:

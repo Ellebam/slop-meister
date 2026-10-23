@@ -10,7 +10,7 @@ Export each referenced variable in `~/.zshenv`, not only in `~/.zshrc`. Agents, 
 
 ## What a session receives
 
-OpenCode reads the Codex delivery every launched workspace already has, `AGENTS.md` and `.agents/skills`. Both commands set `OPENCODE_DISABLE_CLAUDE_CODE=1`, so the Claude copy and the operator's personal Claude skills stay out, and pass the Slopmeister permission rules through `OPENCODE_CONFIG_CONTENT`. The rules are rendered from `src/permissions.toml` into `dist/opencode/permission.json`, where a `needs_intent` decision becomes `ask`, which a headless run refuses. The worker may use its granted directories, the vault and for Slopmeister its checkout, without asking. The tester also denies the edit tools and allows outside-directory access only to its own run directory, which holds the guide, notes and evidence. Neither ever uses `--auto`. The tester's shell commands inherit the provider variable, as any shell of the operator's user can already read it from `~/.zshenv`, so a tester has the same credential reach as the Claude and Codex testers have to their own. The worker keeps the operator's OpenCode plugins, the tester does not disable them either because it already runs the subject's own commands.
+OpenCode reads the Codex delivery every launched workspace already has, `AGENTS.md` and `.agents/skills`. Both commands set `OPENCODE_DISABLE_CLAUDE_CODE=1`, so the Claude copy and the operator's personal Claude skills stay out, and pass the Slopmeister permission rules through `OPENCODE_CONFIG_CONTENT`. The rules are rendered from `src/permissions.toml` and `src/native-permissions.toml` into `dist/opencode/permission.json`, where a `needs_intent` decision becomes `ask`, which a headless run refuses. The worker may use its granted directories, the vault and for Slopmeister its checkout, without asking. The tester also denies the edit tools and allows outside-directory access only to its own run directory, which holds the guide, notes and evidence. Neither ever uses `--auto`. The tester's shell commands inherit the provider variable, as any shell of the operator's user can already read it from `~/.zshenv`, so a tester has the same credential reach as the Claude and Codex testers have to their own. The worker keeps the operator's OpenCode plugins, the tester does not disable them either because it already runs the subject's own commands.
 
 The skills are the Codex rendering, so a procedure that names a tool speaks of Codex. The supported spine path for an OpenCode worker is sow, implement, local QA and independent testing. Cross-tool review still supports only Claude and Codex worker directions, so the automatic path stops before that review boundary.
 
@@ -31,13 +31,15 @@ The occupant census counts an `opencode` process whose working directory is insi
 ## Tester
 
 ```text
-bin/slopmeister tester launch --worker-tool <claude|codex> --tester-tool opencode [--tester-model <provider/model>] --task <task> --cwd <checkout> --commit <commit> --guide <guide> --validation <notes>
+bin/slopmeister tester launch --worker-tool <claude|codex> --tester-tool opencode [--tester-model <provider/model>] --task <task> --cwd <checkout> --commit <commit> --guide <guide> --validation <notes> [--slot-target <plot>]
 bin/slopmeister tester collect --run <run path> --wait-seconds 30
 ```
 
 Without `--tester-tool` the tester stays the opposite of the worker tool. The worker and tester tools must differ, and a named tester never falls back to another tool. The binary and provider variables are checked before the tester starts. Every invocation creates a fresh isolated run directory.
 
 The run executes `opencode run --format json --dir <checkout> --print-logs --log-level INFO` with the prompt on stdin, which OpenCode stores verbatim. The run directory keeps `events.jsonl`, `stderr.log` with OpenCode's own log, `native.json` with the checked session fields, and `result.json` with `blocked_reason` when blocked. Exact provider values are scrubbed from every run file outside the checkout after the process exits, the subject itself is never rewritten. The session is deleted from the store once the receipt is saved, `session_deleted` records whether that worked.
+
+The saved validated draft is the sole verdict source after native completion and identity are proven; a draft cannot repair a missing completion event or change a failed scenario into a pass. Optional tester slots have separate ports and Compose projects, and cleanup completes before result publication. The guide still owns repository setup.
 
 A blocked report names one reason, its cause, the fix and the exact evidence path and line.
 
@@ -49,9 +51,8 @@ A blocked report names one reason, its cause, the fix and the exact evidence pat
 | `permission refused` | OpenCode asked a permission question a headless run cannot answer, such as access outside the checkout and run directory |
 | `interrupted` | The run ended without a final step whose reason is `stop` |
 | `no native evidence` | No session, a session in another directory, a different first prompt, or a model other than the requested one |
-| `no verdict` | The final answer is not the requested JSON |
 
-`fail` is reserved for scenarios the tester graded as failing.
+A missing, malformed or invalid saved draft produces a blocked report with its validation error. `fail` is reserved for scenarios the tester graded as failing.
 
 ## Not supported yet
 

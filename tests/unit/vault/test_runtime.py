@@ -7,13 +7,14 @@ from types import SimpleNamespace
 import pytest
 
 from slopmeister.vault.runtime import lint, obsidian, repository, retro
+from slopmeister.vault.runtime import retro_legacy as legacy
 from slopmeister.vault.runtime.__main__ import _parser
 
 
 def test_runtime_spills_to_machine_state_not_a_checkout(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.delenv("RETRO_SPILL_DIR", raising=False)
     monkeypatch.setenv("HOME", str(tmp_path))
-    assert retro.spill_dir() == tmp_path / ".local/state/slopmeister/retro-spill"
+    assert legacy.spill_dir() == tmp_path / ".local/state/slopmeister/retro-spill"
 
 
 def test_retro_fsyncs_the_failure_spill(tmp_path: Path, monkeypatch) -> None:
@@ -21,7 +22,7 @@ def test_retro_fsyncs_the_failure_spill(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("RETRO_SPILL_DIR", str(tmp_path / "spill"))
     monkeypatch.setattr(retro.os, "fsync", synced.append)
     args = SimpleNamespace(repo="fixture", task="task", note="fixture.md")
-    assert retro._spill("entry\n", args) == 1
+    assert legacy._spill("entry\n", args) == 1
     assert len(synced) == 1
     assert next((tmp_path / "spill").glob("*.md")).read_text() == "entry\n"
 
@@ -110,7 +111,7 @@ def test_retro_spills_without_overwriting_a_dataless_note(tmp_path: Path, monkey
         model="model",
         note="fixture.md",
     )
-    assert retro.run(args) == 1
+    assert legacy.run(args) == 1
     spills = list((tmp_path / "spill").glob("*.md"))
     assert len(spills) == 1 and "- one\n- two\n- three\n" in spills[0].read_text()
     assert note.read_bytes() == b"remote bytes\n"

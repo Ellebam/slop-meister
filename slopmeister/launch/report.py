@@ -39,23 +39,29 @@ def delivered(launch: Launch, delivery: Delivery) -> None:
     else:
         thread = delivery.session
         lines += [f"  thread id: {thread}", f"  thread name: {_thread_name(launch, thread)}"]
-        wt = shq(str(launch.wt))
-        overrides = "".join(
-            " -c " + shq(value)
-            for index, token in enumerate(launch.extra)
-            if (value := arguments.config_override(token, launch.extra, index))
-            and value.partition("=")[0].strip(" '\"") == "approvals_reviewer"
-        )
-        # A manually reviewed launch must not resume with automatic approval.
-        settings = command.CODEX_APPROVAL + overrides + command.CODEX_ROOTS
-        resume = (
-            f"cd {wt} && env CODEX_HOME={shq(str(launch.codex_home))} "
-            f"{shq(str(launch.codex_bin))} resume {shq(thread)} --no-daemon"
-            f"{settings}{command._native_approvals(launch)} -C {wt}"
-        )
+        resume = _codex_resume(launch, thread)
         lines.append(f"  resume: {resume}")
     lines += [f"  kickoff: {kickoff.receipt(launch)}", f"  evidence: {delivery.evidence}"]
     print("\n".join(lines))
+
+
+def _codex_resume(launch: Launch, thread: str) -> str:
+    wt = shq(str(launch.wt))
+    overrides = "".join(
+        " -c " + shq(value)
+        for index, token in enumerate(launch.extra)
+        if (value := arguments.config_override(token, launch.extra, index))
+    )
+    # A manually reviewed launch must not resume with automatic approval.
+    settings = (
+        command.CODEX_APPROVAL + command._native_approvals(launch) + overrides + command.CODEX_ROOTS
+    )
+    resume = (
+        f"cd {wt} && env CODEX_HOME={shq(str(launch.codex_home))} "
+        f"{shq(str(launch.codex_bin))} resume {shq(thread)} --no-daemon"
+        f"{settings} -C {wt}"
+    )
+    return resume
 
 
 def prepare_identity(launch: Launch) -> None:

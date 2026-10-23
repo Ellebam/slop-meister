@@ -76,10 +76,14 @@ task home:install -- \
   .vault-git/lib/slopmeister_vault/__init__.py \
   .vault-git/lib/slopmeister_vault/__main__.py \
   .vault-git/lib/slopmeister_vault/repository.py \
+  .vault-git/lib/slopmeister_vault/environment.py \
+  .vault-git/lib/slopmeister_vault/initialization.py \
+  .vault-git/lib/slopmeister_vault/links.py \
   .vault-git/lib/slopmeister_vault/lint.py \
   .vault-git/lib/slopmeister_vault/conflicts.py \
   .vault-git/lib/slopmeister_vault/obsidian.py \
   .vault-git/lib/slopmeister_vault/retro.py \
+  .vault-git/lib/slopmeister_vault/retro_legacy.py \
   .vault-git/lib/slopmeister_vault/exclude
 ```
 
@@ -122,7 +126,7 @@ Open Orca and add `~/dev/slop-meister` as a repository through its UI. Create `~
 task dispatch -- claude slopmeister-dispatcher
 ```
 
-Use `codex` instead of `claude` for a Codex dispatcher. From another terminal or the Claude phone session, use `task dispatch -- --open claude slopmeister-dispatcher`. Confirm the dispatcher starts in the intended Orca workspace and answers a read-only request. Issue dispatch needs a separate operator request. `docs/session-walkthrough.md` explains the subsequent worker, testing and finalize steps. To add a real plot from the neutral examples, follow Onboard a project in `docs/context-layer.md`.
+Use `codex` instead of `claude` for a Codex dispatcher. From another terminal or the Claude phone session, use `task dispatch -- --open claude slopmeister-dispatcher`. Confirm the dispatcher starts in the intended Orca workspace and answers a read-only request. Issue dispatch needs a separate operator request. `docs/session-walkthrough.md` explains the subsequent worker, testing and harvest steps. To add a real plot from the neutral examples, follow Onboard a project in `docs/context-layer.md`.
 
 ## Check and repair
 

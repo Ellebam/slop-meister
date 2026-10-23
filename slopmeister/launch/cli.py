@@ -19,6 +19,7 @@ from slopmeister.launch import (
     confirm,
     issue,
     kickoff,
+    native_check,
     remote,
     report,
     target,
@@ -63,7 +64,9 @@ def _validate(argv: Sequence[str], worktree_file: str = "") -> Launch:
 
 def _redispatch(launch: Launch) -> None:
     workspace.adopt(launch)
+    workspace.capabilities(launch)
     if os.environ.get("PLOT_SESSION_NO_LAUNCH") != "1":
+        native_check.check(launch)
         closure.close(launch)
         status = target.name_lookup(launch)
         if status == 0:
@@ -87,6 +90,8 @@ def _prepare(launch: Launch) -> None:
         workspace.prepare_directory(launch)
     else:
         workspace.prepare_worktree(launch)
+    if not launch.redispatch:
+        workspace.capabilities(launch)
     if launch.wt_file:
         shutil.copyfile(launch.wt_file, launch.wt / launch.wt_file_name)
     kickoff.prune(launch)
@@ -162,6 +167,8 @@ def _launch(launch: Launch, prepared: Prepared | None = None) -> None:
     if os.environ.get("PLOT_SESSION_NO_LAUNCH") == "1":
         _skipped(launch)
         return
+    if not launch.redispatch:
+        native_check.check(launch)
     marker = time.time()
     _open(launch)
     _finish_delivery(launch, confirm.deliver(launch, marker))
@@ -180,14 +187,14 @@ def run(
         if stop.text:
             with contextlib.suppress(OSError):
                 print(stop.text, file=sys.stderr)
-        return stop.code, bool(launch and launch.open_attempted)
+        return stop.code, bool(launch and (launch.open_attempted or launch.native_pending))
     except Exception as error:
-        if not launch or not launch.open_attempted:
+        if not launch or not (launch.open_attempted or launch.native_pending):
             raise
         with contextlib.suppress(OSError):
             traceback.print_exception(error)
-        return 1, bool(launch and launch.open_attempted)
-    return 0, bool(launch and launch.open_attempted)
+        return 1, bool(launch and (launch.open_attempted or launch.native_pending))
+    return 0, bool(launch and (launch.open_attempted or launch.native_pending))
 
 
 def main(argv: Sequence[str]) -> int:

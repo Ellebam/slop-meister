@@ -24,6 +24,7 @@ from slopmeister.install.preflight import (
     repository_paths,
     safe_path,
 )
+from slopmeister.removal import SCRATCH
 from slopmeister.session.verify import snapshot
 
 
@@ -37,6 +38,8 @@ def prepare_repository(context: InstallContext) -> bool:
     baseline = git(context.repo, ("rev-parse", "HEAD")).decode().strip()
     entries = git(context.repo, ("ls-tree", "-rz", "HEAD")).split(b"\0")
     roots = configuration_roots(entries)
+    if git(context.repo, ("ls-files", "--", ":(literal)" + SCRATCH)):
+        refuse("session scratch basename is tracked in the repository")
     allocation = context.request.allocation
     if allocation:
         if git(context.repo, ("ls-files", "--", ":(literal)" + allocation)):
@@ -136,6 +139,8 @@ def write_workspace(context: InstallContext) -> None:
     lock_service_actions(context.repo, (context.repo / ".codex/service-actions").is_dir())
     for name in DIRECTORIES:
         (context.repo / name).mkdir(parents=True, exist_ok=True)
+    (context.repo / SCRATCH).mkdir(mode=0o700)
+    context.state["scratch"] = SCRATCH
     _state_helpers(context)
     if not context.directory:
         _delivery_isolation(context)
@@ -180,7 +185,9 @@ def _delivery_isolation(context: InstallContext) -> None:
 def _excludes(context: InstallContext) -> None:
     exclude = context.state_dir / "exclude"
     rules = "".join("/" + path + "\n" for path in context.roots).encode()
-    exclude.write_bytes(context.ignore_bytes + b"\n" + rules + b"/*-NOTES.md\n")
+    exclude.write_bytes(
+        context.ignore_bytes + b"\n" + rules + b"/*-NOTES.md\n/" + SCRATCH.encode() + b"/\n"
+    )
     context.state["exclude_sha256"] = hashlib.sha256(exclude.read_bytes()).hexdigest()
     tracked = [
         entry[2:]

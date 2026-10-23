@@ -11,7 +11,7 @@ import tempfile
 from slopmeister.claims import evidence
 from slopmeister.errors import SlopmeisterError
 from slopmeister.paths import ROOT, main_checkout
-from slopmeister.removal import remove_tree
+from slopmeister.removal import IGNORED_ARGS, check_ignored, read_inventory, remove_tree
 from slopmeister.session import git_environment
 from slopmeister.slots import allocation, claimed, down, leftover
 from slopmeister.threads import occupants
@@ -79,8 +79,7 @@ def _slot(path: Path, repo: Path | None) -> None:
         plot, number = item.target, str(item.slot)
     else:
         receipt = claimed._receipt(path, repo)
-        state = receipt.with_name("state.json") if receipt else None
-        saved = evidence.read(state) if state and state.exists() else {}
+        saved = (read_inventory(receipt.parent) or {}) if receipt else {}
         if saved.get("allocation") != allocation.ALLOCATION:
             return
         plot, number = saved.get("plot"), "<n>"
@@ -102,12 +101,17 @@ def _occupied(path: Path) -> None:
         raise SlopmeisterError(f"a worker still occupies {path}, refusing: {names}")
 
 
+def _claim(path: Path, repo: Path | None, own: bool) -> None:
+    if not (own and claimed.handback_recorded(path, repo)):
+        claimed.refuse(path, "<plot>", repo)
+
+
 def _check(path: Path, repo: Path | None, args: argparse.Namespace) -> bool:
     registered = _registered(path, repo)
     if args.self and not registered:
         raise SlopmeisterError("--self requires a registered worktree")
     _slot(path, repo)
-    claimed.refuse(path, "<plot>", repo)
+    _claim(path, repo, args.self)
     if Path.cwd().resolve().is_relative_to(path):
         raise SlopmeisterError("run workspace removal from outside the selected workspace")
     if registered:
@@ -116,6 +120,8 @@ def _check(path: Path, repo: Path | None, args: argparse.Namespace) -> bool:
         if claimed._receipt(path, repo) is not None:
             raise SlopmeisterError("Git still identifies this workspace, use its owning repository")
         leftover.confirm(args.force, _retry(path))
+    if repo is None and not args.force:
+        check_ignored(path, ["? " + p.name for p in path.iterdir()], path / ".slopmeister-config")
     _nested(path)
     if args.self:
         down._calling_worker(path, "workspace")
@@ -140,6 +146,10 @@ def _clean(path: Path, repo: Path, force: bool) -> None:
         raise SlopmeisterError("detached HEAD may lose commits, pass --force to confirm deletion")
     if _git(path, "status", "--porcelain", "--untracked-files=all") and not force:
         raise SlopmeisterError("uncommitted work, pass --force to confirm deletion")
+    if not force:
+        entries = _git(path, *IGNORED_ARGS).split("\0")
+        ignored = [entry for entry in entries if entry.startswith(("? ", "S ", "s ", "h "))]
+        check_ignored(path, ignored, metadata / "slopmeister-config")
 
 
 def _nested(path: Path) -> None:
@@ -172,7 +182,7 @@ def _remove(path: Path, repo: Path | None) -> int:
 
 
 def _self(path: Path, repo: Path, args: argparse.Namespace) -> int:
-    state = evidence.read(evidence.receipt_path(path).with_name("state.json"))
+    state = read_inventory(evidence.receipt_path(path).parent) or {}
     plot = state.get("plot")
     if not isinstance(plot, str):
         raise SlopmeisterError("self-cleanup requires the saved launcher plot")
@@ -188,6 +198,7 @@ def _self(path: Path, repo: Path, args: argparse.Namespace) -> int:
         return 0
     request = down.Request(str(repo), plot, path.name, args.force, "")
     down._stop_worker(request, repo, path)
+    claimed.complete_handback(path, repo)
     args.self = False
     _check(path, repo, args)
     return _remove(path, repo)

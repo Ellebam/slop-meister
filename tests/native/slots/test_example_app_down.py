@@ -2,11 +2,12 @@
 
 from pathlib import Path
 import shlex
+import shutil
 import subprocess
 import tempfile
 import time
 
-from tests.integration.launch.helpers import CLI, ROOT
+from tests.integration.launch.helpers import CLI, ROOT, executable
 from tests.integration.slots.test_public_commands import _task, _world
 from tests.support.repos import git
 
@@ -57,6 +58,7 @@ def _slot(tmp_path: Path) -> tuple[Path, dict[str, str]]:
     up = _task(env, "slot:up", "--", str(repository), "slopmeister", NAME, input_text="Mode: x\n")
     assert up.returncode == 0, up.stdout + up.stderr
     (tmp_path / "worker.sh").write_text(WORKER)
+    _owned_inventory(tmp_path)
     (tmp_path / "other").mkdir()
     paths = {key: str(tmp_path / key.lower()) for key in ("GO", "CHILD", "OUT")}
     return repository, dict(
@@ -64,9 +66,26 @@ def _slot(tmp_path: Path) -> tuple[Path, dict[str, str]]:
     )
 
 
+def _owned_inventory(root):
+    # Other suites start and stop native clients concurrently. Inspect this fixture's real PIDs.
+    ps = shlex.quote(shutil.which("ps") or "/bin/ps")
+    owners = shlex.quote(str(root / "owned-workers"))
+    executable(
+        root / "bin/ps",
+        '#!/bin/sh\nif [ "$*" = "-axo pid=,tty=,comm=" ]; then\n'
+        + f'[ -s {owners} ] || exit 0\nexec {ps} -p "$(cat {owners})" -o pid=,tty=,comm=\n'
+        + f'fi\nexec {ps} "$@"\n',
+    )
+
+
 def _assert_released(tmp_path: Path, repository: Path, env: dict[str, str]) -> None:
     worktree, log = repository / ".worktrees" / NAME, tmp_path / f"slots/{NAME}.down.log"
-    _until(lambda: log.is_file() and "released" in log.read_text())
+    try:
+        _until(lambda: log.is_file() and "released" in log.read_text())
+    except AssertionError as error:
+        files = (log, Path(env["OUT"]))
+        details = "\n".join(path.read_text() for path in files if path.is_file())
+        raise AssertionError(details or "cleanup produced no result log") from error
     assert "slopmeister-slot1 released, data worktree" in log.read_text()
     assert str(log) in Path(env["OUT"]).read_text()
     assert _ps(int(Path(env["CHILD"]).read_text()), "stat=") in ("", "Z")
@@ -81,6 +100,7 @@ def test_worker_releases_its_own_slot_and_nobody_else_can(tmp_path):
     # Idle without a child: bash waits on the pipe that the test holds open.
     neighbour = _stand_in(tmp_path / "other", ["/bin/bash", "-c", "read"], env)
     worker = _stand_in(worktree, ["/bin/bash", str(tmp_path / "worker.sh")], env)
+    (tmp_path / "owned-workers").write_text(f"{worker.pid},{neighbour.pid}\n")
     try:
         plain = _down(env, repository, "--force")
         assert plain.returncode != 0 and "worker still occupies" in plain.stderr

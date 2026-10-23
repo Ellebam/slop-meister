@@ -39,6 +39,7 @@ def _context(req: InstallRequest) -> InstallContext:
         refuse("additional directory is missing")
     state = dict(
         version=3,
+        native_server_pins=True,
         worktree=str(repo),
         plot=req.target,
         commit=permission,

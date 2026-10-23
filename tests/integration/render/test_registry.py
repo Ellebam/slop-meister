@@ -7,7 +7,6 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
-import tomllib
 
 import pytest
 
@@ -142,7 +141,7 @@ def test_check_contract_covers_helper_commands():
 
 def test_write_intent_has_one_central_policy_and_reaches_opencode():
     """Bug: delivered Atlassian writes have no central intent policy or OpenCode gate."""
-    contract = tomllib.loads((ROOT / "src/permissions.toml").read_text())
+    contract = permission_contract(ROOT / "src/permissions.toml")
     policies = {entry["action"]: entry for entry in contract.get("service_action", [])}
     assert set(policies) == {"jira-write", "confluence-write"}
     bash = json.loads((DIST / "opencode/permission.json").read_text())["bash"]
@@ -168,6 +167,7 @@ def test_check_contract_refusals(tmp_path):
         source = tmp_path / f"case{index}"
         source.mkdir()
         (source / "permissions.toml").write_text(text)
+        shutil.copy2(ROOT / "src/native-permissions.toml", source / "native-permissions.toml")
         shutil.copy2(ROOT / "src/claude/settings.json", source / "settings.json")
         (source / "claude").mkdir()
         shutil.copy2(ROOT / "src/claude/settings.json", source / "claude/settings.json")
@@ -181,7 +181,7 @@ def test_check_contract_refusals(tmp_path):
 )
 def test_service_write_policy_refuses_missing_or_unprompted_authority(tmp_path, broken):
     """Bug: malformed policies render standing writes or omit their credential boundary."""
-    base = (ROOT / "src/permissions.toml").read_text()
+    base = (ROOT / "src/native-permissions.toml").read_text()
     extra = '\n[[service_action]]\naction="jira-write"\ndecision="needs_intent"\n'
     extra += 'why="x"\ncredential_allow="x"\n'
     cases = {
@@ -195,7 +195,8 @@ def test_service_write_policy_refuses_missing_or_unprompted_authority(tmp_path, 
     }
     source = tmp_path / "src"
     (source / "claude").mkdir(parents=True)
-    (source / "permissions.toml").write_text(cases[broken])
+    (source / "native-permissions.toml").write_text(cases[broken])
+    shutil.copyfile(ROOT / "src/permissions.toml", source / "permissions.toml")
     shutil.copyfile(ROOT / "src/claude/settings.json", source / "claude/settings.json")
     with pytest.raises(ValueError):
         render_settings(source, tmp_path / "dist", [])

@@ -1,5 +1,6 @@
 """Disposable workspaces and a portable process census for the public removal command."""
 
+import json
 import os
 from pathlib import Path
 import stat
@@ -9,9 +10,20 @@ import pytest
 
 from slopmeister.install.fileops import lock_service_actions
 from slopmeister.removal import remove_tree
+from slopmeister.session.verify import snapshot as delivery_snapshot
 from tests.support.repos import GIT_ENV, git, scratch_repo
 
 ROOT = Path(__file__).resolve().parents[3]
+
+
+def _record_delivery(repo, worktree):
+    state = repo / ".git/worktrees/scratch/slopmeister-config/state.json"
+    state.parent.mkdir()
+    state.write_text(
+        json.dumps(
+            {"worktree": str(worktree), "files": delivery_snapshot(worktree, [".claude", ".codex"])}
+        )
+    )
 
 
 @pytest.fixture
@@ -26,6 +38,7 @@ def workspace(tmp_path):
         action.mkdir(parents=True)
         (action / "entry.py").write_text("# fixture\n")
     lock_service_actions(worktree, True)
+    _record_delivery(repo, worktree)
     binaries = tmp_path / "bin"
     binaries.mkdir()
     (binaries / "ps").write_text("#!/bin/sh\nexit 0\n")

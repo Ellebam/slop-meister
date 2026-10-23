@@ -17,7 +17,9 @@ def test_locked_service_actions_do_not_leave_a_ghost_worktree(workspace, invoke,
     (worktree / ".claude/service-actions/outside").symlink_to(sibling)
     (worktree / ".claude/service-actions").chmod(0o555)
     try:
-        result = invoke(worktree)
+        refused = invoke(worktree)
+        assert refused.returncode != 0 and "ignored work" in refused.stderr
+        result = invoke(worktree, "--force")
         assert result.returncode == 0, result.stderr
         assert not worktree.exists()
         assert git(repo, "worktree", "list", "--porcelain").count("worktree ") == 1

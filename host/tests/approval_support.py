@@ -2,6 +2,7 @@
 
 import asyncio
 import importlib.util
+import io
 import json
 from pathlib import Path
 import sys
@@ -85,11 +86,20 @@ def route(monkeypatch, framework):
         yield integration, hass, state
     finally:
         sys.modules.pop(spec.name + ".config", None)
+        sys.modules.pop(spec.name + ".question", None)
 
 
-def request(identifier=IDENTIFIER, message="Command: true", **values):
+def request(identifier=IDENTIFIER, message="Command: true", *, raw=None, **values):
     body = json.dumps({"id": identifier, "title": "Secret approval: demo", "message": message})
-    return SimpleNamespace(read=AsyncMock(return_value=body.encode()), headers={}, **values)
+    encoded = body.encode() if raw is None else raw
+    stream = io.BytesIO(encoded)
+    return SimpleNamespace(
+        read=AsyncMock(return_value=encoded),
+        content=SimpleNamespace(read=AsyncMock(side_effect=stream.read)),
+        content_length=len(encoded),
+        headers={},
+        **values,
+    )
 
 
 def connection(user=OPERATOR):

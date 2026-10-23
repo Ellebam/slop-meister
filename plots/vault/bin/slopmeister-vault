@@ -1,14 +1,12 @@
-#!/bin/bash
+#!/bin/bash -p
 # Stable machine command for the reviewed vault runtime. It never imports a checkout.
 set -eu
 for python in /opt/homebrew/bin/python3.14 /usr/local/bin/python3.14 /usr/bin/python3.14; do
     [ -x "$python" ] || continue
-    export PYTHONDONTWRITEBYTECODE=1
-    export PYTHONPATH="$HOME/.vault-git/lib"
-    export SLOPMEISTER_VAULT_LAUNCHER="$HOME/.vault-git/bin/slopmeister-vault"
+    export SLOPMEISTER_VAULT_LAUNCHER="${SLOPMEISTER_VAULT_LAUNCHER:-$HOME/.vault-git/bin/slopmeister-vault}"
     # The first available interpreter replaces this launcher.
     # shellcheck disable=SC2093
-    exec "$python" -P -s -m slopmeister_vault "$@"
+    exec "$python" -I -c 'import sys; sys.path.insert(0, sys.argv.pop(1)); from slopmeister_vault.__main__ import main; raise SystemExit(main())' "$HOME/.vault-git/lib" "$@"
 done
 echo "slopmeister-vault: Python 3.14 is required at a fixed system path" >&2
 exit 2

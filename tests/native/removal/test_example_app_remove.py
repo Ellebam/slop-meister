@@ -11,6 +11,7 @@ import pytest
 
 from slopmeister.install.fileops import lock_service_actions
 from slopmeister.removal import remove_tree
+from slopmeister.session.verify import snapshot
 from tests.support.repos import GIT_ENV, git, scratch_repo
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -52,7 +53,6 @@ def _world(tmp_path):
     path = repo / ".worktrees/scratch"
     metadata = repo / ".git/worktrees/scratch/slopmeister-config"
     metadata.mkdir()
-    (metadata / "state.json").write_text(json.dumps({"plot": "slopmeister"}))
     (metadata / "issue.json").write_text(json.dumps({"phase": "closed", "issue": 7}))
     with (repo / ".git/info/exclude").open("a") as stream:
         stream.write(".claude\n.codex\n")
@@ -61,6 +61,8 @@ def _world(tmp_path):
         action.mkdir(parents=True)
         (action / "entry.py").touch()
     lock_service_actions(path, True)
+    saved = {"plot": "slopmeister", "files": snapshot(path, [".claude", ".codex"])}
+    (metadata / "state.json").write_text(json.dumps(saved))
     other = tmp_path / "neighbour"
     other.mkdir()
     env = {

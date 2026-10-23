@@ -6,7 +6,7 @@ Slopmeister is a Python product. This page is the short form of [the architectur
 
 Follow the [workstation skill](src/skills/workstation/SKILL.md) for macOS or Ubuntu prerequisites, including uv.
 
-Portable browser-consumer tests need Node with built-in WebSocket support. Use the version in [host/.node-version](host/.node-version). When Node is absent, the tests can use an installed Orca runtime instead. This requirement also applies to `task test:portable` on a machine without the desktop tools.
+Portable browser-consumer tests need Node with built-in WebSocket support. Use the version in [host/.node-version](host/.node-version). When Node is absent, the tests can use an installed Orca runtime instead. This requirement also applies to `task test:portable` on a machine without the desktop tools. New Chrome page-control proof additionally uses the pinned package and a real Chrome process, as [browser setup](docs/browser-login.md) describes. Installing that package is an explicit operator action. Use synthetic credentials and an owned local HTTPS fixture for tests.
 
 Sync the committed environment and run the checks:
 

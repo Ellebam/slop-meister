@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
 import shutil
 import sys
+import tempfile
 
 from slopmeister.slots import allocation
 
@@ -15,6 +18,19 @@ def _delivered(claim: allocation.Claim) -> bool:
         return delivered == (claim.data / allocation.ALLOCATION).read_bytes()
     except OSError:
         return False
+
+
+def discard(claim: allocation.Claim) -> None:
+    if claim.lease is not None:
+        os.close(claim.lease)
+    log = claim.data / "setup.log"
+    if log.exists():
+        if log.is_symlink() or not log.is_file():
+            raise ValueError("setup log ownership is uncertain; allocation retained")
+        saved = Path(tempfile.mkdtemp(prefix=f"{claim.live.name}.failed-", dir=claim.data.parent))
+        log.rename(saved / log.name)
+        print(f"slot: setup diagnostics retained at {saved / log.name}", file=sys.stderr)
+    shutil.rmtree(claim.data, ignore_errors=True)
 
 
 def run(claim: allocation.Claim, start: str) -> None:
@@ -38,4 +54,4 @@ def run(claim: allocation.Claim, start: str) -> None:
         allocation.run(
             ["git", "-C", str(root), "update-ref", "-d", ref, start], capture=True, ok=False
         )
-    shutil.rmtree(claim.data, ignore_errors=True)
+    discard(claim)

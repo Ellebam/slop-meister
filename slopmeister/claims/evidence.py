@@ -7,6 +7,7 @@ import io
 import json
 import os
 from pathlib import Path
+import stat
 import tempfile
 
 from slopmeister.claims import github
@@ -36,7 +37,11 @@ def safe_path(path: Path | str) -> Path:
 
 
 def read(path: Path | str) -> dict:
-    value = json.loads(safe_path(path).read_text())
+    descriptor = os.open(safe_path(path), os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(descriptor) as stream:
+        if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+            raise ValueError("claim evidence must be a regular file")
+        value = json.load(stream)
     if not isinstance(value, dict):
         raise ValueError("claim evidence must be an object")
     return value
