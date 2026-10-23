@@ -93,3 +93,17 @@ def test_both_tools_get_the_same_bounded_mailbox_contract():
         "write shared runtime state",
     ):
         assert obligation in text
+
+
+@pytest.mark.parametrize("tail", ["conflicting", "error", "truncated"])
+def test_multiple_or_partially_valid_documents_never_project_an_identity(tmp_path, tail):
+    valid = json.dumps({"ok": True, "result": {"terminals": [OWN]}})
+    if tail == "conflicting":
+        other = {**OWN, "agentIdentity": "codex-impostor"}
+        second = json.dumps({"ok": True, "result": {"terminals": [other]}})
+    elif tail == "error":
+        second = json.dumps({"ok": False})
+    else:
+        second = "{"
+    result = invoke(tmp_path, valid + "\n" + second)
+    assert result.returncode != 0 and result.stdout == "", result.stdout

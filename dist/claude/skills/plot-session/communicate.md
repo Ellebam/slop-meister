@@ -24,8 +24,9 @@ Use only your own live terminal identity. Confirm the inherited `ORCA_TERMINAL_H
 Run this from your workspace root. It projects the JSON envelope before output enters context. A malformed envelope must fail, never fall back to printing the raw result.
 
 ```sh
-"$orca_cli" terminal list --worktree "path:$PWD" --json | jq -ce \
+"$orca_cli" terminal list --worktree "path:$PWD" --json | jq -cse \
   --arg own "${ORCA_TERMINAL_HANDLE:?Own terminal identity is missing}" '
+  if length != 1 then error("Expected exactly one terminal-list response") else .[0] end |
   if .ok != true or (.result | type) != "object" or
       ((.result | has("truncated")) and .result.truncated != false) or
       (.result.terminals | type) != "array" then
