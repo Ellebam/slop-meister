@@ -62,7 +62,7 @@ assert answer == b'approved\\n'
 os.write(tty, b'ACCEPTED\\n')
 """,
     )
-    argv[2] = LOAD.replace("lease.COMMAND_TIMEOUT = 5", "lease.COMMAND_TIMEOUT = 2").replace(
+    argv[2] = LOAD.replace("lease.COMMAND_TIMEOUT = 5", "lease.COMMAND_TIMEOUT = 10").replace(
         "raise SystemExit(lease.main())",
         TERMINAL_SETUP,
     )
@@ -101,6 +101,8 @@ def terminal_process(argv: list[str]) -> tuple[subprocess.Popen, int]:
 @pytest.mark.parametrize("action,expected", [(b"approved\n", 0), (b"\x03", 130), (b"", 124)])
 def test_controlling_terminal_prompts_cancel_and_restore(tmp_path, action, expected):
     argv, git = terminal_writer(tmp_path)
+    if not action:
+        argv.insert(argv.index("--"), "--command-timeout=2")
     process, fd = terminal_process(argv)
     try:
         read_until(fd, b"PROMPT")
