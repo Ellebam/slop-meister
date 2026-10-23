@@ -4,6 +4,7 @@ import fcntl
 import os
 from pathlib import Path
 import subprocess
+import sys
 import time
 
 import pytest
@@ -136,6 +137,11 @@ def test_failed_git_step_logs_its_cause_and_writes_no_bundle(
 
 def test_busy_lock_leaves_a_line_in_the_log(world: World) -> None:
     """Escaping bug: a run that never started because of the lease leaves no trace."""
+    # Portable runners may keep Python outside the scheduled job's fixed PATH.
+    helper = world.git_dir.parent / "vault-lock.py"
+    helper.write_text(f"#!{sys.executable}\n" + LOCK.read_text().split("\n", 1)[1])
+    helper.chmod(0o700)
+    world.env["VAULT_LOCK"] = str(helper)
     lock = world.git_dir / "slopmeister-coordination/commit.lock"
     lock.parent.mkdir(mode=0o700)
     with lock.open("w") as held:

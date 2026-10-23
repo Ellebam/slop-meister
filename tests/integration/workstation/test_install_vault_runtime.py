@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+import shlex
 import subprocess
 import sys
 
@@ -27,15 +28,28 @@ VAULT_RUNTIME_FILES = (
 )
 
 
+def portable_launcher(home: Path) -> Path:
+    launcher = home / ".vault-git/bin/slopmeister-vault"
+    launcher_text = launcher.read_text()
+    assert launcher_text == (ROOT / "plots/vault/bin/slopmeister-vault").read_text()
+    assert "/usr/local/bin/python3.14 /usr/bin/python3.14; do" in launcher_text
+    assert 'exec "$python" -I -c' in launcher_text
+    # Keep the installed body intact, with this runner's interpreter as its fixed path.
+    launcher.write_text(
+        launcher_text.replace(
+            "/opt/homebrew/bin/python3.14 /usr/local/bin/python3.14 /usr/bin/python3.14",
+            shlex.quote(sys.executable),
+        )
+    )
+    return launcher
+
+
 def test_installed_vault_runtime_uses_exact_snapshot_and_safe_python_command(tmp_path):
     home, bin_dir = machine(tmp_path)
     assert workstation(home, bin_dir, "install", "--all").returncode == 0
     (bin_dir / "python3").unlink()
     fake_binary(bin_dir, "python3", "echo intercepted >&2; exit 91")
-    launcher = home / ".vault-git/bin/slopmeister-vault"
-    launcher_text = launcher.read_text()
-    assert "/usr/local/bin/python3.14 /usr/bin/python3.14; do" in launcher_text
-    assert 'exec "$python" -I -c' in launcher_text
+    launcher = portable_launcher(home)
     hostile = tmp_path / "hostile"
     (hostile / "slopmeister_vault").mkdir(parents=True)
     (hostile / "slopmeister_vault/__main__.py").write_text("print('hostile package')\n")
