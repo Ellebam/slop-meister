@@ -95,7 +95,12 @@ def bind(root: Path, data: dict) -> None:
     if os.path.lexists(profile) or os.path.lexists(profile.parent / OWNER):
         record = _owner(profile)
         if record["active"] is not None:
-            raise ValueError("BROWSER_PROFILE_BUSY: close the saved browser state first")
+            try:
+                Path(record["active"]).lstat()
+            except FileNotFoundError:
+                pass
+            else:
+                raise ValueError("BROWSER_PROFILE_BUSY: close the saved browser state first")
     else:
         state.private_directory(profile)
         info = profile.lstat()

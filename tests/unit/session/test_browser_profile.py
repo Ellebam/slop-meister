@@ -130,3 +130,30 @@ def test_public_xdg_choice_does_not_redirect_an_existing_state(persistent, monke
     monkeypatch.setenv("XDG_DATA_HOME", str(root.parent / "different-data"))
     assert runtime.close(root) == {"result": "BROWSER_CLOSED"}
     assert profile.is_dir()
+
+
+@pytest.mark.parametrize("busy", [False, True])
+def test_lost_state_can_recover_only_after_browser_exit(persistent, monkeypatch, busy):
+    from pathlib import Path
+    import shutil
+    import subprocess
+
+    root, profile, profiles, _ = persistent
+    cookie = profile / "synthetic-cookie"
+    cookie.write_text("retained authentication fixture")
+    shutil.rmtree(root)
+    processes = f"chrome --user-data-dir={profile}\n" if busy else ""
+    monkeypatch.setattr(
+        profiles.subprocess,
+        "run",
+        lambda *a, **k: subprocess.CompletedProcess(a, 0, processes, ""),
+    )
+    if busy:
+        with pytest.raises(ValueError, match="PROFILE_BUSY"):
+            runtime.start("https://example.com/", "chrome", persistent=True)
+    else:
+        created = runtime.start("https://example.com/", "chrome", persistent=True)
+        assert runtime.close(Path(created["state"])) == {"result": "BROWSER_CLOSED"}
+    assert cookie.read_text() == "retained authentication fixture"
+    if not busy:
+        assert profiles.clear() == {"result": "BROWSER_PROFILE_CLEARED"}

@@ -163,6 +163,9 @@ def credentials_visible(root: Path, data: dict) -> bool:
 
 
 def attach(root: Path, data: dict) -> None:
+    entry = state.data_home() / "playwright/node_modules/@playwright/cli/playwright-cli.js"
+    if not entry.is_file():
+        raise ValueError("BROWSER_PREREQUISITE: run task browser:install")
     data["page_pending"] = True
     state.save(root, data)
     config = root / "playwright/.playwright/cli.config.json"

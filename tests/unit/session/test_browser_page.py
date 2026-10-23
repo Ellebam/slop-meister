@@ -166,3 +166,13 @@ def test_page_config_cannot_overwrite_an_unrelated_file(tmp_path, link):
     with pytest.raises((OSError, ValueError)):
         page._configuration(config)
     assert target.read_text() == "untouched"
+
+
+def test_missing_page_tool_leaves_browser_closable(root, monkeypatch):
+    monkeypatch.setattr(state, "data_home", lambda: root / "missing-tool")
+    monkeypatch.setattr(page, "credentials_visible", lambda *_: False)
+    with pytest.raises(ValueError, match="BROWSER_PREREQUISITE"):
+        page.page(root, ["snapshot"])
+    assert "page_pending" not in state.metadata(root)
+    assert runtime.close(root) == {"result": "BROWSER_CLOSED"}
+    assert not root.exists()

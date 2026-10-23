@@ -35,6 +35,8 @@ The profile lives at `$XDG_DATA_HOME/slopmeister/browser/profile`, or `~/.local/
 
 `close <state>` preserves this profile after verified browser exit. Only the operator can order `clear-profile`. That action uses the same profile selection, takes its lock and refuses active or uncertain ownership before deleting the recorded profile. Close the saved state first. An unknown profile stays untouched. Profile deletion is never automatic recovery.
 
+If temporary state was lost after a reboot or interrupted session, a new authorized persistent start can reuse the owned profile once no browser process uses it. Existing state or an uncertain process check still refuses startup. Close the new state before an operator-ordered `clear-profile`.
+
 ## Input without keyboard focus
 
 A conversation-owned tab does not have its own native keyboard. Native text insertion can move focus or deliver input to another active pane. Connecting Playwright through that input path does not establish isolation.
