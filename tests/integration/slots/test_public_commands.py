@@ -1,6 +1,8 @@
 """Public Task slot commands allocate, inspect and release one disposable repository."""
 
 from pathlib import Path
+import shlex
+import shutil
 import socket
 import subprocess
 
@@ -27,6 +29,11 @@ def _world(tmp_path):
         f"\n[slots.ports]\nWEB = {_port() - 1}\n"
     )
     executable(tmp_path / "bin/docker", "#!/bin/sh\nexit 1\n")
+    ps = shlex.quote(shutil.which("ps") or "/bin/ps")
+    executable(
+        tmp_path / "bin/ps",
+        '#!/bin/sh\n[ "$*" = "-axo pid=,tty=,comm=" ] && exit 0\n' + f'exec {ps} "$@"\n',
+    )
     env = dict(world.env, SLOT_STATE_DIR=str(tmp_path / "slots"))
     return world, repository, env
 
@@ -220,26 +227,3 @@ def test_public_down_is_retry_safe_by_explicit_slot_number(tmp_path):
         "1",
     )
     assert result.returncode == 0 and "nothing live for slopmeister-slot1" in result.stdout
-
-
-def test_public_down_by_number_refuses_another_live_slot(tmp_path):
-    """Bug: a mistyped missing name tore resources out from under another live slot."""
-    _, repository, env = _world(tmp_path)
-    worktree = repository / ".worktrees/slopmeister-other"
-    data = Path(env["SLOT_STATE_DIR"]) / "slopmeister-slot2"
-    allocation = "SLOT=2\nSLOT_TARGET=slopmeister\nSLOT_NAME=slopmeister-other\n"
-    worktree.mkdir(parents=True)
-    data.mkdir(parents=True)
-    (worktree / ".slot.env").write_text(allocation)
-    result = _task(
-        env,
-        "slot:down",
-        "--",
-        str(repository),
-        "slopmeister",
-        "slopmeister-typo",
-        "--slot",
-        "2",
-    )
-    assert result.returncode != 0 and "slot 2" in result.stderr and "live" in result.stderr
-    assert worktree.is_dir() and data.is_dir()

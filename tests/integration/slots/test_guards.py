@@ -1,4 +1,4 @@
-"""Invalid slot launch inputs stop before an allocation or terminal can be created."""
+"""Slot guards reject unsafe inputs and foreign allocations before mutation."""
 
 from pathlib import Path
 
@@ -35,3 +35,26 @@ def test_invalid_launch_never_reaches_allocation(tmp_path, kind):
     assert result.returncode != 0 and expected in result.stderr
     assert state.read_text() == "allocation sentinel"
     assert not (repository / ".worktrees").exists()
+
+
+def test_public_down_by_number_refuses_another_live_slot(tmp_path):
+    """Bug: a mistyped missing name tore resources out from under another live slot."""
+    _, repository, env = _world(tmp_path)
+    worktree = repository / ".worktrees/slopmeister-other"
+    data = Path(env["SLOT_STATE_DIR"]) / "slopmeister-slot2"
+    allocation = "SLOT=2\nSLOT_TARGET=slopmeister\nSLOT_NAME=slopmeister-other\n"
+    worktree.mkdir(parents=True)
+    data.mkdir(parents=True)
+    (worktree / ".slot.env").write_text(allocation)
+    result = _task(
+        env,
+        "slot:down",
+        "--",
+        str(repository),
+        "slopmeister",
+        "slopmeister-typo",
+        "--slot",
+        "2",
+    )
+    assert result.returncode != 0 and "slot 2" in result.stderr and "live" in result.stderr
+    assert worktree.is_dir() and data.is_dir()
