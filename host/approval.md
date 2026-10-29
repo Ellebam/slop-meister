@@ -28,4 +28,3 @@ With a throwaway secret, perform the [operator route checks](../docs/1password-a
 For rotation, the operator replaces the route values at the desk and reruns the intended HA deployment, then updates each requester's route through the setup guide. Verify a throwaway approval. A route failure runs no waiting command. Only an explicit operator instruction selects the desktop fallback described in the secret guide.
 
 When upgrading a previous broker installation, the operator stops and disables that retired service and removes its old bootstrap credentials through their normal credential-revocation process. This deployment removes only the retired managed panel files. It does not stop or delete an existing broker, migrate credentials or revoke them. Complete that operator migration before relying on the new route.
-
