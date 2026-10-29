@@ -22,7 +22,6 @@ VAULT_RUNTIME_FILES = (
     "lint.py",
     "conflicts.py",
     "obsidian.py",
-    "retro.py",
     "retro_legacy.py",
     "exclude",
 )

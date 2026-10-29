@@ -5,6 +5,7 @@ import pytest
 
 from slopmeister.errors import SlopmeisterError
 from slopmeister.slots import allocation, down, status, up
+from slopmeister.threads import occupants
 
 
 def slot_identity(tmp_path, monkeypatch, worktree_slot=1):
@@ -159,9 +160,9 @@ def test_down_refuses_an_occupied_worktree_before_git_or_resource_cleanup(tmp_pa
     """Bug: resource teardown removed a worktree from under its live worker."""
     worktree = slot_identity(tmp_path, monkeypatch)
     monkeypatch.setattr(
-        allocation,
-        "run",
-        lambda argv, **kwargs: subprocess.CompletedProcess(argv, 0, "claude pid 42\n", ""),
+        occupants,
+        "census",
+        lambda root: [occupants.Process(42, "claude", "??", "birth", str(worktree), True, False)],
     )
     with pytest.raises(SlopmeisterError, match="worker still occupies"):
         down._worktree_slot(down.Request("/repo", "scratch", "scratch-one", True, ""), worktree)
@@ -227,11 +228,11 @@ def test_status_attributes_live_worker_from_shared_occupant_census(tmp_path, mon
     """Bug: live status omitted a Claude worker that teardown correctly treated as an occupant."""
     item = allocation.Live("scratch", 1, "scratch-one", tmp_path / "scratch-one")
     monkeypatch.setattr(
-        allocation,
-        "run",
-        lambda argv, **kwargs: subprocess.CompletedProcess(
-            argv, 0, f"claude pid 42 in {item.worktree}\n", ""
-        ),
+        occupants,
+        "census",
+        lambda root: [
+            occupants.Process(42, "claude", "??", "birth", str(item.worktree), True, False)
+        ],
     )
     status._workers([item])
     assert "scratch-one worker claude pid 42" in capsys.readouterr().out
@@ -247,3 +248,23 @@ def test_listener_cwd_failure_is_not_reported_as_an_empty_inventory(monkeypatch)
     )
     with pytest.raises(SlopmeisterError, match="listener working directories"):
         status._working_directories([42])
+
+
+def test_outside_agents_do_not_occupy_or_appear_in_the_slot(tmp_path, monkeypatch, capsys):
+    outside = occupants.Process(42, "codex", "??", "birth", "/elsewhere", False, False)
+    monkeypatch.setattr(occupants, "census", lambda root: [outside])
+    item = allocation.Live("scratch", 1, "scratch-one", tmp_path)
+    down._occupied(tmp_path, "scratch-slot1")
+    status._workers([item])
+    assert capsys.readouterr().out == ""
+
+
+def test_failed_census_keeps_the_slot_and_reports_unavailable(tmp_path, monkeypatch, capsys):
+    def failed(root):
+        raise occupants.CensusError("ps inspection failed")
+
+    monkeypatch.setattr(occupants, "census", failed)
+    with pytest.raises(SlopmeisterError, match="refusing to release scratch-slot1"):
+        down._occupied(tmp_path, "scratch-slot1")
+    status._workers([allocation.Live("scratch", 1, "scratch-one", tmp_path)])
+    assert "worker census unavailable" in capsys.readouterr().out

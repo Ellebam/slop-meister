@@ -6,10 +6,13 @@ from pathlib import Path
 import subprocess
 import sys
 import time
+from types import SimpleNamespace
 import uuid
 
 import pytest
 
+from slopmeister.spine.tester import cli
+from slopmeister.spine.tester import collect as collection
 from slopmeister.spine.tester.collect import collect
 from tests.support.repos import git
 
@@ -120,3 +123,27 @@ def test_draft_command_preserves_outcome_and_all_run_bytes(tmp_path, verdict, ou
     assert result.returncode == 0 and not result.stderr
     assert result.stdout == f"VALID DRAFT (outcome: {outcome}; not test proof)\n"
     assert before == {p: p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+
+
+@pytest.mark.parametrize("seconds", [300, 301])
+def test_collect_five_minute_deadline_and_early_result(tmp_path, monkeypatch, capsys, seconds):
+    elapsed = [0.0]
+    clock = SimpleNamespace(
+        monotonic=lambda: elapsed[0], sleep=lambda n: elapsed.__setitem__(0, elapsed[0] + n)
+    )
+    monkeypatch.setattr(collection, "time", clock)
+    (tmp_path / "accepted.json").write_text(json.dumps({"supervisor_pid": os.getpid()}))
+    command = ["collect", "--run", str(tmp_path), "--wait-seconds", str(seconds)]
+    status = cli.main(command)
+    output = capsys.readouterr()
+    if seconds == 301:
+        assert status == 1 and "between 0 and 300 seconds" in output.err
+        assert elapsed == [0.0]
+        return
+    assert status == 3 and "PENDING" in output.out
+    assert 300 <= elapsed[0] < 300.1
+    (tmp_path / "result.json").write_text('{"exit_code":0}')
+    (tmp_path / "report.md").write_text("saved report\n")
+    before = elapsed[0]
+    assert cli.main(command) == 0 and elapsed[0] == before
+    assert capsys.readouterr().out == "saved report\n"

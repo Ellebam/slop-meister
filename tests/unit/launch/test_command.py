@@ -111,7 +111,8 @@ def test_command_file_execs_the_tool(tmp_path, monkeypatch, tool):
     launch.line = f"cd '{WT}' && tool --flag && more"
     command.write(launch)
     assert launch.command_file.read_text() == (
-        f"#!/bin/zsh -l\nexport SLOPMEISTER_SESSION_WORKSPACE='{WT}'\n"
+        f"#!/bin/zsh -l\n{command.mailbox_line(launch.wt)}\n"
+        f"export SLOPMEISTER_SESSION_WORKSPACE='{WT}'\n"
         f"cd '{WT}' && exec tool --flag && more\n"
     )
     assert launch.command_file.stat().st_mode & 0o777 == 0o700

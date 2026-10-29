@@ -40,8 +40,8 @@ RULES = (
     ),
     (
         "close-out",
-        r"close[- ]out at every|run (the |a )?(close-out|harvest)",
-        "harvest or finalize, which the operator types",
+        r"close[- ]out at every|run (the |a )?close-out|harvest at every|run (the |a )?harvest",
+        "harvest, which the operator orders",
     ),
     ("spine-run", r"run the (whole |entire )?((seven|ten)-step )?spine", "the mode line"),
     (

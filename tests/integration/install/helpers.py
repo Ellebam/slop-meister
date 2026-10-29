@@ -43,7 +43,7 @@ def fixture(tmp_path):
         path = source / name.removeprefix("service_actions/")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("synthetic " + name)
-    instructions = root / "dist/service-actions/instructions.md"
+    instructions = root / "src/service-actions/instructions.md"
     instructions.parent.mkdir(parents=True)
     instructions.write_text("Use only the approved action.")
     profiles = tmp_path / "profiles"

@@ -82,6 +82,50 @@ def test_setup_output_and_generated_hook_directory_are_removed_without_force(tmp
     assert not (Path(env["SLOT_STATE_DIR"]) / "slopmeister-slot1").exists()
 
 
+def disposable_fixture(tmp_path, kind):
+    world, repository, env = _world(tmp_path)
+    plot = world.root / "plots/slopmeister/plot.toml"
+    plot.write_text(plot.read_text().replace("max = 2\n", 'max = 2\ndisposable = ["artifacts"]\n'))
+    (repository / ".gitignore").write_text("artifacts/\nartifacts-other/\n")
+    directory = "artifacts-other" if kind == "sibling" else "artifacts"
+    relative = f"{directory}/output"
+    if kind == "tracked":
+        original = repository / relative
+        original.parent.mkdir()
+        original.write_text("committed original\n")
+        git(repository, "add", "-f", relative)
+    git(repository, "add", ".gitignore")
+    git(repository, "commit", "-qm", "Declare fixture output")
+    return repository, env, relative
+
+
+@pytest.mark.parametrize("kind", ["regular", "sibling", "symlink", "tracked"])
+def test_declared_disposable_output_keeps_the_release_boundary(tmp_path, kind):
+    repository, env, relative = disposable_fixture(tmp_path, kind)
+    result = launch(repository, env)
+    assert result.returncode == 0, result.stdout + result.stderr
+    worktree = repository / ".worktrees/slopmeister-one"
+    output = worktree / relative
+    output.parent.mkdir(exist_ok=True)
+    outside = tmp_path / "keep"
+    outside.write_text("worker work\n")
+    if kind == "symlink":
+        output.symlink_to(outside)
+    else:
+        output.write_text("worker work\n")
+    if kind == "tracked":
+        git(worktree, "update-index", "--skip-worktree", relative)
+    result = release(repository, env)
+    if kind == "regular":
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert not worktree.exists()
+    else:
+        assert result.returncode != 0 and "ignored work" in result.stderr, result.stderr
+        assert output.read_text() == "worker work\n"
+        assert (Path(env["SLOT_STATE_DIR"]) / "slopmeister-slot1/.slot.env").is_file()
+    assert outside.read_text() == "worker work\n"
+
+
 @pytest.mark.parametrize(
     "name", [".env.local", ".hooks/generated/hook", ".hooks/generated/later", "private.txt"]
 )

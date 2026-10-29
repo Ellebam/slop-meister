@@ -12,6 +12,7 @@ class InstallRequest:
     allocation: str | None
     grants: list[str]
     dispatcher_jira: bool = False
+    manager: bool = False
 
 
 @dataclass(frozen=True)

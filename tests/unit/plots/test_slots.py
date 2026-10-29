@@ -165,3 +165,19 @@ def test_setup_files_require_a_command_and_unique_names():
     slots = {**VALID["slots"], "setup": ["prepare"], "setup_files": [".env", ".env"]}
     with pytest.raises(ValueError, match="unique outputs"):
         validate(change("slots", slots), PATH)
+
+
+def test_disposable_outputs_need_no_setup_and_are_reported_as_data():
+    slots = {**VALID["slots"], "disposable": ["artifacts"]}
+    data = validate(change("slots", slots), PATH)
+    assert data["slots"]["disposable"] == ["artifacts"]
+    assert 'disposable\t-\t["artifacts"]' in slot_rows(data)
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["artifacts", ["../state"], [".git"], ["artifacts/.slot.env"], ["artifacts", "artifacts"]],
+)
+def test_disposable_outputs_refuse_unsafe_or_duplicate_paths(value):
+    with pytest.raises(ValueError, match="slots.disposable"):
+        validate(change("slots.disposable", value), PATH)

@@ -107,7 +107,7 @@ def test_direct_entry_captures_complete_large_result_without_tool_output(tmp_pat
 
 def test_rendered_result_directory_is_admitted_without_a_symlink_parent(tmp_path):
     """Bug: the rendered mktemp command gives Mac sessions a result path the entry refuses."""
-    instruction = (ROOT / "dist/service-actions/instructions.md").read_text()
+    instruction = (ROOT / "src/service-actions/instructions.md").read_text()
     commands = re.findall(r"/usr/bin/mktemp -d (/[^`\s]+)", instruction)
     template = commands[0 if sys.platform == "darwin" else -1]
     directory = subprocess.check_output(["/usr/bin/mktemp", "-d", template], text=True).strip()

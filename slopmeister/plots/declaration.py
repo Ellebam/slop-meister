@@ -135,7 +135,7 @@ def slot_rows(data: dict) -> list[str]:
     rows = [f"port\t{name}\t{port}" for name, port in slots.get("ports", {}).items()]
     if "compose" in slots:
         rows.append(f"compose\t-\t{slots['compose']}")
-    for key in ("setup", "setup_files"):
+    for key in ("setup", "setup_files", "disposable"):
         if key in slots:
             rows.append(f"{key}\t-\t{json.dumps(slots[key])}")
     if "testers" in slots:

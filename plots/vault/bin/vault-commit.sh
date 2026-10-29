@@ -26,7 +26,7 @@ exec 2>>"$LOG"
 [ -d "$G" ] || { log "no repository at $G"; exit 0; }
 [ -x "$LOCK" ] || { log "no vault lock helper at $LOCK"; exit 0; }
 if [ "${SLOPMEISTER_VAULT_LOCKED:-0}" != 1 ]; then
-  exec "$LOCK" --git-dir "$G" --kind scheduled --timeout 0 -- "$0"
+  exec "$LOCK" --git-dir "$G" --kind scheduled -- "$0"
 fi
 # macOS TCC blocks background processes from synced cloud folders. Git then sees an
 # unreadable tree and reports nothing to commit, a silent no-op, so refuse to continue blind.

@@ -4,12 +4,30 @@ import base64
 import configparser
 import json
 from pathlib import Path
+import re
 
 import jinja2
+import pytest
 import yaml
 
 HOST = Path(__file__).resolve().parents[1]
 ROLE = HOST / "ansible/roles/grove"
+
+
+@pytest.mark.parametrize(
+    "publisher,accepted", [("publisher", True), ("", False), ("root", False), ("grove", False)]
+)
+def test_publisher_is_explicit_and_separate_from_the_reader(publisher, accepted):
+    tasks = yaml.safe_load((ROLE / "tasks/main.yml").read_text())
+    guard = tasks[0]["ansible.builtin.assert"]
+    env = jinja2.Environment(undefined=jinja2.StrictUndefined)
+    env.tests["match"] = lambda value, pattern: bool(re.match(pattern, value))
+    values = {
+        "grove_archive": "/reviewed/runtime.tar",
+        "grove_archive_sha256": "a" * 64,
+        "grove_publisher": publisher,
+    }
+    assert all(env.compile_expression(check)(**values) for check in guard["that"]) is accepted
 
 
 def unit(name):

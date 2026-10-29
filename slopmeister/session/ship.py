@@ -1,4 +1,4 @@
-"""Ship one declared task branch: push it and open or update its one GitHub PR.
+"""Ship one declared task branch: push it and open or update its GitHub PR.
 
 Git and GitHub are the state. A rerun pushes only when the remote branch differs from HEAD and
 writes the PR only when its title or body differ, so a confirmed write is never repeated.
@@ -29,7 +29,7 @@ REVIEW_LINE = re.compile("^Independent review: (?:PASS|PENDING|N/A) - .+$", re.M
 GITHUB_REMOTE = re.compile(
     "(?:git@github\\.com:|https://github\\.com/)([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(?:\\.git)?"
 )
-PR_FIELDS = "number,url,state,body,title,baseRefName,headRefName,headRepository"
+PR_FIELDS = "number,url,state,body,title,baseRefName,headRefName,headRefOid,headRepository,mergedAt"
 
 
 def command(repo, *args):
@@ -117,33 +117,56 @@ def push(repo, branch, sha):
 
 
 def open_pr(repo, target):
-    fields = ("--head", target["branch"], "--state", "all", "--json", PR_FIELDS)
+    fields = ("--head", target["branch"], "--state", "all", "--limit", "1000", "--json", PR_FIELDS)
     rows = json.loads(gh(repo, target["repository"], "pr", "list", *fields))
-    if len(rows) > 1:
+    for row in rows:
+        if (
+            row["state"] not in ("OPEN", "MERGED")
+            or row["baseRefName"] != target["base"]
+            or row["headRefName"] != target["branch"]
+            or row["headRepository"]["nameWithOwner"].lower() != target["repository"].lower()
+        ):
+            raise ValueError("existing PR does not match the saved repository and open task branch")
+    opened = [row for row in rows if row["state"] == "OPEN"]
+    if len(opened) > 1:
         raise ValueError("multiple PRs for this task branch")
-    if not rows:
-        return None
-    row = rows[0]
-    if (
-        row["state"] != "OPEN"
-        or row["baseRefName"] != target["base"]
-        or row["headRefName"] != target["branch"]
-        or row["headRepository"]["nameWithOwner"].lower() != target["repository"].lower()
-    ):
-        raise ValueError("existing PR does not match the saved repository and open task branch")
-    return row
+    merged = [row for row in rows if row["state"] == "MERGED"]
+    predecessor = max(merged, key=lambda row: (row["mergedAt"], row["number"])) if merged else None
+    return (opened[0] if opened else None), predecessor
 
 
-def write_pr(repo, target, text):
+def check_follow_up(repo, pr, predecessor, sha, body):
+    if not predecessor:
+        return
+    line = f"Follows #{predecessor['number']}"
+    if re.findall(r"^Follows #\d+$", body, re.M) != [line]:
+        raise ValueError("PR body requires exactly one predecessor line: " + line)
+    if pr:
+        return
+    previous = predecessor["headRefOid"]
+    if not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", previous):
+        raise ValueError("invalid merged PR head")
+    if previous == sha:
+        raise ValueError("no follow-up commits")
+    try:
+        command(repo, "git", "merge-base", "--is-ancestor", previous, sha)
+    except ValueError:
+        raise ValueError(
+            "HEAD does not descend from the merged PR head, or that head is missing"
+        ) from None
+
+
+def write_pr(repo, target, text, sha):
     title, body = text
-    pr = open_pr(repo, target)
+    pr, predecessor = open_pr(repo, target)
+    check_follow_up(repo, pr, predecessor, sha, body)
     if pr and pr["title"] == title and pr["body"] == body:
         return pr, "unchanged"
     action = "updated" if pr else "created"
     head = ["edit", str(pr["number"])] if pr else ["create", "--head", target["branch"]]
     base = [] if pr else ["--base", target["base"]]
     gh(repo, target["repository"], "pr", *head, *base, "--title=" + title, "--body=" + body)
-    pr = open_pr(repo, target)
+    pr, _ = open_pr(repo, target)
     if not pr or pr["title"] != title or pr["body"] != body:
         raise ValueError("PR write is unconfirmed")
     return pr, action
@@ -166,10 +189,12 @@ def mergeability(repo, repository, number):
 def ship(repo, title, body):
     target = ship_target(repo, authorized_state(repo), body)
     sha = command(repo, "git", "rev-parse", "HEAD")
+    pr, predecessor = open_pr(repo, target)
+    check_follow_up(repo, pr, predecessor, sha, body)
     pushed = remote_sha(repo, target["branch"]) != sha
     if pushed:
         push(repo, target["branch"], sha)
-    pr, action = write_pr(repo, target, (title, body))
+    pr, action = write_pr(repo, target, (title, body), sha)
     merge = mergeability(repo, target["repository"], pr["number"])
     return dict(pr=pr["url"], sha=sha, pushed=pushed, pr_action=action, mergeable=merge)
 

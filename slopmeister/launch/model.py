@@ -2,16 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
-import contextlib
 from dataclasses import dataclass, field
-import io
 import os
 from pathlib import Path
 import subprocess
-import sys
 
-from slopmeister.paths import main_checkout
+from slopmeister.paths import codex_home, main_checkout
 
 RED = "\033[0;31m"
 REPORT = "; stop and report this to the operator"
@@ -35,21 +31,6 @@ def die(message: str) -> Stop:
 
 def plain(message: str) -> Stop:
     return Stop(1, message)
-
-
-def call(main: Callable[[Sequence[str]], int], argv: list[str], capture: bool = False) -> str:
-    """Run a package command in-process with the exit semantics its child process had."""
-    stream = io.StringIO()
-    try:
-        with contextlib.redirect_stdout(stream) if capture else contextlib.nullcontext():
-            code = main(argv)
-    except SystemExit as error:
-        code = error.code if isinstance(error.code, int) else 1
-        if error.code is not None and not isinstance(error.code, int):
-            print(error.code, file=sys.stderr)
-    if code:
-        raise Stop(code)
-    return stream.getvalue().rstrip("\n")
 
 
 def pause(seconds: float) -> None:
@@ -88,6 +69,7 @@ class Launch:
     model: str = ""
     redispatch: bool = False
     abandon: bool = False
+    manager: bool = False
     directory_requested: bool = False
     model_set: bool = False
     extra: list[str] = field(default_factory=list)
@@ -124,7 +106,7 @@ class Launch:
 
     @property
     def codex_home(self) -> Path:
-        return Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
+        return codex_home()
 
     @property
     def codex_bin(self) -> Path:

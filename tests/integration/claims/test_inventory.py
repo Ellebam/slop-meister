@@ -1,4 +1,4 @@
-"""Backlog and finalization preserve visible claim state."""
+"""Backlog and harvest preserve visible claim state."""
 
 import json
 from pathlib import Path
@@ -123,7 +123,7 @@ def test_dead_paused_worker_keeps_claim_and_refuses_fresh_dispatch(world):
     assert json.loads((root / "remote.json").read_text())["labels"]
 
 
-def test_changed_kickoff_blocks_finalize_before_any_close(world):
+def test_changed_kickoff_blocks_harvest_before_any_close(world):
     root, repo, env, worker, launch, cli = world
     _, workspace = worker("slopmeister-7-work", "claude")
     first = launch("slopmeister-7-work", "claude", "--issue-id", "7")
@@ -154,7 +154,7 @@ def test_malformed_issue_flags_refuse_without_github_call(world, args):
     assert not (root / "github.log").exists()
 
 
-def test_finalized_original_worker_does_not_block_another_issue(world):
+def test_harvested_original_worker_does_not_block_another_issue(world):
     root, repo, env, worker, launch, cli = world
     old, workspace = worker("slopmeister-7-work", "claude")
     assert launch("slopmeister-7-work", "claude", "--issue-id", "7").returncode == 0
@@ -184,7 +184,7 @@ def test_close_reason_argument_reaches_github(world):
 
 
 def test_close_without_reason_writes_completed(world):
-    """Bug: adding the reason argument changes every ordinary finalize close."""
+    """Bug: adding the reason argument changes every ordinary harvest close."""
     root, repo, env, worker, launch, cli = world
     _, workspace = worker("slopmeister-7-work", "claude")
     assert launch("slopmeister-7-work", "claude", "--issue-id", "7").returncode == 0
@@ -194,7 +194,7 @@ def test_close_without_reason_writes_completed(world):
 
 
 def test_close_refuses_a_workspace_whose_saved_permissions_deny(world):
-    """Bug: finalize closes an issue from a workspace that may not ship, a customer plot."""
+    """Bug: harvest closes an issue from a workspace that may not ship, a customer plot."""
     root, repo, env, worker, launch, cli = world
     _, workspace = worker("slopmeister-7-work", "claude")
     assert launch("slopmeister-7-work", "claude", "--issue-id", "7").returncode == 0

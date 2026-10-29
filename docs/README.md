@@ -16,9 +16,8 @@ New here? Start with the [project overview](../README.md), then follow [one sess
 | Command a configured remote host from the Mac or phone | [Remote dispatch](remote-dispatch.md) |
 | Launch or resume a worker | [The dispatcher's first run](session-walkthrough.md#prepare-and-dispatch), then [the launcher procedure](../src/skills/plot-session/SKILL.md) |
 | Set up Orca, its phone pairing and what agents may drive in it | [Orca onboarding](orca.md) |
-| End or hand back a session | [Harvest](../src/skills/harvest/SKILL.md), with [finalize and close-out compatibility](skills.md) |
+| End or hand back a session | [Harvest](../src/skills/harvest/SKILL.md) |
 | Remove a retired workspace or recover failed removal | [Workspace removal](workspace-removal.md) |
-| Prepare dependency update PRs for operator dispatch | [Dependency update loop](update-prs.md) |
 | Read or change GitLab issues, epics and merge requests | [GitLab through glab](gitlab.md) |
 | Deploy Home Assistant approvals or Grove on Linux | [Host services](../host/README.md) |
 | Request a secret from an agent session, on either machine | [Secret requests in two tiers](1password-access.md) |
@@ -65,3 +64,5 @@ The [skills index](skills.md) names every procedure, what it does, when it runs 
 
 > [!TIP]
 > Returning to a task? Read its saved notes, find your step in the [walkthrough](session-walkthrough.md#the-ten-steps), then open that procedure. The notes carry the decisions already made.
+
+[Testing environments](testing-environments.md) owns CI, workstation, real-session and temporary-fixture prerequisites.

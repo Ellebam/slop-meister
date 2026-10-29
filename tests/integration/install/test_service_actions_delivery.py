@@ -75,7 +75,7 @@ def test_unsafe_private_profile_is_rejected_before_delivery(tmp_path, unsafe):
     "action", ["jira-read", "confluence-read", "jira-write", "confluence-write"]
 )
 def test_instructions_cover_every_declared_operation(action):
-    delivered = (ROOT / "dist/service-actions/instructions.md").read_text()
+    delivered = (ROOT / "src/service-actions/instructions.md").read_text()
     table = TABLES[action]
     names = [*table.forms, *table.options]
     assert set(names) <= set(re.findall(r"--[a-z][a-z-]*", delivered))

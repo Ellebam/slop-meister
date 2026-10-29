@@ -65,11 +65,9 @@ The quality checker resolves absolute and relative imports and enforces these ru
 
 | What | Limit |
 |---|---|
-| Python and shell files | 250 lines |
-| Constant-only Python modules and other runtime sources, including instructions and configuration | 400 lines |
+| Python, shell and other runtime sources, including instructions and configuration | 400 lines |
 | Global instruction source | 200 lines |
-| Functions | 30 lines |
-| Parameters | 3, or 5 for a test function |
+| Function parameters | 5, enforced by Ruff |
 | Nesting depth | 3 |
 | Cyclomatic complexity | 10, enforced by Ruff |
 | `README.md`, `docs/*.md`, `src/skills/*/SKILL.md` and `plots/*/skills/*/SKILL.md` | 2,000 words |

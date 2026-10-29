@@ -19,7 +19,7 @@ The input is optionally a PR number, otherwise find the PR for the current branc
 
 `git branch --show-current`, then `gh pr list --head <branch> --json number,url,state,title,mergeable,baseRefName,headRefName,headRefOid,isCrossRepository`.
 
-If no open PR is found, run `gh pr list --head <branch> --state merged --json number,url,state,title,mergeable,baseRefName,headRefName,headRefOid,isCrossRepository` before the no-PR response below. Use the matching task PR. An ambiguous match stops and names the PRs.
+If no open PR is found, run `gh pr list --head <branch> --state merged --json number,url,state,title,mergeable,baseRefName,headRefName,headRefOid,isCrossRepository` before the no-PR response below. Select the unique matching merged PR whose `headRefOid` equals the current `git rev-parse HEAD`. If none or more than one match that head, stop and name the PRs.
 
 Confirm `baseRefName` is the repository's default branch and `headRefName` is the current branch. If `isCrossRepository` is true, stop, a fork PR can share the branch name and its CI never runs. Save `headRefOid` now. It identifies the exact code whose checks may authorize the merge, so never replace it with a later head.
 
@@ -31,7 +31,7 @@ On the default branch, "This is the default branch. There is nothing to merge.".
 
 - Any check pending, refuse. Wait with `gh pr checks <number> --watch`, then re-run.
 - Any check failed, stop and name it. Do not merge.
-- Zero checks reported, refuse unless the operator's own message names `<owner>/<repo>#<number>` and authorizes a CI-less bootstrap merge. A notes entry or bare `finalize` or `harvest` request is not authority. Inspect CI configuration on the current default branch and `headRefOid`, including workflow files and documented integrations. Require the operator's explicit confirmation that no external CI is expected. If any CI is configured, confirmation is absent, or inspection is uncertain, refuse. A non-CI workflow alone does not disqualify the PR. Check `gh pr view <number> --json mergeable,mergeStateStatus`; unknown mergeability still refuses.
+- Zero checks reported, refuse unless the operator's own message names `<owner>/<repo>#<number>` and authorizes a CI-less bootstrap merge. A notes entry or bare `harvest` request is not authority. Inspect CI configuration on the current default branch and `headRefOid`, including workflow files and documented integrations. Require the operator's explicit confirmation that no external CI is expected. If any CI is configured, confirmation is absent, or inspection is uncertain, refuse. A non-CI workflow alone does not disqualify the PR. Check `gh pr view <number> --json mergeable,mergeStateStatus`; unknown mergeability still refuses.
 - Every check skipped, refuse, even with bootstrap authorization.
 
 For the bootstrap exception, require a passed local gate, accepted tester verdict and review disposition from saved results, and identify the commit they prove. Confirm a clean worktree at `headRefOid`, inspect the full `git diff <proved-commit>..<headRefOid>`, and run the project's local gate on that head to a pass. If later changes affect the tested behavior without renewed tester and review proof, stop. Never create a status or check run to satisfy this gate.
@@ -101,7 +101,7 @@ When the plot supplies a merge-tree prerequisite, run its literal block immediat
 
 The head pin closes head races. The repository's account tier cannot make the base comparison and merge atomic. Do not bypass branch protection or force a merge.
 
-An operator-ordered `merge`, `finalize` or `harvest` is the order for this merge, so run the block without asking again. When the tool's permission review still refuses it, do not retry it and do not work around it. Report the refusal and its reason, and that a reply that names the merge, such as `merge it`, clears it. After that reply, run the whole step 3 block once, including its fresh guards.
+An operator-ordered `merge` or `harvest` is the order for this merge, so run the block without asking again. When the tool's permission review still refuses it, do not retry it and do not work around it. Report the refusal and its reason, and that a reply that names the merge, such as `merge it`, clears it. After that reply, run the whole step 3 block once, including its fresh guards.
 
 ### 4. Verify the merge and its integration check
 

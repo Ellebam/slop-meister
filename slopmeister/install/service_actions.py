@@ -241,7 +241,7 @@ def action_payload(
         for native in (".claude", ".codex")
     ]
     permissions = {"ask": list(dict.fromkeys(asks)), "deny": [*denies, *direct_denies]}
-    instructions = (context.root / "dist/service-actions/instructions.md").read_text().rstrip()
+    instructions = (context.root / "src/service-actions/instructions.md").read_text().rstrip()
     instructions += (
         "\n\nSelected commands\n\n" + "\n".join("- " + command for command in commands) + "\n"
     )

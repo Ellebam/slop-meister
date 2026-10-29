@@ -140,6 +140,7 @@ def _saved_tmp(root: Path, relative: str, proof: Path) -> bool:
 
 
 def _release_remaining(root: Path, names: list[str], owned: allocation.Live) -> list[str]:
+    disposable = allocation.definition(owned.target).get("disposable", [])
     proof = Launch(owned.target, owned.name, str(root)).state_dir / f"{owned.name}-proof"
     kept = []
     for path, info, marker in _files(root, names):
@@ -148,7 +149,9 @@ def _release_remaining(root: Path, names: list[str], owned: allocation.Live) -> 
         if marker == "? " and stat.S_ISREG(info.st_mode) and info.st_mode & 0o444:
             try:
                 _contained(root, relative, allow_metadata=relative.startswith("tmp/"))
-                removable = relative.startswith("tmp/") and _saved_tmp(root, relative, proof)
+                removable = any(relative.startswith(name + "/") for name in disposable) or (
+                    relative.startswith("tmp/") and _saved_tmp(root, relative, proof)
+                )
             except SlopmeisterError:
                 pass
         if not removable:

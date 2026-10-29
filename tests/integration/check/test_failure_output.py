@@ -13,6 +13,13 @@ from slopmeister.check import jobs, ownership
 from slopmeister.check.jobs import stop_group
 
 ROOT = Path(__file__).resolve().parents[3]
+
+
+@pytest.fixture(autouse=True)
+def isolated_gate_home(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+
+
 LATE_CHILD_SCRIPT = (
     "import signal, subprocess, sys, time\n"
     "from pathlib import Path\n"

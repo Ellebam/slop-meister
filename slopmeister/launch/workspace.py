@@ -8,20 +8,19 @@ from pathlib import Path
 import stat
 import subprocess
 
-from slopmeister.install import cli as install
 from slopmeister.install.check import state_directory
+from slopmeister.install.models import InstallRequest
+from slopmeister.install.preflight import reject_git_context
+from slopmeister.install.prepare import prepare
 from slopmeister.install.trust import TrustRequest, trust
-from slopmeister.launch.model import REPORT, Launch, Stop, call, die, plain
+from slopmeister.launch.model import REPORT, Launch, Stop, die, plain
+from slopmeister.paths import session_root
 from slopmeister.paths import vault as selected_vault
 from slopmeister.removal import SCRATCH
 
 
 def git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True)
-
-
-def session_root() -> Path:
-    return Path(os.environ.get("PLOT_SESSION_ROOT") or Path.home() / ".slopmeister/sessions")
 
 
 def grants(launch: Launch) -> None:
@@ -72,9 +71,9 @@ def _trust(launch: Launch, mode: str, failure: str) -> None:
     request = TrustRequest(mode, store, _trust_key(launch) if mode == "write" else str(launch.wt))
     named = launch.claude_wt if launch.tool == "claude" else launch.wt
     try:
-        call(lambda _: trust(request, launch.tool) or 0, [])
-    except Stop as error:
-        raise die(f"{label} trust entry {failure.format(named)}") from error
+        trust(request, launch.tool)
+    except SystemExit as error:
+        raise die(f"{label} trust entry {failure.format(named)}: {error}") from error
 
 
 def trust_check(launch: Launch) -> None:
@@ -128,12 +127,31 @@ def add_worktree(launch: Launch) -> None:
         raise Stop(added.returncode)
 
 
+def _install(launch: Launch, action: str) -> None:
+    workspace = launch.repo if action == "--preflight" else launch.wt
+    request = InstallRequest(
+        action,
+        launch.plot,
+        str(workspace),
+        (launch.wt_file_name or None) if action in ("--preflight", "--prepare") else None,
+        launch.grants[1::2],
+        manager=launch.manager and action in ("--prepare", "--directory"),
+    )
+    try:
+        reject_git_context()
+        prepare(request)
+    except (ValueError, OSError, KeyError, TypeError) as error:
+        raise die(
+            f"config-install: {error}; preserve this workspace "
+            "and report the refusal to the operator"
+        ) from error
+
+
 def prepare_worktree(launch: Launch) -> None:
-    allocation = [launch.wt_file_name] if launch.wt_file_name else []
     grants(launch)
-    call(install.main, ["--preflight", launch.plot, str(launch.repo), *allocation, *launch.grants])
+    _install(launch, "--preflight")
     add_worktree(launch)
-    call(install.main, ["--prepare", launch.plot, str(launch.wt), *allocation, *launch.grants])
+    _install(launch, "--prepare")
     trust_write(launch)
     print(f"plot-session: worktree ready at {launch.wt} (branch {launch.name}, plot {launch.plot})")
 
@@ -147,7 +165,7 @@ def prepare_directory(launch: Launch) -> None:
     launch.claude_wt = Path(os.path.realpath(probe)) / launch.wt.relative_to(probe)
     grants(launch)
     trust_check(launch)
-    call(install.main, ["--directory", launch.plot, str(launch.wt), *launch.grants])
+    _install(launch, "--directory")
     (launch.wt / f"{launch.name}-NOTES.md").write_bytes(b"")
     trust_write(launch)
     print(
@@ -222,7 +240,7 @@ def adopt(launch: Launch) -> None:
     if not launch.directory:
         _registered(launch)
     grants(launch)
-    call(install.main, ["--check", launch.plot, str(launch.wt), *launch.grants])
+    _install(launch, "--check")
     trust_check(launch)
     _output_paths(launch)
 

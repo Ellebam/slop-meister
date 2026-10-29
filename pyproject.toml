@@ -1,6 +1,6 @@
 [project]
 name = "slopmeister"
-version = "0.3.0"
+version = "0.4.0"
 description = "Dispatch and manage agent sessions with fixed configuration, reviews and proof."
 requires-python = ">=3.14"
 dependencies = []
@@ -28,7 +28,7 @@ extend-exclude = [
 ]
 
 [tool.ruff.lint]
-select = ["E", "W", "F", "I", "B", "UP", "SIM", "C90", "PLR0911", "PLR0912", "PLR0915"]
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "C90", "PLR0911", "PLR0912", "PLR0913", "PLR0915"]
 mccabe.max-complexity = 10
 pylint.max-returns = 4
 pylint.max-branches = 8

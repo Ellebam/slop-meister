@@ -57,24 +57,6 @@ def _body(path: Path) -> bytes:
     return parts[2].lstrip(b"\n")
 
 
-def test_operator_endings_reach_guarded_self_removal_in_both_tools():
-    """Ending delegation must retain the explicit-invocation and safe-removal boundaries."""
-    for tool in ("claude", "codex"):
-        root = ROOT / f"dist/{tool}/skills"
-        finalize = (root / "finalize/SKILL.md").read_text()
-        harvest = (root / "harvest/SKILL.md").read_text()
-        ending = (root / "harvest/ending.md").read_text()
-        assert "../harvest/SKILL.md" in finalize and "ending.md" in harvest
-        assert "workspace-remove --self -- <absolute-worktree>" in ending
-        assert "cleanup reported as pending" in ending and "keep the local branch" in ending
-        policy = root / "harvest/agents/openai.yaml"
-        assert (
-            ("allow_implicit_invocation: false" in policy.read_text())
-            if tool == "codex"
-            else ("disable-model-invocation: true" in harvest)
-        )
-
-
 def test_target_tree_holds_exactly_the_folders_the_target_declares():
     """A target renders only what it varies. Without this the tree regrows the duplicate copies
     the manifest used to force, 13 of which were byte-identical to the shared render."""

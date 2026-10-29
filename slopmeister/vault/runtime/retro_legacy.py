@@ -5,15 +5,29 @@ from datetime import UTC, date, datetime
 import os
 from pathlib import Path, PurePosixPath
 import re
+import socket
 import sys
 import tempfile
 import time
 
 from . import repository
-from .retro import _machine, input_problem
 
 STALE_DAYS = 7
 DEFAULT_NOTE = "_system/retro-log.md"
+
+
+def input_problem(label: str, value: str, *, table: bool = False) -> str | None:
+    control = re.search(r"[\x00-\x1f\x7f]", value) is not None
+    problems = (
+        (not value, f"{label} is empty"),
+        (control, f"{label} must be one line without control characters"),
+        (
+            r"\n" in value or r"\t" in value,
+            f"{label} carries a literal backslash-n or backslash-t sequence",
+        ),
+        (table and "|" in value, f"{label} cannot carry a pipe"),
+    )
+    return next((message for found, message in problems if found), None)
 
 
 def spill_dir() -> Path:
@@ -24,11 +38,12 @@ def spill_dir() -> Path:
 
 
 def _entry(args: argparse.Namespace, lines: list[str]) -> str:
+    machine = socket.gethostname().partition(".")[0]
     return (
         f"### {args.repo}, {args.task}, {args.title}, {date.today():%F}\n\n"
         "| Repository | Tool | Model | Machine |\n"
         "|---|---|---|---|\n"
-        f"| {args.repo} | {args.tool} | {args.model} | {_machine()} |\n\n"
+        f"| {args.repo} | {args.tool} | {args.model} | {machine} |\n\n"
         f"- {lines[0]}\n- {lines[1]}\n- {lines[2]}\n"
     )
 

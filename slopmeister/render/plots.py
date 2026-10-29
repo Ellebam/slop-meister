@@ -147,7 +147,7 @@ def render_plot(plot_dir: Path, paths: tuple[Path, Path], manifest: list) -> Non
         destination = out / tool / "plots"
         destination.mkdir(parents=True, exist_ok=True)
         (destination / f"{plot_dir.name}.md").write_text(composed.replace("{{TOOL}}", label))
-    manifest.append(("plot", plot_dir.name, plot_dir.name, False, False))
+    manifest.append(("plot", plot_dir.name, plot_dir.name))
 
 
 def _target_source(paths: tuple[Path, Path], target: str, name: str) -> SkillRequest:

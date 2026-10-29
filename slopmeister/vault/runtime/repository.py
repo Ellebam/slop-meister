@@ -74,9 +74,7 @@ def path_problem(value: str) -> bool:
     )
 
 
-def _lock_command(
-    command: Sequence[str], paths: Sequence[str], wait_seconds: float = 0
-) -> tuple[list[str], dict[str, str]]:
+def _lock_command(command: Sequence[str], paths: Sequence[str]) -> tuple[list[str], dict[str, str]]:
     env = commit_environment()
     lock = Path(env["VAULT_LOCK"])
     if not lock.is_file() or not os.access(lock, os.X_OK):
@@ -92,8 +90,6 @@ def _lock_command(
         env["VAULT_GIT_DIR"],
         "--kind",
         "manual",
-        "--timeout",
-        str(wait_seconds),
     ]
     for path in paths:
         command += ["--path", path]
@@ -151,7 +147,7 @@ def _commit(wrapper: Path, words: list[str], paths: list[str]) -> int:
     ).returncode
 
 
-def commit_cli(argv: Sequence[str], *, wait_seconds: float = 0) -> int:
+def commit_cli(argv: Sequence[str]) -> int:
     parts = _split_commit(argv)
     problem = "explicit paths are required" if parts is None or not parts[1] else None
     if parts is not None and not parts[0]:
@@ -173,7 +169,7 @@ def commit_cli(argv: Sequence[str], *, wait_seconds: float = 0) -> int:
         return 1
     if os.environ.get("SLOPMEISTER_VAULT_LOCKED") != "1":
         try:
-            command, env = _lock_command(["commit", *argv], paths, wait_seconds)
+            command, env = _lock_command(["commit", *argv], paths)
         except ValueError:
             status = 1
         else:

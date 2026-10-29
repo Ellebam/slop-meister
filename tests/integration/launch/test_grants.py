@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from slopmeister.install.prepare import TERMINAL_INPUT
 from tests.integration.launch.helpers import (
     ROOT,
     codex_writable,
@@ -21,7 +22,7 @@ ALLOW = (
     b"session's repository. This grants no push, merge or other remote write.\nAgent shipping "
     b"permission for this session is allow. Ordinary push and PR create/update are allowed only "
     b"for the saved repository and current non-default task branch through ship, GitHub enforces "
-    b"branch protection. Merge and finalize remain operator-controlled.\n"
+    b"branch protection. Merge and harvest remain operator-controlled.\n"
 )
 
 
@@ -54,7 +55,9 @@ def test_plot_grants_reach_each_tool(tmp_path, tool, grants):
     result = launch(world, str(repo), "slopmeister", "slopmeister-s1", "--tool", tool)
     worktree = repo / ".worktrees/slopmeister-s1"
     render = (ROOT / "dist/codex/plots/slopmeister.md").read_bytes()
-    assert (worktree / "AGENTS.md").read_bytes() == render + b"\n" + ALLOW
+    assert (
+        worktree / "AGENTS.md"
+    ).read_bytes() == render + b"\n" + ALLOW + TERMINAL_INPUT.encode() + b"\n"
     assert git(worktree, "show", ":AGENTS.md") == "foreign agreement\n"
     assert git(repo, "status", "--porcelain") == git(worktree, "status", "--porcelain") == ""
     git(worktree, "commit", "-q", "--allow-empty", "-m", "allowed")

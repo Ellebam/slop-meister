@@ -10,12 +10,6 @@ def write(root: Path, relative: str, text: str) -> Path:
     return path
 
 
-def function(name: str, body_lines: int, parameters: int = 0) -> str:
-    params = ", ".join(f"p{i}" for i in range(parameters))
-    body = "\n".join(f"    x{i} = {i}" for i in range(body_lines))
-    return f"def {name}({params}):\n{body}\n    return 0\n"
-
-
 def nested(levels: int) -> str:
     lines = ["def deep():"]
     for level in range(levels):

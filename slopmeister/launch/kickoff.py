@@ -10,6 +10,7 @@ import subprocess
 import sys
 
 from slopmeister.launch.model import Launch, die
+from slopmeister.session import launch_identity
 from slopmeister.vault.runtime import repository
 
 ENCODING = ("utf-8", "surrogateescape")
@@ -86,6 +87,7 @@ def prune(launch: Launch) -> None:
             workspace = _workspace(command)
             if command.stem == launch.name or workspace is None or os.path.exists(workspace):
                 continue
+            launch_identity.path(Path(workspace)).unlink(missing_ok=True)
             command.with_suffix(".md").unlink(missing_ok=True)
             command.with_suffix(".orca").unlink(missing_ok=True)
             command.unlink()

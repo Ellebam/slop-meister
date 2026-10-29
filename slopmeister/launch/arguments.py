@@ -11,7 +11,7 @@ from slopmeister.launch.tool_arguments import config_override as config_override
 
 USAGE = (
     "usage: slopmeister plot-session [<repo-path>] <plot> <name> "
-    "[--redispatch | --abandon --handoff <path>] [--directory] "
+    "[--redispatch | --abandon --handoff <path>] [--directory] [--manager] "
     "[--tool claude|codex|opencode] "
     "[--host <alias>] [--model <model>] "
     "[--issue <n> | --issue-id <n> | --note <path>] [-- <extra tool args>]"
@@ -53,7 +53,7 @@ def _option(launch: Launch, args: list[str]) -> int:
     if flag == "--directory":
         launch.directory_requested = True
         return 1
-    if flag in ("--redispatch", "--abandon"):
+    if flag in ("--redispatch", "--abandon", "--manager"):
         setattr(launch, flag[2:], True)
         return 1
     if flag == "--model":
@@ -162,3 +162,5 @@ def check_sources(launch: Launch) -> None:
         raise die("--abandon requires --handoff and excludes --redispatch")
     if launch.handoff and not launch.abandon:
         raise die("--handoff requires --abandon")
+    if launch.manager and (launch.redispatch or launch.abandon):
+        raise die("a manager is declared at first dispatch, redispatch keeps it")

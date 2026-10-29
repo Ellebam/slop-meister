@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from slopmeister.install.prepare import TERMINAL_INPUT
 from tests.integration.install.installer_helpers import git_result
 from tests.integration.launch.helpers import (
     ROOT,
@@ -20,7 +21,7 @@ from tests.integration.launch.helpers import (
 OUTSIDE = "This session runs outside any repository. There is nothing to commit."
 NO_SHIPPING = (
     "Agent shipping permission for this session is deny. No push or PR write, including during "
-    "finalize."
+    "harvest."
 )
 AGREEMENTS = (("claude", "CLAUDE.md"), ("codex", "AGENTS.md"))
 
@@ -62,7 +63,10 @@ def test_directory_session_prepared(tmp_path, tool):
     assert f"session directory ready at {session}" in output
     for rendered, name in AGREEMENTS:
         source = (ROOT / f"dist/{rendered}/plots/example-client.md").read_bytes()
-        assert (session / name).read_bytes() == source + f"\n{OUTSIDE}\n{NO_SHIPPING}\n".encode()
+        assert (
+            (session / name).read_bytes()
+            == source + f"\n{OUTSIDE}\n{NO_SHIPPING}\n".encode() + TERMINAL_INPUT.encode() + b"\n"
+        )
     assert not any((session / name).exists() for name in ("CLAUDE.local.md", "AGENTS.override.md"))
     access = json.loads((session / ".claude/access-settings.json").read_text())
     assert not any(rule.startswith("Bash(git ") for rule in access["permissions"].get("ask", []))

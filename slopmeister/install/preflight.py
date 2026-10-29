@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import subprocess
 
+from slopmeister.paths import codex_home
 from slopmeister.session import git_environment
 
 ROOTS = (
@@ -134,7 +135,7 @@ def _global_configuration_roots() -> set[Path]:
     home = Path.home()
     return {
         Path(os.environ.get("CLAUDE_CONFIG_DIR", str(home / ".claude"))).resolve(),
-        Path(os.environ.get("CODEX_HOME", str(home / ".codex"))).resolve(),
+        codex_home().resolve(),
         (home / ".agents").resolve(),
     }
 

@@ -49,7 +49,9 @@ EXPLAIN = re.compile(
     re.I,
 )
 FINALIZE = re.compile(
-    r"(?:^|\s)[/$](?:finalize|harvest)\b|^\s*finalize\b|<command-name>/(?:finalize|harvest)", re.I
+    r"(?:^|\s)[/$](?:finalize|harvest)\b|^\s*(?:finalize|harvest)\b"
+    r"|<command-name>/(?:finalize|harvest)",
+    re.I,
 )
 RELAY = re.compile(r"^\s*Dispatcher here", re.I)
 KICKOFF_MODE = re.compile(r"^Mode:\s*(spine|freeform)\s*$", re.M)

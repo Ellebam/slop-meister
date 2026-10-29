@@ -50,3 +50,15 @@ def platform() -> str:
     if name not in PLATFORMS:
         raise SlopmeisterError(f"unsupported system {name}, Slopmeister runs on macOS and Linux")
     return name
+
+
+def plot_declarations(default: Path = PLOTS) -> Path:
+    return Path(os.environ.get("PLOT_DECLARATIONS") or default)
+
+
+def session_root() -> Path:
+    return Path(os.environ.get("PLOT_SESSION_ROOT") or Path.home() / ".slopmeister/sessions")
+
+
+def codex_home() -> Path:
+    return Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")

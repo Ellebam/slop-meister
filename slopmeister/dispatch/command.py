@@ -9,7 +9,7 @@ import sys
 
 from slopmeister import paths
 from slopmeister.errors import SlopmeisterError
-from slopmeister.launch.command import CODEX_APPROVAL
+from slopmeister.launch.command import CODEX_APPROVAL, initialize_mailbox, mailbox_line
 from slopmeister.launch.model import BROKER_MARK, shq
 
 # Wraps the tool so the machine does not sleep while it is idle, see docs/agent-hosts.md.
@@ -63,7 +63,7 @@ def _claude(settings: Settings, workspace: Path) -> list[str]:
 
 def _codex(workspace: Path) -> list[str]:
     executable = Path.home() / ".local/bin/codex"
-    codex_home = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex").resolve()
+    codex_home = paths.codex_home().resolve()
     if not os.access(executable, os.X_OK):
         raise SlopmeisterError(f"codex not found at {executable}")
     return [
@@ -92,10 +92,14 @@ def prefix(settings: Settings, workspace: Path) -> list[str]:
 
 def line(workspace: Path, argv: list[str], kickoff: Path) -> str:
     quoted = " ".join(shq(value) for value in argv)
-    return f'cd {shq(str(workspace))} && exec {quoted} -- "$(cat {shq(str(kickoff))})"'
+    return (
+        mailbox_line(workspace)
+        + f'\ncd {shq(str(workspace))} && exec {quoted} -- "$(cat {shq(str(kickoff))})"'
+    )
 
 
 def execute(workspace: Path, argv: list[str], kickoff: str) -> None:
     sys.stdout.flush()
     os.chdir(workspace)
+    initialize_mailbox(workspace)
     os.execvpe(argv[0], [*argv, "--", kickoff], os.environ)

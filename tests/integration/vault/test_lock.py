@@ -17,8 +17,6 @@ def call(git_dir: Path, launcher: Path, *extra: str) -> subprocess.CompletedProc
             str(git_dir),
             "--kind",
             "manual",
-            "--timeout",
-            "0",
             *extra,
             "--",
             str(launcher),

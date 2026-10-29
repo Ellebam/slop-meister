@@ -40,23 +40,10 @@ def relative(value: str) -> str:
     return str(path)
 
 
-def acquire(lock, seconds: float) -> bool:
-    deadline = time.monotonic() + seconds
-    while True:
-        try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            return True
-        except BlockingIOError:
-            if time.monotonic() >= deadline:
-                return False
-            time.sleep(min(0.05, max(0, deadline - time.monotonic())))
-
-
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description=__doc__)
     result.add_argument("--git-dir", type=Path, required=True)
     result.add_argument("--kind", choices=("manual", "scheduled"), required=True)
-    result.add_argument("--timeout", type=float, default=0)
     result.add_argument("--command-timeout", type=positive_seconds, default=COMMAND_TIMEOUT)
     result.add_argument("--path", dest="paths", action="append", default=[])
     result.add_argument("command", nargs=argparse.REMAINDER)
@@ -77,7 +64,13 @@ def signal_group(pid: int, signum: int) -> None:
 
 def exit_status(process: subprocess.Popen) -> os.waitid_result | None:
     # Do not reap the leader before cleanup: its PID anchors the owned process group.
-    return os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+    status = os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+    # macOS can return a stopped event even when only WEXITED was requested.
+    return (
+        status
+        if status is not None and status.si_code in (os.CLD_EXITED, os.CLD_KILLED, os.CLD_DUMPED)
+        else None
+    )
 
 
 def foreground(fd: int | None, group: int, *, resume: bool = False) -> None:
@@ -147,6 +140,7 @@ def watch(process: subprocess.Popen, seconds: float, cancelled: list[int]) -> bo
 
 def finish(process: subprocess.Popen, stopped: bool, fd: int | None) -> int:
     # Descendants must not outlive the lease, even when their leader exited normally.
+    cleanup_error = None
     try:
         signal_group(process.pid, signal.SIGTERM)
         time.sleep(KILL_GRACE if stopped else POLL_SECONDS)
@@ -154,16 +148,20 @@ def finish(process: subprocess.Popen, stopped: bool, fd: int | None) -> int:
     except PermissionError as error:
         if exit_status(process) is None:
             raise
-        print(
-            f"warning: vault process group {process.pid} cleanup denied after child exit: {error}",
-            file=sys.stderr,
-        )
+        cleanup_error = error
     try:
         owned = fd is not None and os.tcgetpgrp(fd) == process.pid
     finally:
         result = process.wait()
     if owned:
         foreground(fd, os.getpgrp())
+    # A background-terminal write can fail before foreground control is restored.
+    if cleanup_error is not None:
+        print(
+            f"warning: vault process group {process.pid} "
+            f"cleanup denied after child exit: {cleanup_error}",
+            file=sys.stderr,
+        )
     return 128 - result if result < 0 else result
 
 
@@ -197,13 +195,8 @@ def transaction(command: list[str], environment: dict, seconds: float) -> int:
 
 def main(argv=None) -> int:
     args = parser().parse_args(argv)
-    if (
-        not math.isfinite(args.timeout)
-        or args.timeout < 0
-        or not args.command
-        or args.command[0] != "--"
-    ):
-        raise ValueError("lock requires a nonnegative timeout and a command after --")
+    if not args.command or args.command[0] != "--":
+        raise ValueError("lock requires a command after --")
     command = args.command[1:]
     if not command or Path(command[0]).name not in SUPPORTED_COMMANDS:
         raise ValueError("unsupported vault transaction command")
@@ -218,7 +211,9 @@ def main(argv=None) -> int:
     lock_path = coordination / "commit.lock"
     fd = os.open(lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
     with os.fdopen(fd, "r+") as lock:
-        if not acquire(lock, args.timeout):
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
             print("vault transaction busy", file=sys.stderr)
             return 0 if args.kind == "scheduled" else BUSY
         environment = os.environ.copy()

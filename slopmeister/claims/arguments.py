@@ -7,15 +7,6 @@ from pathlib import Path
 from slopmeister.claims import github
 
 ACTIONS = (
-    "eligible",
-    "association",
-    "target",
-    "lock-path",
-    "lock",
-    "preflight",
-    "initialize",
-    "bind",
-    "confirm",
     "inspect",
     "backlog",
     "reconcile",
@@ -23,7 +14,6 @@ ACTIONS = (
     "abandon-complete",
     "close",
 )
-REPOSITORY_ACTIONS = {"target", "lock-path", "lock", "backlog", "preflight", "initialize"}
 
 
 def parse(argv: Sequence[str]) -> argparse.Namespace:
@@ -33,8 +23,6 @@ def parse(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--plot")
     parser.add_argument("--workspace", type=Path)
     parser.add_argument("--issue-id", type=github.issue_number)
-    parser.add_argument("--lock-fd", type=int)
-    parser.add_argument("--redispatch", action="store_true")
     parser.add_argument("--kickoff", type=Path)
     parser.add_argument("--tool", choices=("claude", "codex", "opencode"))
     parser.add_argument("--session")

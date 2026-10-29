@@ -12,7 +12,6 @@ from slopmeister.plots import load_all
 from slopmeister.render.agents import AgentRequest, render_agent
 from slopmeister.render.check import trees_differ
 from slopmeister.render.plots import render_plot, render_target_skills
-from slopmeister.render.service_actions import render_service_actions
 from slopmeister.render.settings import render_home, render_settings
 from slopmeister.render.skills import SkillRequest, render_skill
 
@@ -50,11 +49,8 @@ def _render_plots(paths: tuple[Path, Path, Path, dict], manifest: list) -> None:
 
 
 def _write_manifest(out: Path, manifest: list) -> None:
-    lines = ["kind\tname\tplot\tclaude_gate\tcodex_gate"]
-    lines.extend(
-        f"{kind}\t{name}\t{plot}\t{str(claude).lower()}\t{str(codex).lower()}"
-        for kind, name, plot, claude, codex in manifest
-    )
+    lines = ["kind\tname\tplot"]
+    lines.extend("\t".join(entry[:3]) for entry in manifest)
     (out / "manifest.tsv").write_text("\n".join(lines) + "\n")
 
 
@@ -70,7 +66,6 @@ def build(out: Path, root: Path = ROOT) -> None:
     _render_plots((out, src, plots, declarations), manifest)
     render_home(plots, out, manifest)
     render_settings(src, out, manifest)
-    render_service_actions(src, out, manifest)
     _write_manifest(out, manifest)
 
 

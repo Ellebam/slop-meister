@@ -9,7 +9,7 @@ A hygiene and debloat pass built to run often. The default is a read-only audit 
 
 ## Invocation
 
-Invoke it by name with an optional scope, `/vault-optimize [scope]` on Claude Code, `$vault-optimize [scope]` on Codex, or in words. The scope is a vault path, field, project or ticket folder. No scope means vault-wide. This audit covers more than one session's own work area. Groom maintains that area during work in plots that require groom. Direct harvest maintains the session area through groom. Finalize and close-out retain their verification-only rules where groom is required.
+Invoke it by name with an optional scope, `/vault-optimize [scope]` on Claude Code, `$vault-optimize [scope]` on Codex, or in words. The scope is a vault path, field, project or ticket folder. No scope means vault-wide. This audit covers more than one session's own work area. Groom maintains that area during work in plots that require groom. Harvest verifies groom maintenance in every plot.
 
 ## Safety rules
 

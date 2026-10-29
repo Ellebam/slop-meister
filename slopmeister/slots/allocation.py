@@ -9,7 +9,7 @@ import shutil
 import subprocess
 
 from slopmeister.errors import SlopmeisterError
-from slopmeister.paths import PLOTS, main_checkout
+from slopmeister.paths import main_checkout, plot_declarations
 from slopmeister.plots.declaration import load_all
 from slopmeister.slots.models import Claim as Claim
 from slopmeister.slots.models import Listener as Listener
@@ -27,7 +27,7 @@ RESOURCE_QUERIES = (
 
 
 def declarations_path() -> Path:
-    return Path(os.environ.get("PLOT_DECLARATIONS", PLOTS))
+    return plot_declarations()
 
 
 def state_path() -> Path:

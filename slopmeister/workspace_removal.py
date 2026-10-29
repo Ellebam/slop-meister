@@ -10,7 +10,7 @@ import tempfile
 
 from slopmeister.claims import evidence
 from slopmeister.errors import SlopmeisterError
-from slopmeister.paths import ROOT, main_checkout
+from slopmeister.paths import ROOT, main_checkout, session_root
 from slopmeister.removal import IGNORED_ARGS, check_ignored, read_inventory, remove_tree
 from slopmeister.session import git_environment
 from slopmeister.slots import allocation, claimed, down, leftover
@@ -38,7 +38,7 @@ def _scope(value: str) -> tuple[Path, Path | None]:
         raise SlopmeisterError("a symlink in the managed workspace path is refused")
     if not path.is_dir():
         raise SlopmeisterError(f"workspace directory not found: {path}")
-    sessions = Path(os.environ.get("PLOT_SESSION_ROOT") or Path.home() / ".slopmeister/sessions")
+    sessions = session_root()
     if path.parent.resolve() == sessions.expanduser().resolve():
         if (path / ".git").exists() or (path / ".git").is_symlink():
             raise SlopmeisterError("Git workspaces require their owning repository's .worktrees")

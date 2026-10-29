@@ -24,7 +24,7 @@ A check only the operator can run, such as a phone, a screen, a live login or an
 4. Record exact test-created paths and their bytes before the test and clean up only those. Before removing one, confirm its bytes still match what the test wrote, and preserve changed or unrecorded files.
 5. Save `<TASK-ID>-TEST-GUIDE.md` in the Git-ignored scratch directory in the task worktree, unless the task includes a committed guide, and record its absolute path in the notes. If no scratch directory is ignored, add its exact path to Git `info/exclude`. A Git-free session uses an owned scratch directory in its session directory. The harness session scratchpad is not acceptable for anything a later step or session reads. Preserve scenario IDs when revising it.
 
-Run the guide as `execute-plan` directs and keep the tester's exact verdict. Use the [task summary](../execute-plan/task-summary.md) for the handoff. A guide remains owed even when testing cannot yet run. The operator retains testing acceptance and finalization.
+Run the guide as `execute-plan` directs and keep the tester's exact verdict. Use the [task summary](../execute-plan/task-summary.md) for the handoff. A guide remains owed even when testing cannot yet run. The operator retains testing acceptance and the harvest order.
 
 Never rebase or rewrite the branch to produce the guide unless `How a tester reaches the change` requires it, and then follow its consent and conflict rules exactly.
 

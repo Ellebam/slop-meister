@@ -19,7 +19,7 @@ from tests.support.repos import git
 def _new_skill(root: Path) -> str:
     """A procedure that exists only on the invoking branch."""
     with (root / "dist/manifest.tsv").open("a") as stream:
-        stream.write("skill\tbranch-only\tshared\tfalse\tfalse\n")
+        stream.write("skill\tbranch-only\tshared\n")
     for tool in ("claude", "codex"):
         skill = root / f"dist/{tool}/skills/branch-only/SKILL.md"
         skill.parent.mkdir(parents=True)

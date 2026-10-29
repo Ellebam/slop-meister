@@ -6,8 +6,8 @@ from pathlib import Path
 import shutil
 
 from slopmeister.errors import SlopmeisterError
-from slopmeister.paths import ROOT
 from slopmeister.slots import allocation, tester
+from slopmeister.threads import occupants
 
 
 def static() -> int:
@@ -70,16 +70,15 @@ def _working_directories(pids: list[int]) -> dict[int, Path]:
 
 def _workers(current: list[allocation.Live]) -> None:
     for item in current:
-        result = allocation.run(
-            [str(ROOT / "bin/slopmeister"), "occupants", str(item.worktree)],
-            capture=True,
-            ok=False,
-        )
-        if result.returncode:
+        try:
+            processes = occupants.census(str(item.worktree))
+        except occupants.CensusError:
             print(f"  {item.name} worker census unavailable")
             continue
-        for row in result.stdout.splitlines():
-            print(f"  {item.name} worker {row}")
+        for process in processes:
+            if process.inside:
+                row = f"{process.kind} pid {process.pid} in {occupants.printable(process.cwd)}"
+                print(f"  {item.name} worker {row}")
 
 
 def _slot(item: allocation.Live) -> None:

@@ -65,6 +65,10 @@ It sets `hasTrustDialogAccepted: true` (Claude) or `trust_level = "trusted"` (Co
 
 Remove retired worktrees and directory sessions through [workspace removal](workspace-removal.md). It checks ownership and handles locked service-action trees.
 
+## Manager role and peer inboxes
+
+Declare `--manager` only on the first dispatch. Redispatch keeps the saved role. The role grants group monitoring and only the exact operator-ordered worker approval relay described in [Manage sessions](../src/skills/plot-session/manage.md). It grants no broader permission. Capacity resumes remain bounded to the documented exact stop. The launcher prepares each task’s own inbox before the model starts. Informational peer mail needs no separate participant approval and never supplies operator authority.
+
 ## Recovery
 
 Orca terminal creation failures print its code, `timeout`, `unreadable_reply` or `execution_failed` on one line. Only `selector_not_found` permits retries within 60 seconds, including call timeouts. Every failure then polls, because a terminal may exist.

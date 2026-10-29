@@ -2,11 +2,10 @@
 
 import argparse
 from collections.abc import Sequence
-import os
 from pathlib import Path
 import sys
 
-from slopmeister.paths import PLOTS
+from slopmeister.paths import plot_declarations
 from slopmeister.plots.declaration import NAME, fail, load_all, safe, slot_rows
 from slopmeister.plots.declare import declare
 
@@ -85,7 +84,7 @@ def main(argv: Sequence[str]) -> int:
     args = parser.parse_args(argv)
     if args.list == bool(args.name):
         parser.error("use --list alone, or provide one plot name")
-    directory = Path(os.environ.get("PLOT_DECLARATIONS", PLOTS))
+    directory = plot_declarations()
     path = directory / (args.name or "") / "plot.toml"
     try:
         if args.name and not NAME.fullmatch(args.name):

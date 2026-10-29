@@ -4,6 +4,7 @@ from pathlib import Path
 
 from slopmeister.launch import kickoff
 from slopmeister.launch.model import Launch
+from slopmeister.session import launch_identity
 
 
 def _launch(tmp_path: Path, monkeypatch, tool: str = "claude") -> Launch:
@@ -35,7 +36,11 @@ def test_stale_kickoff_pairs_pruned(tmp_path, monkeypatch, capsys):
     launch = _launch(tmp_path, monkeypatch)
     live = tmp_path / "live dir's"
     live.mkdir()
+    monkeypatch.setattr(launch_identity, "state_home", lambda: tmp_path / "identities")
     for name, workspace in (("gone", tmp_path / "gone"), ("live", live)):
+        identity = launch_identity.path(workspace)
+        identity.parent.mkdir(parents=True, exist_ok=True)
+        identity.write_text(name)
         quoted = str(workspace).replace("'", "'\\''")
         (launch.state_dir / f"{name}.md").write_text("k\n")
         (launch.state_dir / f"{name}.orca").write_text("term_1\n")
@@ -45,4 +50,6 @@ def test_stale_kickoff_pairs_pruned(tmp_path, monkeypatch, capsys):
     kickoff.prune(launch)
     kept = sorted(path.name for path in launch.state_dir.iterdir())
     assert kept == ["live.command", "live.md", "live.orca"]
+    assert not launch_identity.path(tmp_path / "gone").exists()
+    assert launch_identity.path(live).read_text() == "live"
     assert "pruned 1 stale kickoff and command file pairs" in capsys.readouterr().out

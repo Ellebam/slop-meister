@@ -101,13 +101,6 @@ def _codex_rules(context: InstallContext, permissions: dict) -> None:
 
 def _add_settings(context: InstallContext, values: tuple[dict, dict, list[str], str]) -> None:
     permissions, hooks, writable, review = values
-    if not context.directory and context.permission == context.shipping == "allow":
-        path = Path("skills/update-prs") / "scripts" / "update.py"
-        pattern = json.dumps(["python3", str(context.repo / ".agents" / path)])
-        rule = f'prefix_rule(pattern={pattern}, decision="allow", justification="Bot PR writes")\n'
-        context.files[".codex/rules/update-pr.rules"] = (rule.encode(), 0o644)
-        claude = context.repo / ".claude" / path
-        permissions.setdefault("allow", []).append(f"Bash(python3 {claude} *)")
     # Launched Claude sessions run without the Bash sandbox, see docs/plot-shape.md. Stated
     # explicitly because --settings wins over a home setting that would otherwise re-enable it.
     _codex_rules(context, permissions)

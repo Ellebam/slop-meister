@@ -37,8 +37,8 @@ def test_check_plot_golden(tmp_path):
     assert result.returncode == 0, result.stderr
     assert (root / "dist/claude/plots/overlay.md").read_text() == GOLDEN
     assert (root / "dist/codex/config.toml").read_text() == "model_context_window = 872000\n"
-    assert "plot\toverlay\toverlay\tfalse\tfalse" in (root / "dist/manifest.tsv").read_text()
-    assert "home\tconfig.toml\thome\tfalse\tfalse" in (root / "dist/manifest.tsv").read_text()
+    assert "plot\toverlay\toverlay" in (root / "dist/manifest.tsv").read_text()
+    assert "home\tconfig.toml\thome" in (root / "dist/manifest.tsv").read_text()
 
 
 def test_check_plot_determinism(tmp_path):

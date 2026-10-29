@@ -1,5 +1,15 @@
 # Releases
 
+## Upgrading to 0.4.0
+
+Start fresh workers to receive the updated fixed configuration. Harvest replaces the finalize and close-out procedures and accepts an operator order in ordinary words. Sessions no longer create automatic retro records. Existing notes and explicit legacy-log commands remain available. Follow-up pull requests retain their predecessor link and retry safely. Managers can relay only the exact operator-ordered worker approval. Terminal sends require operator intent.
+
+The `update-prs` skill and `slopmeister-vault retro-count` command are removed with no replacement.
+
+Bloom creates one decision page for three or more open operator choices and verifies pages in an isolated headless browser. Authorized sign-ins can use an existing generated one-time code through the protected consumer. Task-owned loopback fixture factors remain separate from real account MFA. Keep codes and seeds out of output.
+
+The [host boundaries](../host/README.md#public-host-boundaries) describe the minimal approval and page services. Deploy these services separately with a reviewed revision.
+
 ## Upgrading to 0.3.0
 
 Update the Home Assistant approval route before upgrading workstation requesters. The requester now requires an explicit receipt from the server. Follow the [approval protocol and setup](1password-access.md) for the update order.

@@ -25,7 +25,7 @@ tasks:
       - bin/slopmeister plots {{.CLI_ARGS}}
 
   issue:claims:
-    desc: Inspect GitHub ownership with backlog or inspect, reconcile an explicit saved claim, or close it during harvest or finalize
+    desc: Inspect GitHub ownership with backlog or inspect, reconcile an explicit saved claim, or close it during harvest
     cmds:
       - bin/slopmeister claims {{.CLI_ARGS}}
 

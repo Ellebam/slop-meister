@@ -13,7 +13,7 @@ DEFAULT_MAX = 6
 MAX_SLOTS = 99
 MIN_PORT = 1024
 MAX_PORT = 65535
-SLOT_KEYS = {"none", "max", "compose", "ports", "setup", "setup_files", "testers"}
+SLOT_KEYS = {"none", "max", "compose", "ports", "setup", "setup_files", "testers", "disposable"}
 
 
 def _slot_ports(slots: dict, path: Path) -> list[tuple[str, int]]:
@@ -64,7 +64,7 @@ def _validate_setup(slots: dict, path: Path) -> None:
         or any(not isinstance(arg, str) or not arg or CONTROL.search(arg) for arg in command)
     ):
         fail(path, "slots.setup", "expected a nonempty argument array without control characters")
-    for key in ("setup_files",):
+    for key in ("setup_files", "disposable"):
         names = slots.get(key, [])
         if not isinstance(names, list) or any(not _relative(n, output=True) for n in names):
             fail(path, "slots." + key, "expected unique relative output paths")
