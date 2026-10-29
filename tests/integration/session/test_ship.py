@@ -229,3 +229,90 @@ def test_foreign_closed_or_duplicate_pr_is_never_written(world, capsys, prs):
     code, out, _ = run(world, capsys)
     assert code == 1 and out == ""
     assert world["origin"].writes() == []
+
+
+def test_follow_up_after_merge_creates_updates_and_retries(world, capsys):
+    """A merged PR must not block a new PR or make retries repeat writes."""
+    origin, git = world["origin"], world["git"]
+    origin.prs.append(dict(PR, state="MERGED", headRefOid=git("rev-parse", "HEAD")))
+    git("commit", "-q", "--allow-empty", "-m", "Follow up")
+    world["body"] += "\nFollows #1\n"
+    code, result, err = run(world, capsys)
+    assert code == 0 and result["pr_action"] == "created", err
+    assert len(origin.prs) == 2 and origin.prs[1]["body"] == world["body"]
+    origin.calls.clear()
+    code, result, _ = run(world, capsys)
+    assert code == 0 and not result["pushed"] and result["pr_action"] == "unchanged"
+    assert origin.writes() == []
+    world["body"] = world["body"].replace("Task proof", "Updated proof")
+    code, result, _ = run(world, capsys)
+    assert code == 0 and result["pr_action"] == "updated"
+    assert origin.prs[1]["body"] == world["body"]
+
+
+def test_merged_without_follow_up_does_not_recreate_deleted_branch(world, capsys):
+    """A no-change retry after merge must not recreate a deleted branch."""
+    world["origin"].prs.append(
+        dict(PR, state="MERGED", headRefOid=world["git"]("rev-parse", "HEAD"))
+    )
+    world["body"] += "\nFollows #1\n"
+    code, _, err = run(world, capsys)
+    assert code == 1 and "no follow-up commits" in err
+    assert world["origin"].writes() == []
+
+
+@pytest.mark.parametrize(
+    "case,reason",
+    [
+        ("closed", "existing PR does not match"),
+        ("foreign", "existing PR does not match"),
+        ("duplicate", "multiple PRs"),
+        ("body", "predecessor line"),
+        ("extra-line", "predecessor line"),
+        ("unrelated", "does not descend"),
+    ],
+)
+def test_follow_up_refuses_invalid_history_before_push(world, capsys, case, reason):
+    """A refused follow-up must not push or change a PR, even if the branch was deleted."""
+    origin, git = world["origin"], world["git"]
+    merged = dict(PR, state="MERGED", headRefOid=git("rev-parse", "HEAD"))
+    origin.prs.append(merged)
+    git("commit", "-q", "--allow-empty", "-m", "Follow up")
+    world["body"] += "\nFollows #1\n"
+    if case == "closed":
+        origin.prs.append(dict(PR, number=2, state="CLOSED"))
+    if case == "foreign":
+        merged["headRepository"] = {"nameWithOwner": "other/subject"}
+    if case == "duplicate":
+        origin.prs.extend([dict(PR, number=2), dict(PR, number=3)])
+    if case == "body":
+        world["body"] = BODY
+    if case == "extra-line":
+        world["body"] += "Follows #2\n"
+    if case == "unrelated":
+        merged["headRefOid"] = "0" * 40
+    code, _, err = run(world, capsys)
+    assert code == 1 and reason in err
+    assert origin.writes() == []
+
+
+def test_follow_up_names_latest_of_multiple_merged_prs(world, capsys):
+    """The next request follows the latest merge, not an older request on the branch."""
+    origin, git = world["origin"], world["git"]
+    first = git("rev-parse", "HEAD")
+    git("commit", "-q", "--allow-empty", "-m", "Second change")
+    second = git("rev-parse", "HEAD")
+    origin.prs.extend(
+        [
+            dict(PR, state="MERGED", headRefOid=first, mergedAt="2026-01-01T00:00:00Z"),
+            dict(PR, number=2, state="MERGED", headRefOid=second, mergedAt="2026-01-02T00:00:00Z"),
+        ]
+    )
+    git("commit", "-q", "--allow-empty", "-m", "Third change")
+    world["body"] += "\nFollows #1\n"
+    code, _, err = run(world, capsys)
+    assert code == 1 and "Follows #2" in err and origin.writes() == []
+    world["body"] = world["body"].replace("Follows #1", "Follows #2")
+    code, result, _ = run(world, capsys)
+    assert code == 0 and result["pr_action"] == "created"
+    assert origin.prs[-1]["number"] == 3 and origin.prs[-1]["body"] == world["body"]

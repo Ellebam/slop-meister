@@ -12,7 +12,7 @@ from slopmeister.spine.tester.launch import launch
 from slopmeister.spine.tester.supervise import supervise
 from slopmeister.spine.tester.validate import check_draft
 
-MAX_WAIT_SECONDS = 30
+MAX_WAIT_SECONDS = 300
 
 
 def parser() -> argparse.ArgumentParser:
@@ -65,5 +65,5 @@ def run(args: argparse.Namespace) -> int:
         print(f"VALID DRAFT (outcome: {outcome}; not test proof)")
         return 0
     if not 0 <= args.wait_seconds <= MAX_WAIT_SECONDS:
-        raise ValueError("collection wait must be between 0 and 30 seconds")
+        raise ValueError(f"collection wait must be between 0 and {MAX_WAIT_SECONDS} seconds")
     return collect(args.run.resolve(), args.wait_seconds)

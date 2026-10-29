@@ -3,16 +3,15 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
 import json
-import os
 from pathlib import Path
 import re
 import subprocess
 
+from slopmeister.paths import plot_declarations
 from slopmeister.plots import load_all
 from slopmeister.session import git_environment
 from slopmeister.threads.occupants import printable
 
-ROOT = Path(__file__).resolve().parents[2]
 CLAIM = "agent:claimed"
 ACTIVE = {"pending", "claimed", "abandoning", "closing"}
 DETAIL_LIMIT = 200
@@ -74,7 +73,7 @@ def git(root: Path, *args: str) -> str:
 
 
 def declaration(plot: str) -> dict:
-    directory = Path(os.environ.get("PLOT_DECLARATIONS", str(ROOT / "plots")))
+    directory = plot_declarations()
     values = load_all(directory)
     if plot not in values or "target" not in values[plot]:
         raise ValueError("undeclared issue-management plot")

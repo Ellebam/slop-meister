@@ -74,6 +74,12 @@ def _slot(tmp_path, monkeypatch, status: str) -> list[str]:
         return subprocess.CompletedProcess(argv, 0, status if "status" in argv else "", "")
 
     monkeypatch.setattr(allocation, "run", run)
+
+    def census(worktree):
+        steps.append("occupants")
+        return []
+
+    monkeypatch.setattr(occupants, "census", census)
     return steps
 
 

@@ -7,9 +7,9 @@ description: "Ship: commit, push, and open or update the PR. Idempotent. Standin
 
 The branch-shipping part of the spine. Commit, push, open or update the pull request. Idempotent, running it twice never creates a duplicate PR or a duplicate commit.
 
-Read the fixed session permissions. Commit and shipping allow grant standing authority for ordinary commit, push and PR create/update through the fixed helper on the saved owned repository and current non-default task branch after proof, GitHub enforces branch protection. Deny grants no standing authority, but an explicit operator instruction for the named task may authorize the exact native-prompted commit and fixed ship command once. Approval changes no saved permission. Directory sessions cannot ship. Merge remains an operator gate.
+Read the fixed session permissions. Commit and shipping allow grant standing authority for ordinary commit, push and PR create/update through the fixed helper on the saved owned repository and current non-default task branch after proof. The helper refuses the default branch. Deny grants no standing authority, but an explicit operator instruction for the named task may authorize the exact native-prompted commit and fixed ship command once. Approval changes no saved permission. Directory sessions cannot ship. Merge remains an operator gate.
 
-Commands here are the GitHub instantiation through `gh`. A project on another forge supplies its equivalents through its plot, the principles, one change request per branch, an honest review line, reported mergeability, do not change.
+Commands here are the GitHub instantiation through `gh`. A project on another forge supplies its equivalents through its plot, the principles, one open change request per branch, an honest review line, reported mergeability, do not change.
 
 The input is optionally a commit-message hint or PR context, otherwise infer from the changes.
 
@@ -19,7 +19,7 @@ The input is optionally a commit-message hint or PR context, otherwise infer fro
 
 Run in parallel, `git status`, `git diff --stat`, `git log --oneline -5` to match the existing message style, `git branch --show-current`, `gh pr list --repo <saved owner/repository> --head <branch> --json number,url,state,body,baseRefName`, and a lookup of the task notes file if any.
 
-Guard rails. On the default branch, stop and warn, never commit or push there. Nothing to commit, nothing unpushed, and no PR line to sync, report "Nothing to ship".
+Guard rails. On the default branch, stop and warn, never commit or push there. Nothing to commit, nothing unpushed, and no PR line to sync, report "There is nothing to ship."
 
 ### 2. Independent-review line
 
@@ -47,9 +47,9 @@ The helper checks the line structure. The line does not grant approval. Use the 
 
 ### 4. The pull request
 
-Pin every GitHub read and write to the saved owner/repository. The helper validates PR base and head identity against that repository. If a PR already exists, do not create another. Replace the single existing `Independent review:` line with the value from step 2, preserving the rest of the body byte for byte, re-read the body afterwards and confirm exactly one such line exists. Report the URL and whether the line changed.
+Pin every GitHub read and write to the saved owner/repository. The helper validates PR base and head identity against that repository. If an open PR already exists, do not create another. After earlier PRs are merged, include exactly one `Follows #<number>` line naming the latest merged PR in the new body. Keep that line on updates and retries. The helper refuses closed unmerged or ambiguous history and requires new commits on the merged PR head before creating a follow-up. Replace the single existing `Independent review:` line with the value from step 2, preserving the rest of the body byte for byte, re-read the body afterwards and confirm exactly one such line exists. Report the URL and whether the line changed.
 
-If no PR exists, base it on the default branch unless told otherwise. Read every commit on the branch so the body covers the whole branch, not just the last commit. Title under 70 characters. The body carries a summary, a test plan, and the independent-review line from step 2, verbatim. Never add attribution lines.
+If no PR exists, base it on the default branch unless told otherwise. Read the commits for this request so the body covers the whole change, not just the last commit. For a follow-up, start after the previous merged PR head. Title under 70 characters. The body carries a summary, a test plan, and the independent-review line from step 2, verbatim. Never add attribution lines.
 
 ### 5. Report
 

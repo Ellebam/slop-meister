@@ -6,7 +6,7 @@ import pytest
 
 from slopmeister.quality import budgets, inventory
 from slopmeister.quality.inventory import Source
-from tests.support.trees import function, nested, write
+from tests.support.trees import nested, write
 
 
 def measure(root: Path, relative: str, language: str = "python") -> list[str]:
@@ -14,56 +14,11 @@ def measure(root: Path, relative: str, language: str = "python") -> list[str]:
     return [v.metric for v in budgets.measure(source, root)]
 
 
-def test_file_over_250_lines_fails(tmp_path: Path) -> None:
-    write(tmp_path, "slopmeister/big.py", "x = 1\n" * 251 + "def f():\n    return x\n")
-    assert measure(tmp_path, "slopmeister/big.py") == ["file_lines"]
-
-
-def test_constant_only_module_is_exempt_from_file_length(tmp_path: Path) -> None:
-    write(tmp_path, "slopmeister/table.py", '"""Data."""\n' + "ROW = 1\n" * 300)
-    assert measure(tmp_path, "slopmeister/table.py") == []
-
-
-def test_constant_only_module_still_obeys_400_line_maximum(tmp_path: Path) -> None:
-    write(tmp_path, "slopmeister/fits.py", '"""Data."""\n' + "ROW = 1\n" * 399)
-    write(tmp_path, "slopmeister/too_big.py", '"""Data."""\n' + "ROW = 1\n" * 400)
-    assert measure(tmp_path, "slopmeister/fits.py") == []
-    violation = budgets.measure(Source(tmp_path / "slopmeister/too_big.py", "python"), tmp_path)
-    assert [(item.metric, item.limit) for item in violation] == [("file_lines", 400)]
-
-
-def test_function_over_30_lines_fails(tmp_path: Path) -> None:
-    write(tmp_path, "slopmeister/f.py", function("long", 29))
-    write(tmp_path, "slopmeister/g.py", function("fits", 28))
-    assert measure(tmp_path, "slopmeister/f.py") == ["function_lines"]
-    assert measure(tmp_path, "slopmeister/g.py") == []
-
-
 def test_nesting_over_3_fails(tmp_path: Path) -> None:
     write(tmp_path, "slopmeister/d.py", nested(4))
     write(tmp_path, "slopmeister/e.py", nested(3))
     assert measure(tmp_path, "slopmeister/d.py") == ["nesting_depth"]
     assert measure(tmp_path, "slopmeister/e.py") == []
-
-
-def test_parameters_over_3_fail_in_production_and_over_5_in_tests(tmp_path: Path) -> None:
-    write(tmp_path, "slopmeister/p.py", function("wide", 1, parameters=4))
-    write(tmp_path, "tests/unit/test_p.py", function("test_wide", 1, parameters=5))
-    write(tmp_path, "tests/unit/test_q.py", function("test_wider", 1, parameters=6))
-    assert measure(tmp_path, "slopmeister/p.py") == ["parameters"]
-    assert measure(tmp_path, "tests/unit/test_p.py") == []
-    assert measure(tmp_path, "tests/unit/test_q.py") == ["parameters"]
-
-
-def test_self_and_cls_are_not_parameters(tmp_path: Path) -> None:
-    text = "class A:\n    def m(self, a, b, c):\n        return a\n"
-    write(tmp_path, "slopmeister/c.py", text)
-    assert measure(tmp_path, "slopmeister/c.py") == []
-
-
-def test_bash_file_over_250_lines_fails(tmp_path: Path) -> None:
-    write(tmp_path, "scripts/x.sh", "#!/bin/bash\n" + "true\n" * 250)
-    assert measure(tmp_path, "scripts/x.sh", "bash") == ["file_lines"]
 
 
 def test_instruction_file_over_400_lines_fails(tmp_path: Path) -> None:
@@ -124,3 +79,15 @@ def test_repository_document_does_not_inherit_runtime_line_budget(tmp_path: Path
 def test_skill_word_budget_does_not_replace_its_existing_line_budget(tmp_path: Path, path):
     write(tmp_path, path, "word\n" * 401 + "word " * 1600)
     assert measure(tmp_path, path, inventory.classify(path)) == ["file_lines", "document_words"]
+
+
+@pytest.mark.parametrize("language", ["python", "bash"])
+def test_code_has_one_400_line_limit(tmp_path, language):
+    body = "x = 1\n" if language == "python" else "true\n"
+    suffix = "def f():\n    return x\n" if language == "python" else ""
+    name = "slopmeister/code.py" if language == "python" else "scripts/code.sh"
+    write(tmp_path, name, body * (400 - len(suffix.splitlines())) + suffix)
+    assert measure(tmp_path, name, language) == []
+    with (tmp_path / name).open("a") as stream:
+        stream.write(body)
+    assert measure(tmp_path, name, language) == ["file_lines"]

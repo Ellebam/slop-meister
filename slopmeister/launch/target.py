@@ -9,17 +9,14 @@ import shlex
 import shutil
 import subprocess
 
-from slopmeister.launch.model import REPORT, ROOT, Launch, call, die, plain
+from slopmeister.launch.model import REPORT, ROOT, Launch, die, plain
 from slopmeister.launch.workspace import session_root
 from slopmeister.opencode import native
+from slopmeister.paths import plot_declarations
 from slopmeister.plots import load_all, query
 from slopmeister.workstation.kickoff import MODE_LINES, MODES
 
 DIST = ROOT / "dist"
-
-
-def _declarations() -> Path:
-    return Path(os.environ.get("PLOT_DECLARATIONS") or ROOT / "plots")
 
 
 def _shape(launch: Launch, default: str) -> None:
@@ -49,7 +46,7 @@ def _shape(launch: Launch, default: str) -> None:
 
 def policy(launch: Launch) -> None:
     try:
-        declared = load_all(_declarations()).get(launch.plot, {})
+        declared = load_all(plot_declarations()).get(launch.plot, {})
     except (ValueError, OSError) as error:
         raise plain(str(error)) from error
     target = declared.get("target", {})
@@ -71,8 +68,8 @@ def policy(launch: Launch) -> None:
 
 def declaration(launch: Launch) -> None:
     """The declared task source gates the fetch flags, so a dispatcher never guesses."""
-    launch.delivery = call(query.main, [launch.plot], capture=True)
-    launch.tasks = call(query.main, ["--tasks", launch.plot], capture=True)
+    launch.delivery = query.query(plot_declarations(), launch.plot, None)
+    launch.tasks = query.query(plot_declarations(), launch.plot, "tasks")
     if not (launch.redispatch or launch.abandon or launch.name.startswith(launch.plot + "-")):
         raise die(f"session name must begin with '{launch.plot}-'")
     if not launch.directory and launch.delivery == "-":
@@ -164,7 +161,7 @@ def require_slot(launch: Launch, argv: Sequence[str]) -> None:
     )
     if mode != "Mode: spine":
         return
-    if call(query.main, ["--slots", launch.plot], capture=True) == "none\t-\t-":
+    if query.query(plot_declarations(), launch.plot, "slots") == "none\t-\t-":
         return
     options = next((number for number, arg in enumerate(argv) if arg.startswith("--")), len(argv))
     tail = argv[options:]

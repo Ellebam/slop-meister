@@ -34,7 +34,7 @@ def test_redispatch_owner_retains_claim_without_duplicate_transition(service):
     assert len(writes) == 1
 
 
-def test_finalize_closes_before_removing_claim_and_retries_idempotently(service):
+def test_harvest_closes_before_removing_claim_and_retries_idempotently(service):
     context, path, saved, remote, writes = service
     lifecycle.confirm(context, path, saved)
     lifecycle.close_issue(context, lifecycle.Closure(path, evidence.read(path)))
@@ -44,7 +44,7 @@ def test_finalize_closes_before_removing_claim_and_retries_idempotently(service)
     assert [value[0] for value in writes] == ["POST", "PATCH", "DELETE"]
 
 
-def test_finalize_failure_keeps_claim_and_recovery_evidence(service, monkeypatch):
+def test_harvest_failure_keeps_claim_and_recovery_evidence(service, monkeypatch):
     context, path, saved, remote, writes = service
     lifecycle.confirm(context, path, saved)
     original = github.request

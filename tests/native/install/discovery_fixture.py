@@ -188,7 +188,7 @@ def write_product(fixture):
     )
     put(
         fixture.product / "dist/manifest.tsv",
-        "kind\tname\tplot\tclaude\tcodex\nskill\tslopmeister-probe\tshared\tfalse\tfalse\n",
+        "kind\tname\tplot\nskill\tslopmeister-probe\tshared\n",
     )
     for tool in ("claude", "codex"):
         copy_skills(fixture, tool)

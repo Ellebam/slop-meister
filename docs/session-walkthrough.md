@@ -96,7 +96,7 @@ flowchart LR
 | 7 | [fix pass](../src/skills/implement/SKILL.md) | Makes only the fixes that survived `prune` and proves them again. | |
 | 8 | [hand off](../src/skills/execute-plan/SKILL.md) | Ships the fixed branch where allowed and reports with the existing guide. | |
 | 9 | testing | | Accept the tester's verdict and run any checks the guide leaves to you. |
-| 10 | [harvest](../src/skills/harvest/SKILL.md) | | Explicitly invoke `/harvest` or `$harvest`. Finalize remains a completed-task compatibility entry. |
+| 10 | [harvest](../src/skills/harvest/SKILL.md) | | Order the end in any words, or type `/harvest` or `$harvest`. |
 
 After your one answer, the worker goes straight through to the report on its own, following [execute-plan](../src/skills/execute-plan/SKILL.md). The report lists every review and tester finding in one line, applied or dropped with the reason, and you can reopen any of them. The worker halts earlier only for a security must-fix, a wrong approach, drift from the ticket, a fix outside the scope, a second tester failure or an error it cannot diagnose. The tester runs against the exact commit and returns pass, fail or blocked with quoted evidence, and the worker never regrades it.
 
@@ -106,7 +106,7 @@ Permanent tests follow the shared [test-purpose rule](../src/skills/implement/SK
 
 Plots that require [groom](../src/skills/groom/SKILL.md) use it for affected repository docs and vault notes. Plans name the documents and actions. Maintenance finishes before proof, and both reviews check it. Freeform records the list in session notes.
 
-**Harvest is yours.** Green CI or an open PR cannot authorize it. Explicit `/harvest` or `$harvest` selects an ending based on the saved state. Finished spine work retains testing acceptance and merge/integration gates. Unfinished work can ship an open PR and hand back its issue after guarded shutdown. Unsaved or unpushed work keeps the workspace. Direct harvest can repair routine document gaps through groom. Finalize retains its verification-only document pre-flight and completed-task alternatives. Close-out remains a separate narrow report and legacy-retro route.
+**Harvest is yours.** Green CI or an open PR cannot authorize it. Order harvest in any words to select the ending from saved state. Finished spine work retains testing acceptance and merge/integration gates. Unfinished work can ship an open PR and hand back its issue after guarded shutdown. Unsaved or unpushed work keeps the workspace. Harvest finishes authorized routine document maintenance through groom, then reports once before cleanup.
 
 ## Pause and resume
 
@@ -125,10 +125,14 @@ The launcher verifies the saved workspace and required native-tool startup befor
 | Kept | Removed by successful harvest cleanup |
 |---|---|
 | Pull request, issue and comment in the state the ending permits | Task notes, only after proof and recovery records are retained |
-| Session retro under `_system/retros/`, with legacy logs retained | Task worktree; the local branch stays |
+| Existing proof and recovery records retained outside the worktree | Task worktree. The local branch stays. |
 | Review results under the repository's Git directory, `slopmeister-config/reviews/` | |
 | Tester runs under `~/.local/state/slopmeister/spine-tests/` | |
 | Claude transcript or Codex rollout | |
 | Kickoff files under Slopmeister's `tmp/plot-session/`, until a later launch removes them | |
 
 [Browse the skills](skills.md) or [read the agreement the worker followed](../dist/codex/plots/slopmeister.md).
+
+## Follow-up work on a task branch
+
+An unchanged follow-up can reuse its original plan approval and completed review only after checking the original evidence. If the plan changes, get the plan answer and review. The [ship procedure](../src/skills/ship/SKILL.md) permits a new pull request after the previous one merged when new commits descend from its head. The new body names exactly the latest predecessor. Retry does not repeat confirmed writes. A closed unmerged or ambiguous request remains a refusal.

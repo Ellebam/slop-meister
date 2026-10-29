@@ -19,12 +19,11 @@ def test_groom_is_discoverable_and_required_only_by_owned_plots(tool):
         if policy.exists():
             assert "allow_implicit_invocation: false" not in policy.read_text()
     required = {
-        plot.stem
-        for plot in (root / "plots").glob("*.md")
-        if "Use `groom` for affected repository documentation and vault knowledge."
-        in plot.read_text()
+        plot.stem for plot in (root / "plots").glob("*.md") if "Use `groom`" in plot.read_text()
     }
     assert required == {"slopmeister", "example-app"}
+    for name in required:
+        assert "routine gaps" in (root / f"plots/{name}.md").read_text()
 
 
 def test_groom_body_has_tool_parity():
@@ -36,24 +35,72 @@ def test_groom_body_has_tool_parity():
     assert bodies[0] == bodies[1]
 
 
-def test_owned_document_refusal_precedes_remote_checks_and_never_repairs():
-    """Bug: finalize writes remotely or repairs documentation after review."""
-    finalize = (ROOT / "src/skills/finalize/SKILL.md").read_text()
-    assert finalize.index("check the planned document list") < finalize.index("Read the PR body's")
-    assert "Stop without document edits" in finalize
-    close = (ROOT / "src/skills/close-out/SKILL.md").read_text()
-    assert "verify the affected document list" in close
-    assert "Only plots that do not require `groom`" in close
+def test_owned_document_classification_precedes_remote_writes_and_conflicts_stop():
+    """Routine repair must not bypass the existing review gates or any remote write."""
+    harvest = (ROOT / "src/skills/harvest/SKILL.md").read_text()
+    documents = harvest.split("## 2. Documents and vault", 1)[1].split("## 3.", 1)[0]
+    assert harvest.index("## 2. Documents and vault") < harvest.index("## 3. The branch")
+    assert "planned document list" in documents
+    assert "remote write" in documents
+    assert "executed instruction" in documents
+    assert "Routine gaps" in documents
+
+
+def test_groom_keeps_conflicts_review_and_write_authority_separate():
+    """A routine gap cannot erase a decision or authorize a protected write."""
+    groom = (ROOT / "src/skills/groom/SKILL.md").read_text()
+    for boundary in (
+        "decision",
+        "safety gate",
+        "binding document",
+        "two owners",
+        "protected, dirty",
+        "foreign note",
+        "executed instruction",
+        "remote write",
+        "external-write authority",
+    ):
+        assert boundary in groom
+    conflict, instruction = groom.split("A groom edit", 1)
+    assert "conflicting edit" in conflict
+    assert "existing review rules" in instruction
+
+
+def test_harvest_grooms_every_plot_without_creating_unshipped_changes():
+    """Harvest must finish routine vault work in every plot and keep repository delivery gates."""
+    harvest = (ROOT / "src/skills/harvest/SKILL.md").read_text()
+    assert "Run `groom`" in harvest
+    assert "every plot" in harvest
+    assert "stays protected" in harvest
+    audit = (ROOT / "src/skills/vault-optimize/SKILL.md").read_text()
+    invocation = audit.split("## Invocation", 1)[1].split("## Safety rules", 1)[0]
+    assert "Harvest verifies groom maintenance in every plot" in invocation
+
+
+def test_harvest_routes_vault_repairs_before_any_branch_route():
+    """A no-diff or already-merged run must not skip eligible vault repairs."""
+    harvest = (ROOT / "src/skills/harvest/SKILL.md").read_text()
+    documents = harvest.split("## 2. Documents and vault", 1)[1].split("## 3.", 1)[0]
+    assert "slopmeister-vault commit" in documents
+    assert "Completed steps" in harvest
+    assert "nothing ships" in documents
 
 
 def test_owned_document_work_cannot_skip_planning_maintenance_or_review():
     """Bug: planned documents are omitted from scope, implementation or external review."""
     plan = (ROOT / "src/skills/sow/SKILL.md").read_text()
-    assert "Include their paths in `## Scope`" in plan
-    assert "list each document with one action" in plan
+    assert "`## Scope`" in plan
+    assert "one action" in plan
     implement = (ROOT / "src/skills/implement/SKILL.md").read_text()
-    assert implement.index("invoke it for the planned document list") < implement.index(
-        "### 3. Verify"
-    )
+    assert implement.index("planned document list") < implement.index("### 3. Verify")
     review = (ROOT / "src/skills/cross-tool-review/SKILL.md").read_text()
-    assert "Both plan and diff review check missing affected documents" in review
+    assert "missing affected documents" in review
+
+
+def test_bug_reproduction_keeps_the_operator_intent_limit():
+    """Bug: a session probes a live environment unasked while reproducing a ticket's failure."""
+    sow = (ROOT / "src/skills/sow/SKILL.md").read_text()
+    start = sow.find("reported failure")
+    assert start >= 0, "sow has no bug-reproduction rule"
+    rule = sow[start:].split("\n", 1)[0]
+    assert "operator intent" in rule

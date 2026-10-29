@@ -142,3 +142,25 @@ def test_undeclared_alias_never_uses_default_ssh_identity(monkeypatch, entry):
     monkeypatch.setattr(subprocess, "run", forbidden)
     with pytest.raises(UsageError, match="not declared"):
         entry(["~/repo", "example-client", "example-client-one", "--host", "otherbox"])
+
+
+def test_unexpected_failure_after_open_reports_that_a_worker_may_be_live(monkeypatch, capsys):
+    """An unexpected failure must not roll back resources beneath a possible worker."""
+    from slopmeister.launch.model import Launch
+
+    launch = Launch("example-client", "example-client-one", "/repo")
+
+    def fail(current, prepared):
+        current.open_attempted = True
+        raise RuntimeError("after open")
+
+    monkeypatch.setattr(cli, "_validate", lambda argv, worktree_file: launch)
+    monkeypatch.setattr(cli, "_launch", fail)
+    assert cli.run([]) == (1, True)
+    assert "RuntimeError: after open" in capsys.readouterr().err
+    launch.open_attempted = False
+    monkeypatch.setattr(
+        cli, "_launch", lambda current, prepared: (_ for _ in ()).throw(RuntimeError("before open"))
+    )
+    with pytest.raises(RuntimeError, match="before open"):
+        cli.run([])

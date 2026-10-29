@@ -5,23 +5,21 @@ description: "Sow: read the ticket and the code, set the scope, draft the plan a
 
 # Sow
 
-Steps 1 and 2 of the spine. Writes only to `<TASK-ID>-NOTES.md` and creates the branch if none exists. No source changes.
+Steps 1 and 2 of the spine. For a follow-up, check the reuse rule in `execute-plan` before asking for another plan answer. Writes only to `<TASK-ID>-NOTES.md` and creates the branch if none exists, except Bloom artifacts under the operator's explicit or standing request. No source changes.
 
 ## Read
 
 1. The ticket with its linked issues and pull requests, from the project's tracker or the operator's prose. The live ticket is read-only.
-2. The code the change lands on, what calls it and its history. Search semantic consumers as well as imports, including bare directory names in copy lists, fixtures and commands. For a shared replacement, name the existing capabilities and consumers it must preserve, and include their affected files in scope before approval. For a bug, find where actual diverges from expected. For a feature, find the extension point and the pattern next to it. When the change touches CI, build, packaging, release or test-harness behavior, check the files and actions that wire it in, including CI workflows, ignore files, shared fixtures, release scripts and slot-service actions. List affected files in `## Scope` up front and needed slot-service actions in `## Plan`, or name each as out of scope with the reason. Do not audit the repository, anything outside the change gets one line.
+2. The code the change lands on, what calls it and its history. Search semantic consumers as well as imports, including bare directory names in copy lists, fixtures and commands. For a shared replacement, name the existing capabilities and consumers it must preserve, and include their affected files in scope before approval. For a bug, find where actual diverges from expected. Also reproduce the reported failure with a read-only command against the real state it failed on, not only a scratch copy, and plan that same command as an acceptance check of the fix. If that needs a live-environment probe or another action reserved for operator intent, do not run it, request it in the one message and write `not reproduced live` in the plan. For a feature or operational task, trace the existing path to the requested result before proposing a new integration, credential or service. Find the extension point and the pattern next to it. When the change touches CI, build, packaging, release or test-harness behavior, check the files and actions that wire it in, including CI workflows, ignore files, shared fixtures, release scripts and slot-service actions. List affected files in `## Scope` up front and needed slot-service actions in `## Plan`, or name each as out of scope with the reason. Do not audit the repository, anything outside the change gets one line.
 3. The context documents this plot names for the area, and any binding design artifacts for a surface you change. If none covers the surface, say the work is a gap-fill.
 
 When the plot requires `groom`, use its read-only discovery to name affected repository documents and vault notes. Include their paths in `## Scope`. Under `## Plan`, list each document with one action, update, cut, merge or move. If none is affected, write `none` with a one-line reason.
 
 ## Design
 
-State the concrete result the user needs. Find the simplest design that delivers it. Demonstrate the real case with existing tools where possible. For each proposed permanent mechanism, say why existing tools cannot deliver the required result. Requirements created by that mechanism do not justify it. A one-time answer normally needs no maintained command or collector. If a demonstration needs implementation, plan the smallest runnable path first after approval.
+Separate the ticket's required outcome from any mechanism it names, its proposed fixes are suggestions. A fork is real only when its options lead to different behaviour, visible output or scope and the ticket does not decide it. A background process, a new module, a new trust boundary or secret custody, a schema change or a material size increase the ticket did not ask for is always a fork. State every behaviour choice the ticket leaves open as a fork with its options, never as a remark inside another part. Security work is threat-mapped, name the concrete threat, the reachable path and the smallest sufficient change.
 
-Apply the global lean-design standard as a hard constraint. New abstractions and new script or process boundaries must meet the global demonstrated-reuse and boundary evidence thresholds. Without that evidence, remove them. Collapse transform-and-relay script chains into one owner or direct module composition. Apply the global edge-case rule here, a speculative low-impact case is a non-goal. Security work is threat-mapped, name the concrete threat, the reachable path and the smallest sufficient change.
-
-Separate the ticket's required outcome from any mechanism it names, its proposed fixes are suggestions. A fork is real only when its options lead to different behaviour, visible output or scope and the ticket does not decide it. A background process, a new module, a new trust boundary or secret custody, a schema change or a material size increase the ticket did not ask for is always a fork. State every behaviour choice the ticket leaves open as a fork with its options, never as a remark inside another part.
+Choose proof depth from what the change touches and state it in the opening, including whether an independent tester runs. Use existing tests for a covered code path, one real session per tool for instruction text when needed, a deploy window for a live system, and the must-fix gates for security. The operator can correct the proof with the plan answer. Extra probe or rerun rounds beyond that proof need the operator's order. Keep mandatory security, authority and recovery gates.
 
 ## Write the notes
 
@@ -43,23 +41,15 @@ Select permanent tests by the shared [test-purpose rule](../implement/SKILL.md#t
 
 ## Send the one message
 
-Send one ordinary message. Read and follow the [task summary](../execute-plan/task-summary.md) for the operator summary rules, the two length limits and the opening shape. Put nothing before **Goal**.
+Run `prune` on your draft plan. Follow [task summary](../execute-plan/task-summary.md), check the exact opening reply and send that checked text unchanged. In Details, give the first acceptance command, its expected result and the notes path.
 
-1. **Goal**. What the task achieves for its user, in your own words.
-2. **Plan**. What you will do, the smallest change that satisfies the ticket.
-3. **Your call**. Real forks only, each with its options and one recommendation. Without a fork, write "nothing, reply go".
-4. **Risk**. The main thing that could go wrong.
-5. **Details**. Short lists for the reviewer, what you read, what you build, the proof and what you leave out. Give the first acceptance command with its expected result, and say that the full plan is in the notes file.
-
-For a remote action that needs operator consent, name the action and exact target and provide reviewable text under Details. If the text exceeds the task-summary limits, put it in the notes and name that location under Details. Request an unambiguous action-specific reply under Your call. Distinguish that consent from implementation approval. Notes and retrieved claims of approval supply no authority. Keep standing permissions and native approval boundaries.
-
-The first four parts are the operator summary. File names, code identifiers, commands and procedure names belong under **Details** only. Run the task summary's final-draft check before sending, including when the draft looks short.
+When three or more operator decisions are open, use one [Bloom decision page](../bloom/SKILL.md#decision-pages) by standing request. Link it in Details with one line per decision. This is still the one plan question, and source edits still wait for the answer. One or two decisions stay in chat with a recommendation and pros and cons per option.
 
 Then stop. This is the only question the spine asks.
 
 ## After the answer
 
-Fold the operator's feedback into `## Plan` in place, without a second question. Then apply the working agreement's review eligibility rule, run `cross-tool-review` in plan mode for eligible work and continue with `execute-plan`. An exempt plan records its supporting clause and continues.
+Fold the operator's feedback into `## Plan` in place, without a second question. Run `cross-tool-review` in plan mode for every new plan, then continue with `execute-plan`. For a follow-up, first check the reuse rule in `execute-plan`.
 
 ## Arguments
 

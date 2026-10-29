@@ -29,6 +29,12 @@ Every flag other than `--env-file` is refused, `--no-masking` included. An inher
 
 `op read`, `op item get`, `op item share`, `op document get` and `op inject` are refused by this `op` whatever flags surround them, also in the plural spellings `items` and `documents`, and denied by the permission rules. Item sharing is refused because its link exposes a copy of the secret. Apart from the metadata route below, other subcommands such as `op --version` or `op whoami` pass to the real `op` next on `PATH`. `op run` behind a global flag is refused too, so put nothing before `run`.
 
+## Multi-factor authentication
+
+An authorized sign-in can use an existing item’s generated one-time code through `op run` and the [browser consumer](../src/skills/browser-login/SKILL.md). Reference the inspected OTP field with `?attribute=otp` to request a code, never a seed. Keep codes and seeds out of chat, commands, logs, screenshots and Git. Tier and native approval rules still apply. A matching push or number request needs the authorized account’s access context. Login authority does not permit another account or account-security changes.
+
+A factor created for a seeded test account on this task’s own loopback-only server is fixture data. Mint and enter it in one local process without printing the code or seed. Keep enrollment within that task and account.
+
 ## Tier two
 
 ```bash

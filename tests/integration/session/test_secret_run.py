@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import re
+import secrets
 import shlex
 import shutil
 import subprocess
@@ -109,6 +110,7 @@ def machine(tmp_path):
     thread.start()
     server.home, server.path = installed(tmp_path)
     machine_files(server.home, server.server_port)
+    server.extra_env = {}
     yield server
     server.shutdown()
     thread.join()
@@ -118,6 +120,7 @@ def machine(tmp_path):
 def op(machine, *args: str) -> subprocess.CompletedProcess[str]:
     env = {"HOME": str(machine.home), "PATH": machine.path, "SLOPMEISTER_SECRET_BROKER": "1"}
     env["SECRET_ASK_REASON"] = "Deploy the host"
+    env.update(machine.extra_env)
     return subprocess.run(
         ["op", *args], capture_output=True, text=True, env=env, cwd=machine.home, timeout=30
     )
@@ -137,6 +140,30 @@ def test_tier_one_reaches_the_command_without_a_question_or_the_token(machine):
     assert call.startswith("run -- /usr/bin/env -u OP_SERVICE_ACCOUNT_TOKEN sh -c")
     assert call.endswith(f"token={ONE}")
     assert machine.asked == []
+
+
+def test_generated_code_reference_reaches_browser_consumer_without_output(machine, tmp_path):
+    code = f"{secrets.randbelow(1000000):06d}"
+    reference = "op://Everyday/Login/one-time password?attribute=otp"
+    private(machine.home / "otp.env", f'BROWSER_LOGIN_OTP="{reference}"\n')
+    resolver = (
+        f'test "$BROWSER_LOGIN_OTP" = {shlex.quote(reference)} || exit 91\n'
+        'export BROWSER_LOGIN_OTP="$SYNTHETIC_OTP"\nunset SYNTHETIC_OTP\n'
+    )
+    fake_binary(tmp_path / "real", "op", resolver + REAL_OP)
+    machine.extra_env.update(SYNTHETIC_OTP=code, EXPECTED_OTP=code)
+    consumer = (
+        f"import sys; sys.path.insert(0, {str(ROOT)!r}); import os; "
+        "from slopmeister.session.browser_login import fields; "
+        "assert fields([['#otp', 'BROWSER_LOGIN_OTP']]) == "
+        "[['#otp', os.environ['EXPECTED_OTP']]]; print('GENERATED_CODE_RECEIVED')"
+    )
+    done = op(machine, "run", "--env-file=otp.env", "--", sys.executable, "-c", consumer)
+    leaked = code in done.stdout + done.stderr + "\n".join(real_calls(machine))
+    assert not leaked, "generated code reached output"
+    assert done.returncode == 0 and done.stdout == "GENERATED_CODE_RECEIVED\n", done.stderr
+    assert machine.asked == []
+    assert (machine.home / "otp.env").read_text() == f'BROWSER_LOGIN_OTP="{reference}"\n'
 
 
 def test_tier_two_needs_the_word_and_then_the_approval(machine):

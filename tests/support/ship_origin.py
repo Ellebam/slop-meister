@@ -11,7 +11,8 @@ PINNED = "github.com/owner/subject"
 URL = "https://github.com/owner/subject/pull/1"
 PR = dict(
     number=1, url=URL, state="OPEN", title="Task", body=BODY, baseRefName="main",
-    headRefName="task", headRepository={"nameWithOwner": "owner/subject"},
+    headRefName="task", headRefOid="", mergedAt="2026-01-01T00:00:00Z",
+    headRepository={"nameWithOwner": "owner/subject"},
 )  # fmt: skip
 OTHER = "git@github.com:other/repo.git"
 WRITES = (("gh", "pr", "create"), ("gh", "pr", "edit"))
@@ -46,9 +47,22 @@ class Origin:
     def gh(self, args):
         assert args[-2:] == ("--repo", PINNED) or args[-1] == PINNED, args
         texts = [arg[2:].split("=", 1) for arg in args if arg.startswith(("--title=", "--body="))]
-        if args[1] in ("create", "edit"):
-            self.prs[:1] = [dict(self.prs[0] if self.prs else PR, **dict(texts))]
-            return URL
+        if args[1] == "create":
+            number = max((pr["number"] for pr in self.prs), default=0) + 1
+            self.prs.append(
+                dict(
+                    PR,
+                    number=number,
+                    url=URL.rsplit("/", 1)[0] + f"/{number}",
+                    headRefOid=self.sha,
+                    **dict(texts),
+                )
+            )
+            return self.prs[-1]["url"]
+        if args[1] == "edit":
+            index = next(i for i, pr in enumerate(self.prs) if pr["number"] == int(args[2]))
+            self.prs[index].update(dict(texts))
+            return self.prs[index]["url"]
         if args[:2] == ("pr", "view"):
             state = self.mergeable.pop(0) if len(self.mergeable) > 1 else self.mergeable[0]
             return json.dumps({"mergeable": state})

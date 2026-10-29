@@ -6,6 +6,7 @@ from collections.abc import Callable, Sequence
 import contextlib
 import os
 import shutil
+import subprocess
 import sys
 import time
 import traceback
@@ -188,6 +189,13 @@ def run(
             with contextlib.suppress(OSError):
                 print(stop.text, file=sys.stderr)
         return stop.code, bool(launch and (launch.open_attempted or launch.native_pending))
+    except (ValueError, OSError, KeyError, TypeError, subprocess.TimeoutExpired) as error:
+        with contextlib.suppress(OSError):
+            if launch and launch.open_attempted:
+                traceback.print_exception(error)
+            else:
+                print(f"plot-session: {error}", file=sys.stderr)
+        return 1, bool(launch and launch.open_attempted)
     except Exception as error:
         if not launch or not (launch.open_attempted or launch.native_pending):
             raise

@@ -29,6 +29,8 @@ Unconditional. The interface is how the user reaches the change, not which direc
 2. Test a partial choice, accept one thing and decline another, not only all-on and all-off.
 3. Continue past the expected outcome until the user is somewhere normal. An error they cannot act on or a retry that repeats the failure is the finding.
 
+For any change covered by a design reference, compare each changed section with the reference the approved plan follows. Keep one screenshot per changed section next to its matching reference crop. Cover every expanded, collapsed and empty state the change touches with a screenshot and matching crop. Check layout, component composition, hierarchy, sequence, copy, navigation, typography, clipping, surfaces, colors and controls. Name each remaining difference beside the comparison. The plot names where its design references live.
+
 Keep actual output, or a screenshot for a visual interface, in the Git-ignored scratch directory in the task worktree. If no scratch directory is ignored, add its exact path to Git `info/exclude`. A Git-free session uses an owned scratch directory in its session directory. The harness session scratchpad is not acceptable for anything a later step or session reads.
 
 ### 3. The break-it pass

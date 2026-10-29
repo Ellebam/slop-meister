@@ -13,7 +13,6 @@ import time
 from slopmeister.errors import SlopmeisterError
 from slopmeister.launch import closure
 from slopmeister.launch.model import Launch, Stop
-from slopmeister.paths import ROOT
 from slopmeister.slots import allocation, claimed, leftover, setup, tester
 from slopmeister.slots.down_arguments import Request as Request
 from slopmeister.slots.down_arguments import parse as parse
@@ -21,17 +20,18 @@ from slopmeister.threads import occupants
 
 
 def _occupied(worktree: Path, project: str) -> None:
-    result = allocation.run(
-        [str(ROOT / "bin/slopmeister"), "occupants", str(worktree)], capture=True, ok=False
-    )
-    if result.returncode:
+    try:
+        processes = [p for p in occupants.census(str(worktree)) if p.inside]
+    except occupants.CensusError as error:
         raise SlopmeisterError(
-            f"cannot tell whether a worker occupies {worktree}, refusing to release {project}"
-        )
-    if result.stdout.strip():
+            f"cannot tell whether a worker occupies {worktree}, "
+            f"refusing to release {project}: {error}"
+        ) from error
+    if processes:
+        rows = [f"{p.kind} pid {p.pid} in {occupants.printable(p.cwd)}" for p in processes]
         raise SlopmeisterError(
             f"a worker still occupies {worktree}, refusing to release {project}:\n"
-            + result.stdout.strip()
+            + "\n".join(rows)
             + "\nstop the exact worker through its launcher, then run down again"
         )
 

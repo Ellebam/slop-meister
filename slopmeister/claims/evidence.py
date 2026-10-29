@@ -212,3 +212,14 @@ def delivery_evidence(saved: dict) -> None:
         raise ValueError("saved kickoff changed")
     if not _scan_evidence(saved, expected).delivered:
         raise ValueError("native delivery does not match the saved worker")
+
+
+def proof(tool: str, session: str, pid: int, transcript: Path) -> dict:
+    signature = github.command(["ps", "-p", str(pid), "-o", "lstart=,comm="])
+    return {
+        "tool": tool,
+        "session": session,
+        "evidence": str(transcript.resolve()),
+        "pid": pid,
+        "pid_start": signature,
+    }

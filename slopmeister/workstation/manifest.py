@@ -119,7 +119,6 @@ COMMON = (
         ".vault-git/lib/slopmeister_vault/conflicts.py",
     ),
     Entry("slopmeister/vault/runtime/obsidian.py", ".vault-git/lib/slopmeister_vault/obsidian.py"),
-    Entry("slopmeister/vault/runtime/retro.py", ".vault-git/lib/slopmeister_vault/retro.py"),
     Entry(
         "slopmeister/vault/runtime/retro_legacy.py",
         ".vault-git/lib/slopmeister_vault/retro_legacy.py",

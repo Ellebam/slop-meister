@@ -6,6 +6,7 @@ import subprocess
 
 import pytest
 
+from slopmeister.install.prepare import TERMINAL_INPUT
 from tests.integration.launch.helpers import ROOT, executable, launch, machine, target
 from tests.support.repos import GIT_ENV, git
 
@@ -36,7 +37,9 @@ def test_prepared_worktree_is_clean_untracked_and_rooted(tmp_path):
     assert git(worktree, "status", "--porcelain", "--untracked-files=all") == ""
     for tool, agreement in (("claude", "CLAUDE.md"), ("codex", "AGENTS.md")):
         render = (ROOT / f"dist/{tool}/plots/example-client.md").read_bytes()
-        assert (worktree / agreement).read_bytes() == render + b"\n" + DENY
+        assert (worktree / agreement).read_bytes() == (
+            render + b"\n" + DENY + TERMINAL_INPUT.encode() + b"\n"
+        )
     upstream = subprocess.run(
         ["git", "-C", str(repo), "rev-parse", "--abbrev-ref", "example-client-wt1@{upstream}"],
         capture_output=True,

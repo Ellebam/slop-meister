@@ -75,6 +75,7 @@ def machine(tmp_path: Path) -> Machine:
     (tmp_path / "codex").mkdir()
     env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
     env.pop("PLOT_SESSION_WORKTREE_FILE", None)
+    env.pop("ORCA_TERMINAL_HANDLE", None)
     env.update(GIT_ENV)
     env.update(
         HOME=str(home),

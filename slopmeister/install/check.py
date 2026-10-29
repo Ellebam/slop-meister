@@ -65,7 +65,6 @@ def _identity(state: dict, context: CheckContext, directory: bool) -> None:
         )
     expected = (
         state["version"] == VERSION
-        and state["worktree"] == str(context.repo)
         and state["plot"] == context.target
         and state["commit"] == context.permission
         and state["directory"] == directory

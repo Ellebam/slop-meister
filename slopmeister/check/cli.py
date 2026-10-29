@@ -2,6 +2,7 @@
 
 import argparse
 from collections.abc import Sequence
+import fcntl
 import os
 from pathlib import Path
 import shlex
@@ -73,8 +74,19 @@ def run_with_interrupts(checks, settings):
 
 
 def main(argv: Sequence[str]) -> int:
-    started = time.monotonic()
     args = parse(argv)
+    if args.ci or args.list or args.clean:
+        return execute(args)
+    lock = Path.home() / ".local/state/slopmeister/check.lock"
+    lock.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    with lock.open("a") as stream:
+        print(f"check: waiting for {lock}", flush=True)
+        fcntl.flock(stream, fcntl.LOCK_EX)
+        return execute(args)
+
+
+def execute(args: argparse.Namespace) -> int:
+    started = time.monotonic()
     if args.clean:
         return 0 if clean_leftovers(sys.stdout) else 1
     child_umask = os.umask(0o077)

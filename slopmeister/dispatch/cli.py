@@ -12,6 +12,10 @@ import uuid
 from slopmeister import paths
 from slopmeister.dispatch import command
 from slopmeister.errors import SlopmeisterError, UsageError
+from slopmeister.install.models import InstallRequest
+from slopmeister.install.preflight import reject_git_context
+from slopmeister.install.prepare import prepare
+from slopmeister.install.trust import TrustRequest, trust
 from slopmeister.launch import terminal
 from slopmeister.launch.model import shq
 from slopmeister.paths import ROOT
@@ -43,16 +47,6 @@ def parse(argv: Sequence[str]) -> command.Settings:
     return command.Settings(tool, name, model)
 
 
-def _run(argv: list[str], *, capture: bool = False) -> str:
-    try:
-        result = subprocess.run(argv, capture_output=capture, text=True, timeout=30)
-    except (OSError, subprocess.TimeoutExpired) as error:
-        raise SlopmeisterError(f"could not run {Path(argv[0]).name}") from error
-    if result.returncode:
-        raise SlopmeisterError(f"{Path(argv[0]).name} failed")
-    return result.stdout.rstrip("\n") if capture else ""
-
-
 def _process_exists(pattern: str) -> bool:
     try:
         result = subprocess.run(["pgrep", "-f", pattern], capture_output=True, timeout=15)
@@ -64,25 +58,24 @@ def _process_exists(pattern: str) -> bool:
     return result.returncode == 0
 
 
-def _install(tool: str, trust: Path, roots: tuple[Path, Path]) -> None:
+def _install(tool: str, store: Path, roots: tuple[Path, Path]) -> None:
     workspace, vault = roots
-    cli = str(ROOT / "bin/slopmeister")
-    _run([cli, "install", "--trust", "check", tool, str(trust), str(workspace)])
-    _run(
-        [
-            cli,
-            "install",
-            "--directory",
-            "slopmeister",
-            str(workspace),
-            "--dispatcher-jira",
-            "--grant",
-            str(ROOT),
-            "--grant",
-            str(vault),
-        ]
-    )
-    _run([cli, "install", "--trust", "write", tool, str(trust), str(workspace)])
+    try:
+        trust(TrustRequest("check", store, str(workspace)), tool)
+        reject_git_context()
+        prepare(
+            InstallRequest(
+                "--directory",
+                "slopmeister",
+                str(workspace),
+                None,
+                [str(ROOT), str(vault)],
+                dispatcher_jira=True,
+            )
+        )
+        trust(TrustRequest("write", store, str(workspace)), tool)
+    except (ValueError, OSError, KeyError, TypeError, SystemExit) as error:
+        raise SlopmeisterError(f"config-install: {error}") from error
 
 
 def _kickoff(path: Path, tool: str, name: str) -> str:
@@ -107,7 +100,7 @@ def _kickoff(path: Path, tool: str, name: str) -> str:
 def _trust(tool: str, workspace: Path) -> tuple[Path, dict[str, str]]:
     env = dict(os.environ)
     if tool == "codex":
-        home = Path(env.get("CODEX_HOME") or Path.home() / ".codex")
+        home = paths.codex_home()
         return home / "config.toml", env
     value = env.get("CLAUDE_CONFIG_DIR")
     if value == "":
@@ -132,7 +125,7 @@ def _report(line: str, paths: tuple[Path, Path], skipped: bool = False) -> None:
 
 
 def _prepare(settings: command.Settings) -> tuple[Path, Path, str, list[str], dict]:
-    root = Path(os.environ.get("PLOT_SESSION_ROOT") or Path.home() / ".slopmeister/sessions")
+    root = paths.session_root()
     workspace = root / f"dispatcher-{settings.name or 'unnamed'}-{settings.tool}-{uuid.uuid4()}"
     trust, env = _trust(settings.tool, workspace)
     vault = paths.vault()

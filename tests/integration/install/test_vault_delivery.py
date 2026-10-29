@@ -67,7 +67,7 @@ def test_a_target_folder_overrides_a_vault_skill_by_name(tmp_path):
     shutil.copytree(ROOT / "dist", tmp_path / "dist")
     (tmp_path / "plots/fixture/skills/vault-todos").mkdir(parents=True)
     with (tmp_path / "dist/manifest.tsv").open("a") as stream:
-        stream.write("target-skill\tfixture/vault-todos\tfixture\tfalse\tfalse\n")
+        stream.write("target-skill\tfixture/vault-todos\tfixture\n")
     for tool in ("codex", "claude"):
         (tmp_path / "dist" / tool / "plots/fixture.md").write_text("Fixture plot\n")
         shadow = tmp_path / "dist" / tool / "targets/fixture/skills/vault-todos/SKILL.md"

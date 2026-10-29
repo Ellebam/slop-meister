@@ -12,10 +12,8 @@ ROOT = Path(__file__).resolve().parents[3]
 @pytest.mark.parametrize("tool", ("claude", "codex"))
 def test_rendered_vault_commands_use_the_bounded_obsidian_boundary(tool: str) -> None:
     skill = (ROOT / "dist" / tool / "skills/vault-optimize/SKILL.md").read_text()
-    close_out = (ROOT / "dist" / tool / "skills/close-out/SKILL.md").read_text()
     assert skill.count("slopmeister-vault obsidian -- vault=obsidian") == 4
     assert "2 refuses a non-read-only operation" in skill and "</dev/null>" not in skill
-    assert "existing single shared commit lease" in close_out
 
 
 @pytest.fixture(params=("claude", "codex"))

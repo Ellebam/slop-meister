@@ -66,6 +66,16 @@ def test_submit_must_be_enabled_after_input_not_before_it(fault):
         assert data["result"] == {"result": "BROWSER_LOGIN_SUBMITTED"}
 
 
+def test_code_challenge_authenticates_and_clears_without_capture():
+    result = node("-e", FIXTURE, str(HELPER), "otp")
+    assert result.returncode == 0, result.stderr
+    data = json.loads(result.stdout)
+    assert data["result"] == {"result": "BROWSER_LOGIN_SUBMITTED"}
+    assert data["authenticated"] and data["clicks"] == 1 and data["events"] > 0
+    assert not data["credentialRetained"] and not data["failed"]
+    assert data["secretCalls"] == 3, "only fill, submit and clear carry private arguments"
+
+
 @pytest.mark.parametrize("value", ["", "op://example/item/otp", "otpauth://seed", "ABCDEF"])
 def test_unresolved_or_seed_otp_is_refused(monkeypatch, value):
     monkeypatch.setenv("BROWSER_LOGIN_OTP", value)

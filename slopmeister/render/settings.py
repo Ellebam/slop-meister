@@ -18,11 +18,11 @@ def render_home(plots: Path, out: Path, manifest: list) -> None:
     for tool, filename, label in HOME_RENDERINGS:
         (out / tool).mkdir(parents=True, exist_ok=True)
         (out / tool / filename).write_text(text.replace("{{TOOL}}", label))
-        manifest.append(("home", filename, "home", False, False))
+        manifest.append(("home", filename, "home"))
     codex = plots / "home" / "codex" / "config.toml.tmpl"
     if codex.is_file():
         shutil.copy2(codex, out / "codex" / "config.toml")
-        manifest.append(("home", "config.toml", "home", False, False))
+        manifest.append(("home", "config.toml", "home"))
 
 
 def service_rules(
@@ -66,6 +66,7 @@ def service_binding(context, native: str, action: str) -> dict | bool:
 def native_tools(context, writable: list[str]) -> bytes:
     registration = context.files.get(".claude/service-actions/mcp.json")
     result = 'project_root_markers = ["AGENTS.md"]\nproject_doc_fallback_filenames = []\n'
+    result += "project_doc_max_bytes = 65536\n"
     roots = list(dict.fromkeys((*context.grants, *writable)))
     result += "[sandbox_workspace_write]\nwritable_roots = " + json.dumps(roots) + "\n"
     if registration:

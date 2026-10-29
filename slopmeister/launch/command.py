@@ -5,9 +5,13 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import re
+import sys
 import tomllib
 
 from slopmeister import paths
+from slopmeister.errors import SlopmeisterError
+from slopmeister.launch import terminal
 from slopmeister.launch.model import BROKER_MARK, Launch, shq
 from slopmeister.opencode import launch as opencode
 
@@ -19,6 +23,63 @@ CODEX_SANDBOX = {
     "linux": " -c 'sandbox_mode=\"danger-full-access\"'",
     "darwin": " -c 'sandbox_workspace_write.network_access=true'",
 }
+
+
+def _mailbox_handle() -> str:
+    handle = os.environ.get("ORCA_TERMINAL_HANDLE", "")
+    if not re.fullmatch(r"term_[A-Za-z0-9_-]{1,128}", handle):
+        raise SlopmeisterError("no inherited Orca terminal identity")
+    listed = terminal._orca("terminal", "list", checked=True)
+    rows = listed.get("terminals")
+    if listed.get("truncated") is not False or not isinstance(rows, list):
+        raise SlopmeisterError("incomplete terminal discovery")
+    matches = [row for row in rows if isinstance(row, dict) and row.get("handle") == handle]
+    if len(matches) != 1:
+        raise SlopmeisterError("inherited terminal is not uniquely live")
+    return handle
+
+
+def _mailbox_id(run: object, handle: str, objective: str) -> str:
+    if not isinstance(run, dict) or not isinstance(run.get("id"), str):
+        raise SlopmeisterError("unsupported inbox binding")
+    if not re.fullmatch(r"run_[A-Za-z0-9_-]{1,128}", run["id"]):
+        raise SlopmeisterError("unsupported inbox identity")
+    if run.get("coordinator_handle") != handle or run.get("legacy") != 0:
+        raise SlopmeisterError("inbox does not belong to the inherited terminal")
+    if run.get("objective") != objective:
+        raise SlopmeisterError("existing inbox belongs to another task")
+    return run["id"]
+
+
+def initialize_mailbox(workspace: Path) -> None:
+    """The native terminal owns setup, before a model can omit the inbox instruction."""
+    try:
+        handle = _mailbox_handle()
+        current = terminal._orca("orchestration", "run-current", "--from", handle, checked=True)
+        if "run" not in current:
+            raise SlopmeisterError("unsupported inbox lookup")
+        run = current["run"]
+        if run is None:
+            created = terminal._orca(
+                "orchestration",
+                "run-create",
+                "--from",
+                handle,
+                "--objective",
+                workspace.name,
+                checked=True,
+            )
+            run = created.get("run")
+        identity = _mailbox_id(run, handle, workspace.name)
+        print(f"task inbox ready: {identity}", flush=True)
+    except SlopmeisterError as error:
+        print(f"task inbox unavailable: {error}", file=sys.stderr)
+
+
+def mailbox_line(workspace: Path) -> str:
+    """Run setup inside the new pane, never under the launching agent's identity."""
+    args = (sys.executable, "-E", "-s", "-m", "slopmeister.launch.command", str(workspace))
+    return f"(cd {shq(str(paths.ROOT))} && " + " ".join(shq(value) for value in args) + ")"
 
 
 def _tail(launch: Launch) -> str:
@@ -93,7 +154,11 @@ def line(launch: Launch) -> str:
 def write(launch: Launch) -> None:
     """The first && of the launch line becomes the exec."""
     first, rest = launch.line.split(" && ", 1)
-    lines = ["#!/bin/zsh -l", f"export SLOPMEISTER_SESSION_WORKSPACE={shq(str(launch.wt))}"]
+    lines = [
+        "#!/bin/zsh -l",
+        mailbox_line(launch.wt),
+        f"export SLOPMEISTER_SESSION_WORKSPACE={shq(str(launch.wt))}",
+    ]
     if launch.scratch is not None:
         lines.append(f"export TMPDIR={shq(str(launch.scratch))}")
     lines.append(f"{first} && exec {rest}")
@@ -101,3 +166,7 @@ def write(launch: Launch) -> None:
     with os.fdopen(descriptor, "w") as stream:
         stream.write("\n".join(lines) + "\n")
     os.chmod(launch.command_file, 0o700)
+
+
+if __name__ == "__main__":
+    initialize_mailbox(Path(sys.argv[1]))

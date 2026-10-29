@@ -19,7 +19,6 @@ SHARED = "shared"
 META_KEYS = {
     "codex_name",
     "codex_description",
-    "codex_gate",
     "codex_display_name",
     "codex_short_description",
     "codex_default_prompt",
@@ -68,18 +67,14 @@ def _copy_payload(source: Path, destination: Path, excluded: set[str]) -> list[P
     return copied
 
 
-def _metadata(request: SkillRequest, frontmatter: str) -> tuple[dict, bool, bool]:
+def _metadata(request: SkillRequest) -> dict:
     """Metadata is optional and carries Codex interface keys only. Location decides delivery."""
     meta_path = request.source / "skill.meta.yaml"
     meta = parse_meta(meta_path) if meta_path.is_file() else {}
     check_meta_keys(meta, META_KEYS, meta_path)
     for key, value in meta.items():
         single_line(value, meta_path, key)
-    claude_gate = frontmatter_value(frontmatter, "disable-model-invocation") == "true"
-    if meta.get("codex_gate", "") not in ("", "true", "false"):
-        raise ValueError(f"{meta_path}: codex_gate must be true or false")
-    codex_gate = {"true": True, "false": False}.get(meta.get("codex_gate", ""), claude_gate)
-    return meta, claude_gate, codex_gate
+    return meta
 
 
 def _claude_prefix(prefix: str, frontmatter: str, request: SkillRequest) -> str:
@@ -160,12 +155,14 @@ def render_skill(request: SkillRequest) -> list[Path]:
     if "{{" in frontmatter:
         raise ValueError(f"{source}: '{{{{' token in skill frontmatter")
     prefix = text[: len(text) - len(body)]
-    meta, claude_gate, codex_gate = _metadata(request, frontmatter)
+    meta = _metadata(request)
     claude = SkillContent(_claude_prefix(prefix, frontmatter, request), body, meta, frontmatter)
     copied = _write_skill(request, "claude", claude)
     _write_skill(request, "codex", SkillContent(prefix, body, meta, frontmatter))
-    _write_interface(request, meta, codex_gate)
+    _write_interface(
+        request, meta, frontmatter_value(frontmatter, "disable-model-invocation") == "true"
+    )
     kind = "target-skill" if request.target else "skill"
     name = f"{request.target}/{request.source.name}" if request.target else request.source.name
-    request.manifest.append((kind, name, request.target or SHARED, claude_gate, codex_gate))
+    request.manifest.append((kind, name, request.target or SHARED))
     return copied

@@ -194,7 +194,7 @@ def test_native_dependencies_block_recommendations_but_allow_explicit_dispatch(w
     assert "blocked" in result.stderr
 
 
-def test_foreign_project_finalize_uses_absolute_helper_and_clears_claim(world):
+def test_foreign_project_harvest_uses_absolute_helper_and_clears_claim(world):
     root, repo, env, worker, launch, cli = world
     _, workspace = worker("slopmeister-7-work", "claude")
     result = launch("slopmeister-7-work", "claude", "--issue-id", "7")
@@ -211,7 +211,7 @@ def test_foreign_project_finalize_uses_absolute_helper_and_clears_claim(world):
     assert remote["state"] == "closed" and not remote["labels"]
 
 
-def test_finalize_close_ignores_harness_git_variables_and_refuses_a_redirect(world):
+def test_harvest_close_ignores_harness_git_variables_and_refuses_a_redirect(world):
     """Bug: claims close refused until harness-injected Git variables were unset by hand."""
     root, repo, env, worker, launch, cli = world
     _, workspace = worker("slopmeister-7-work", "claude")

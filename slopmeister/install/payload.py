@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import csv
 import json
-import os
 from pathlib import Path
 import re
 import stat
@@ -12,6 +11,7 @@ import stat
 from slopmeister.install.models import PayloadContext, ToolPayload
 from slopmeister.install.native_payload import add_native_payload as add_native_payload
 from slopmeister.install.preflight import refuse, safe_path
+from slopmeister.paths import ROOT, plot_declarations
 from slopmeister.plots import load_all
 
 DENY_COMMIT = (
@@ -24,13 +24,13 @@ DENY_COMMIT = (
 )
 DIRECTORY_SHIPPING = (
     "Agent shipping permission for this session is deny. No push or PR write, including during "
-    "finalize."
+    "harvest."
 )
 
 
 def declaration(target: str) -> tuple[Path, dict]:
-    root = Path(__file__).resolve().parents[2]
-    declarations = Path(os.environ.get("PLOT_DECLARATIONS", root / "plots"))
+    root = ROOT
+    declarations = plot_declarations()
     data = load_all(declarations).get(target, {})
     if "target" not in data:
         refuse("a declared launchable plot is required")
@@ -53,7 +53,7 @@ def permission_paragraph(context: PayloadContext) -> bytes:
         shipping = (
             "Agent shipping permission for this session is allow. Ordinary push and PR "
             "create/update are allowed only for the saved repository and current non-default "
-            "task branch through ship, GitHub enforces branch protection. Merge and finalize "
+            "task branch through ship, GitHub enforces branch protection. Merge and harvest "
             "remain operator-controlled."
         )
     else:

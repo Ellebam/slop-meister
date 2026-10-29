@@ -8,10 +8,9 @@ ROOT = Path(__file__).resolve().parents[3]
 DIST = ROOT / "dist"
 PROCEDURES = (
     "bloom",
-    "close-out",
     "cross-tool-review",
     "dummy",
-    "finalize",
+    "harvest",
     "implement",
     "local-qa",
     "merge",
@@ -21,7 +20,6 @@ PROCEDURES = (
     "ship",
     "execute-plan",
     "test-guide",
-    "update-prs",
     "leak-check",
 )
 POINTS = {
@@ -61,7 +59,8 @@ def test_ripe_checks_acceptance_without_waiving_operator_gates():
     ripe = (ROOT / "src/skills/ripe/SKILL.md").read_text()
     assert "Check each acceptance point" in ripe
     assert "Never skip a required gate" in ripe
-    assert "Do not edit, repeat a test or review" in ripe
+    assert "Do not edit product files" in ripe
+    assert "repeat a test or review" in ripe
     assert "invoke `ripe`" in (ROOT / "plots/code/plot.md").read_text()
 
 

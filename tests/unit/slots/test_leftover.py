@@ -8,6 +8,7 @@ import pytest
 
 from slopmeister.errors import SlopmeisterError
 from slopmeister.slots import allocation, down, leftover
+from slopmeister.threads import occupants
 from tests.unit.slots.test_allocation import slot_identity
 
 FORCED = down.Request("repo", "scratch", "scratch-one", True, "1")
@@ -21,12 +22,15 @@ def _slot(tmp_path, monkeypatch, output: str = "", code: int = 0) -> Path:
     monkeypatch.setattr(allocation, "main_root", lambda repo: tmp_path / "repo")
     result = subprocess.CompletedProcess([], code, output, output)
     monkeypatch.setattr(allocation, "run", lambda argv, **kwargs: result)
+    monkeypatch.setattr(occupants, "census", lambda root: [])
     return worktree
 
 
 def test_down_refuses_a_leftover_that_a_worker_occupies(tmp_path, monkeypatch):
     """Bug: a directory Git let go of was deleted under a running worker."""
-    worktree = _slot(tmp_path, monkeypatch, "claude pid 42\n")
+    worktree = _slot(tmp_path, monkeypatch)
+    worker = occupants.Process(42, "claude", "??", "birth", str(worktree), True, False)
+    monkeypatch.setattr(occupants, "census", lambda root: [worker])
     (worktree / allocation.ALLOCATION).unlink()
     with pytest.raises(SlopmeisterError, match="worker still occupies"):
         down._release(FORCED)

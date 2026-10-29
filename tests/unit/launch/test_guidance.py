@@ -8,20 +8,12 @@ REQUIRED = (
     "only when the operator says dispatch",
     "Mode: spine",
     "Mode: freeform",
-    "Freeform is the default",
-    "ticket-shaped repository implementation with acceptance criteria",
-    "pipes the declared body over stdin by default",
+    "Choose from the work",
+    "Work that ships a change uses spine",
+    "one-sentence reason",
     "line three of the final Codex kickoff",
     "never from a running process",
     "<plot>-<ticket>-<one or two words>",
-    "task plot-session -- <slopmeister root> slopmeister slopmeister-<ticket>-<slug> "
-    "--issue-id <ticket> --tool <tool> --model <model> -- --effort high < kickoff.md",
-    "model requested",
-    "model observed",
-    "model comparison",
-    "model evidence",
-    "worker running, model unconfirmed",
-    "A different name succeeds",
     "~/.slopmeister/sessions/<name>",
     "<name>-NOTES.md",
     "`writable_roots` of the workspace `.codex/config.toml`",
@@ -31,6 +23,7 @@ REQUIRED = (
     "older than ten minutes is unknown",
     "never copy status output",
     "only when the operator asks you to in this conversation",
+    "harvest comes from the manager only",
 )
 
 

@@ -19,7 +19,6 @@ SKILL_PROGRAMS = {
     "browser-login": ("browser", "slopmeister.session.browser_login"),
     "bloom": ("bloom", "slopmeister.session.bloom"),
     "ship": ("ship", "slopmeister.session.ship"),
-    "update-prs": ("update", "slopmeister.session.update_pr"),
     "vault-todos": ("vault_todos", "slopmeister.session.vault_todos"),
 }
 STATE_ENTRIES = {

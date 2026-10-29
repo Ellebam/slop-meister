@@ -33,7 +33,7 @@ line 7: restates notes-file, carried by the spine paragraph of the agreement
 line 7: restates spine-run, carried by the mode line
 line 15: restates dummy-shape, carried by the one message of the agreement
 line 17: restates review-halts, carried by the review section of the agreement
-line 17: restates close-out, carried by harvest or finalize, which the operator types
+line 17: restates close-out, carried by harvest, which the operator orders
 """
     assert result.returncode == 1
     assert result.stdout == expected
@@ -99,7 +99,7 @@ PROBES = {
     ),
     "close-out": (
         "Close out at every pause or completion.",
-        "harvest or finalize, which the operator types",
+        "harvest, which the operator orders",
     ),
     "spine-run": ("Run the whole seven-step spine in this one worker.", "the mode line"),
     "writing-style": (

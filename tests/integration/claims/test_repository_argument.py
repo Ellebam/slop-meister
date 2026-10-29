@@ -1,5 +1,6 @@
 """Repository actions diagnose an omitted repository instead of passing None to Git."""
 
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -12,7 +13,7 @@ SLOPMEISTER = Path(__file__).resolve().parents[3]
 def run_target(cwd: Path, *arguments: str, **environment: str) -> subprocess.CompletedProcess:
     env = {**os.environ, **repos.GIT_ENV, **environment}
     return subprocess.run(
-        [str(SLOPMEISTER / "bin/slopmeister"), "claims", "target", *arguments],
+        [str(SLOPMEISTER / "bin/slopmeister"), "claims", "backlog", "--json", *arguments],
         cwd=cwd,
         capture_output=True,
         text=True,
@@ -27,10 +28,16 @@ def test_repository_action_defaults_to_current_checkout(tmp_path):
     nested = repo / "nested"
     nested.mkdir()
 
-    result = run_target(nested)
+    fakes.fake_binary(tmp_path / "bin", "gh", "printf '[]\\n'")
+    result = run_target(nested, PATH=fakes.path_with(tmp_path / "bin"))
 
     assert result.returncode == 0, result.stderr
-    assert result.stdout == "owner/project\n"
+    assert json.loads(result.stdout) == {
+        "repository": "owner/project",
+        "issues": [],
+        "recommend": [],
+        "warnings": [],
+    }
     assert result.stderr == ""
 
 

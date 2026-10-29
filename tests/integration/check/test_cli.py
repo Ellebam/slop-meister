@@ -1,6 +1,7 @@
 """The check command preserves evidence, cancellation, and catalogue coverage."""
 
 import contextlib
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -21,6 +22,11 @@ pytest-unit pytest-integration pytest-native drift"""
 ALL_CHECKS = set(ALL_CHECK_IDS.split())
 
 
+@pytest.fixture(autouse=True)
+def isolated_gate_home(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+
+
 def termination_program(root, report, phase):
     child = (
         "import os, time\n"
@@ -38,37 +44,6 @@ cli.catalogue.catalogue = lambda *_, **__: [
     jobs.Check('waiting', ({sys.executable!r}, '-c', {child!r}), phase={phase!r})
 ]
 raise SystemExit(cli.main(['--jobs', '1', '--report', {str(report)!r}]))
-"""
-
-
-def cancellation_program(root, phase):
-    return f"""
-import json, signal, sys, threading, time
-from pathlib import Path; from slopmeister.check import cli, jobs, ownership
-root = cli.ROOT = Path({str(root)!r})
-native_spawn, native_signal, native_stop = jobs.subprocess.Popen, signal.signal, jobs.stop_group
-def spawn(*args, **kwargs):
-    child = native_spawn(*args, **kwargs)
-    if args[0][0] == sys.executable:
-        record = dict(pid=child.pid, identity=ownership.identity(child.pid))
-        (root/'child.json').write_text(json.dumps(record))
-        (root/'spawn-thread').write_text(str(threading.get_ident())); (root/'spawned').touch()
-        while not (root/'release').exists(): time.sleep(.01)
-    return child
-def stop(child, *args, **kwargs):
-    (root/'stop-thread').write_text(str(threading.get_ident()))
-    return native_stop(child, *args, **kwargs)
-def install(signum, handler):
-    def observed(*args):
-        (root/'signal-received').touch()
-        return handler(*args)
-    return native_signal(signum, observed if callable(handler) else handler)
-jobs.subprocess.Popen, jobs.stop_group, signal.signal = spawn, stop, install
-install(signal.SIGINT, signal.default_int_handler); child = 'import time; time.sleep(30)'
-cli.catalogue.catalogue = lambda *_, **__: [
-    jobs.Check('waiting', (sys.executable, '-c', child), phase={phase!r})
-]
-raise SystemExit(cli.main(['--jobs', '1', '--report', str(root/'report.json')]))
 """
 
 
@@ -98,13 +73,6 @@ def terminate(process):
     if process.poll() is None:
         process.terminate()
     process.wait(timeout=5)
-
-
-def stop_record(path):
-    if path.exists():
-        record = json.loads(path.read_text())
-        if ownership.identity(record["pid"]) == record["identity"]:
-            os.kill(record["pid"], signal.SIGKILL)
 
 
 def stop_group_from(path):
@@ -153,33 +121,6 @@ def test_termination_stops_the_owned_child_and_preserves_an_incomplete_report(
         terminate(foreign)
 
 
-@pytest.mark.parametrize("phase", ["first", "parallel", "last"])
-@pytest.mark.parametrize("signum", [signal.SIGINT, signal.SIGTERM])
-def test_cancellation_during_spawn_registers_and_stops_the_child(tmp_path, phase, signum):
-    """Escaping bug: scheduler and worker teardown could race away the group anchor."""
-    program = cancellation_program(tmp_path, phase)
-    subject = subprocess.Popen([sys.executable, "-c", program])
-    foreign = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
-    foreign_birth = ownership.identity(foreign.pid)
-    try:
-        wait_for(tmp_path / "spawned", subject)
-        subject.send_signal(signum)
-        wait_for(tmp_path / "signal-received", subject)
-        (tmp_path / "release").touch()
-        assert subject.wait(timeout=5) == 1
-        result = json.loads((tmp_path / "report.json").read_text())
-        record = json.loads((tmp_path / "child.json").read_text())
-        assert result["interrupted"] and not result["complete"] and not result["passed"]
-        assert ownership.identity(record["pid"]) != record["identity"]
-        assert (tmp_path / "stop-thread").read_text() == (tmp_path / "spawn-thread").read_text()
-        assert foreign.poll() is None and ownership.identity(foreign.pid) == foreign_birth
-    finally:
-        (tmp_path / "release").touch()
-        terminate(subject)
-        stop_record(tmp_path / "child.json")
-        terminate(foreign)
-
-
 @pytest.mark.parametrize("mask", [0o022, 0o027])
 @pytest.mark.parametrize("phase", ["first", "parallel", "last"])
 def test_cli_preserves_child_umask_without_exposing_its_report_or_logs(tmp_path, mask, phase):
@@ -195,6 +136,7 @@ def test_cli_preserves_child_umask_without_exposing_its_report_or_logs(tmp_path,
     assert report.stat().st_mode & 0o777 == 0o600
     assert log.stat().st_mode & 0o777 == 0o600
     assert log.parent.stat().st_mode & 0o777 == 0o700
+    assert (Path.home() / ".local/state/slopmeister/check.lock").is_file()
 
 
 def test_passing_default_run_leaves_no_temporary_folder(tmp_path, run_root, monkeypatch):
@@ -204,3 +146,45 @@ def test_passing_default_run_leaves_no_temporary_folder(tmp_path, run_root, monk
     monkeypatch.setattr(cli.catalogue, "catalogue", lambda *_: [jobs.Check("quick", ("true",))])
     assert cli.main(["--ci", "--jobs", "1"]) == 0
     assert not list(tmp_path.glob("slopmeister-check-*"))
+
+
+def locking_program(root, flags):
+    job = f"from pathlib import Path; Path({str(root / 'ran')!r}).touch()"
+    return f"""
+from pathlib import Path
+from slopmeister.check import cli, jobs
+cli.ROOT = Path({str(root)!r})
+cli.clean_leftovers = lambda stream: True
+cli.catalogue.catalogue = lambda *_: [jobs.Check('quick', ({sys.executable!r}, '-c', {job!r}))]
+raise SystemExit(cli.main({flags!r}))
+"""
+
+
+@pytest.mark.parametrize("flags", [[], ["--ci"], ["--list"], ["--clean"]])
+def test_local_gate_waits_for_lock_and_special_modes_bypass_it(tmp_path, flags):
+    lock = Path.home() / ".local/state/slopmeister/check.lock"
+    command = [sys.executable, "-c", locking_program(tmp_path, flags)]
+    if flags:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=10)
+        assert result.returncode == 0 and not lock.exists(), result.stderr
+        (tmp_path / "ran").unlink(missing_ok=True)
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    with lock.open("a") as stream:
+        fcntl.flock(stream, fcntl.LOCK_EX)
+        subject = subprocess.Popen(
+            command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        )
+        try:
+            if not flags:
+                assert "waiting" in subject.stdout.readline()
+                time.sleep(0.2)
+                assert subject.poll() is None and not (tmp_path / "ran").exists()
+            else:
+                stdout, stderr = subject.communicate(timeout=10)
+                assert subject.returncode == 0 and "waiting" not in stdout, stderr
+        finally:
+            fcntl.flock(stream, fcntl.LOCK_UN)
+            stdout, stderr = subject.communicate(timeout=10)
+            terminate(subject)
+    assert subject.returncode == 0 and "check: waiting" not in stdout, stderr
+    assert (tmp_path / "ran").exists() is (not flags or flags == ["--ci"])

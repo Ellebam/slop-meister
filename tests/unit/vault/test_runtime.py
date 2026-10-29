@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from slopmeister.vault.runtime import lint, obsidian, repository, retro
+from slopmeister.vault.runtime import lint, obsidian, repository
 from slopmeister.vault.runtime import retro_legacy as legacy
 from slopmeister.vault.runtime.__main__ import _parser
 
@@ -20,7 +20,7 @@ def test_runtime_spills_to_machine_state_not_a_checkout(tmp_path: Path, monkeypa
 def test_retro_fsyncs_the_failure_spill(tmp_path: Path, monkeypatch) -> None:
     synced = []
     monkeypatch.setenv("RETRO_SPILL_DIR", str(tmp_path / "spill"))
-    monkeypatch.setattr(retro.os, "fsync", synced.append)
+    monkeypatch.setattr(legacy.os, "fsync", synced.append)
     args = SimpleNamespace(repo="fixture", task="task", note="fixture.md")
     assert legacy._spill("entry\n", args) == 1
     assert len(synced) == 1
@@ -40,6 +40,8 @@ def test_retro_has_no_second_vault_selector() -> None:
         "c",
         "--model",
         "m",
+        "--note",
+        "fixture.md",
         "--vault",
         "other",
     ]
@@ -48,11 +50,11 @@ def test_retro_has_no_second_vault_selector() -> None:
 
 
 def test_retro_rejects_cli_rewritten_and_table_input() -> None:
-    assert retro.input_problem("--repo", "a|b", table=True) == "--repo cannot carry a pipe"
-    assert retro.input_problem("--title", r"a\nb") == (
+    assert legacy.input_problem("--repo", "a|b", table=True) == "--repo cannot carry a pipe"
+    assert legacy.input_problem("--title", r"a\nb") == (
         "--title carries a literal backslash-n or backslash-t sequence"
     )
-    assert retro.input_problem("--task", "one line") is None
+    assert legacy.input_problem("--task", "one line") is None
 
 
 def test_heading_matches_text_slug_and_percent_encoding(tmp_path: Path) -> None:
@@ -120,10 +122,32 @@ def test_retro_spills_without_overwriting_a_dataless_note(tmp_path: Path, monkey
 def test_retro_names_the_machine_and_has_no_cost_field(monkeypatch) -> None:
     """Bugs: an entry does not say which machine wrote it, a dotted host name puts the domain
     into the log, and the cost field nobody fills returns to the command and the log table."""
-    monkeypatch.setattr(retro.socket, "gethostname", lambda: "box.home.example")
-    base = ["retro", "--repo", "r", "--task", "t", "--title", "x", "--tool", "c", "--model", "m"]
+    monkeypatch.setattr(legacy.socket, "gethostname", lambda: "box.home.example")
+    base = [
+        "retro",
+        "--repo",
+        "r",
+        "--task",
+        "t",
+        "--title",
+        "x",
+        "--tool",
+        "c",
+        "--model",
+        "m",
+        "--note",
+        "fixture.md",
+    ]
     args = _parser().parse_args(base)
     table = "| Repository | Tool | Model | Machine |\n|---|---|---|---|\n| r | c | m | box |\n"
-    assert table in retro._entry(args, ["one", "two", "three"])
+    assert table in legacy._entry(args, ["one", "two", "three"])
     with pytest.raises(SystemExit):
         _parser().parse_args([*base, "--cost", "0"])
+
+
+def test_retro_requires_an_explicit_legacy_target():
+    args = ["retro", "--repo", "r", "--task", "t", "--title", "x", "--tool", "c", "--model", "m"]
+    with pytest.raises(SystemExit) as refusal:
+        _parser().parse_args(args)
+    assert refusal.value.code == 2
+    assert _parser().parse_args([*args, "--note", "fixture.md"]).note == "fixture.md"

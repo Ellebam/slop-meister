@@ -10,6 +10,8 @@ The Mac uses `~/.ssh/slopmeister-remote.conf`, a dedicated SSH configuration. `a
 
 On agent-host, the public entry has `from="<client-tailnet-IPv4>",restrict`. Use the address verified from the Mac's Tailscale client, never a subnet. The operator owns its installation. Preserve all other authorized keys. Keep the existing trusted host key, never accept a new key from an unverified scan. The emergency key remains for emergencies.
 
+After rebuilding a remote host, verify its new host-key fingerprint against its console and replace both its deployment pin and every dedicated controller pin before reconnecting. Preserve unrelated keys. An unverified key scan does not establish trust.
+
 Create the client configuration as an owner-only file, replacing every placeholder:
 
 ```sshconfig

@@ -1,13 +1,48 @@
 """Issue claim classification, inventory and lifecycle actions."""
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 import subprocess
 import sys
 from urllib.parse import quote
 
-from slopmeister.claims import evidence, github, inventory
+from slopmeister.claims import evidence, github, inventory, locks
 from slopmeister.paths import main_checkout
+
+
+@dataclass
+class Run:
+    ctx: github.Repository
+    path: Path | None
+    saved: dict | None
+    number: int
+    legacy: bool
+
+
+def resolve(
+    workspace: Path,
+    plot: str | None = None,
+    number: int | None = None,
+    *,
+    unassociated: bool = False,
+) -> Run:
+    ctx, path, saved = evidence.workspace_record(workspace, plot, unassociated=unassociated)
+    observed = number if saved is None else saved["issue"]
+    if number is not None and number != observed:
+        raise ValueError("explicit issue differs from saved worker association")
+    return Run(ctx, path, saved, observed, saved is None)
+
+
+@contextmanager
+def locked(run: Run, workspace: Path, inherited: int | None = None) -> Iterator[Run]:
+    if not evidence.eligible(run.ctx.plot, workspace):
+        raise ValueError("existing shipping permission does not allow issue management")
+    with locks.locked(run.ctx, run.number, inherited):
+        if run.saved is not None:
+            run = resolve(workspace, run.ctx.plot, run.number)
+        yield run
 
 
 @dataclass
@@ -98,7 +133,7 @@ def close_issue(ctx: github.Repository, operation: Closure) -> None:
     path, saved = operation.path, operation.saved
     invalid = saved["phase"] not in ("claimed", "closing", "closed")
     if invalid or other_owners(ctx, saved["issue"], saved["workspace"]):
-        raise ValueError("finalize requires this verified owning worker")
+        raise ValueError("harvest requires this verified owning worker")
     evidence.delivery_evidence(saved)
     item = github.remote_issue(ctx, saved["issue"])
     if item["state"] != "closed":

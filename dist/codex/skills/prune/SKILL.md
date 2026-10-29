@@ -1,22 +1,13 @@
 ---
 name: prune
-description: "Prune: critically reassess whatever is on the table, a review's findings, a proposal, a plan, a diff, your own draft or gaps you are about to raise, for validity, overengineering and added complexity. Invoke after a review returns, before handing findings or gaps to the operator, to check your own or another agent's output, or whenever the operator asks. Read-only and safe to repeat."
+description: "Prune: reassess plans, reviews, diffs, drafts and gaps for validity and needless complexity. Use after a review, before presenting findings or gaps, on your own draft, or when asked. Read-only and safe to repeat."
 ---
 
 # Prune
 
-Reassess what is on the table in this discussion right now. It needs no prior review, step or notes file, writes nothing, and is safe to repeat. Answer every question for each item, and say which ones fail and why.
+Reassess the current discussion. No prior review, step or notes file is needed. Write nothing. For each item, ask whether the outcome needs it and whether a simpler existing mechanism works. Remove redundant machinery and paperwork. Keep the result readable and maintainable. Every new rule, process, document, test, file kind or recurring record must name what it replaces or deletes, or why nothing can go. Give that answer for mandatory safeguards first. Cut items without that answer and give the smaller remedy.
 
-- Really valid or overengineering?
-- Does this remove redundant machinery?
-- Does it remove unneeded paperwork, or at least add none?
-- Is bookkeeping minimized?
-- Did we apply KISS and YAGNI, is it DRY?
-- Is the solution the most elegant it could be?
-- Are the suggestions workable for engineers, readable and maintainable?
-- Did we reduce the complexity of the whole system?
-
-Classify findings before spending another round. Distinguish a required product failure, broken setup or guide, a valid additional defect and a speculative or duplicate probe. Verify the caller or input and observable consequence. Diagnose setup before blaming the product. Keep exact saved verdicts, this triage never regrades them. Additional tester defects use the existing candidate path, not new required scenarios.
+Classify findings before another round. Verify the input and consequence. Diagnose setup before blaming the product. For spine check failures, follow Test failures in the working agreement. Keep saved verdicts unchanged. Additional tester defects use the candidate path, never new required scenarios.
 
 Agents overbuild and reviews reward it, so the default verdict is drop. An item survives when it is a security, data-loss, authority or recovery matter, when required behavior fails without it, or when evidence shows a reachable harmful failure of the change. Fix real defects of the change inside scope and escalate under the existing security and scope rules. Drop unsupported or duplicate extras with a reason the operator can reopen. Apply [Test purpose](../implement/SKILL.md#test-purpose) before retaining regression coverage. Where an item fails, name the smaller or simpler remedy.
 

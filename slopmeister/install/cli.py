@@ -4,15 +4,11 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Sequence
-import json
-from pathlib import Path
 import sys
 
 from slopmeister.install.models import InstallRequest
-from slopmeister.install.preflight import refuse, reject_git_context
+from slopmeister.install.preflight import reject_git_context
 from slopmeister.install.prepare import prepare
-from slopmeister.install.trust import TrustRequest, trust
-from slopmeister.session.verify import verify_shipping
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -30,32 +26,12 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("allocation", nargs="?")
     parser.add_argument("--grant", action="append", default=[])
     parser.add_argument("--dispatcher-jira", action="store_true")
+    parser.add_argument("--manager", action="store_true")
     return parser
-
-
-def _trust(argv: Sequence[str]) -> int:
-    if len(argv) != 5:
-        refuse("invalid native trust operation")
-    _, mode, tool, path, workspace = argv
-    trust(TrustRequest(mode, Path(path), workspace), tool)
-    return 0
-
-
-def _delivered(argv: Sequence[str]) -> int | None:
-    if list(argv) == ["--verify-shipping"]:
-        state = json.loads((Path(__file__).resolve().parent / "state.json").read_text())
-        verify_shipping(state)
-        return 0
-    return None
 
 
 def main(argv: Sequence[str]) -> int:
     try:
-        delivered = _delivered(argv)
-        if delivered is not None:
-            return delivered
-        if argv[:1] == ["--trust"]:
-            return _trust(argv)
         reject_git_context()
         args = _parser().parse_args(argv)
         request = InstallRequest(
@@ -65,6 +41,7 @@ def main(argv: Sequence[str]) -> int:
             args.allocation,
             args.grant,
             args.dispatcher_jira,
+            args.manager,
         )
         prepare(request)
         return 0

@@ -78,7 +78,7 @@ sequenceDiagram
 
 The **plot** describes a project's rules, task source and permissions. The **field** in your vault holds its knowledge. Workers **sow** a plan, **groom** documentation, **prune** unnecessary work and check whether the result is **ripe**. **Bloom** explains complex work visually, and optional **Grove** hosting lets you read those pages on your phone.
 
-Plots can declare setup commands and [separate service allocations for independent testers](docs/slots.md#independent-testers). [Approved peer mailboxes](src/skills/plot-session/communicate.md) support coordination without turning messages into permission. Harvest keeps a [separate session retro](docs/vault-version-control.md#session-retros-and-legacy-logs); finalize and close-out remain available with their existing limits.
+Plots can declare setup commands and [separate service allocations for independent testers](docs/slots.md#independent-testers). [Peer mailboxes](src/skills/plot-session/communicate.md) carry information without granting authority. [Harvest](src/skills/harvest/SKILL.md) is the operator-ordered ending for every session state. Sessions no longer create automatic retro notes. Existing notes and [explicit legacy-log commands](docs/vault-version-control.md#session-retros-and-legacy-logs) remain available.
 
 A worker receives a fixed copy of its instructions. Changing the sources affects later sessions. Commit, shipping, publication and stronger actions retain their separate permission boundaries.
 

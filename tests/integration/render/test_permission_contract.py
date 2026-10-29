@@ -43,14 +43,61 @@ def test_both_direct_token_output_flags_are_denied(prefix):
         "docker system prune",
         "docker image prune",
         "docker container prune",
+        "/usr/bin/orca-ide terminal send",
+        "/Applications/Orca.app/Contents/Resources/bin/orca terminal send",
     ],
 )
-def test_credential_shared_state_and_broad_cleanup_commands_require_intent(prefix):
+def test_credential_shared_state_cleanup_and_terminal_commands_require_intent(prefix):
     """Bug: a missing entry or allow downgrade still passes tests derived only from the list."""
     commands = permission_contract(ROOT / "src/permissions.toml")["command"]
     assert {entry["prefix"]: entry["decision"] for entry in commands}.get(prefix) == "needs_intent"
     bash = json.loads((ROOT / "dist/opencode/permission.json").read_text())["bash"]
     assert bash[prefix] == bash[prefix + " *"] == "ask"
+
+
+def test_permission_contract_accepts_an_absolute_executable_path(tmp_path):
+    """Absolute launcher binaries must reach the same contract as bare command names."""
+    prefix = "/opt/Orca.app/bin/orca terminal send"
+    source = tmp_path / "permissions.toml"
+    (tmp_path / "native-permissions.toml").write_bytes(
+        (ROOT / "src/native-permissions.toml").read_bytes()
+    )
+    source.write_text(
+        (ROOT / "src/permissions.toml")
+        .read_text()
+        .replace('prefix = "gh pr merge"', f"prefix = {json.dumps(prefix)}", 1)
+    )
+    commands = permission_contract(source)["command"]
+    assert any(entry["prefix"] == prefix for entry in commands)
+
+
+@pytest.mark.parametrize(
+    "executable",
+    [
+        '"/opt/Orca App/bin/orca"',
+        "/opt/Orca\\ App/bin/orca",
+        '/usr/bin/orca"',
+        "/usr/bin/orca'",
+        "/usr/bin/orca;id",
+        "/usr/bin/$(id)",
+        "/usr/bin/orca\tide",
+    ],
+)
+def test_permission_contract_rejects_shell_syntax_in_executable_paths(tmp_path, executable):
+    """Path support must not turn command prefixes into shell expressions."""
+    source = tmp_path / "permissions.toml"
+    (tmp_path / "native-permissions.toml").write_bytes(
+        (ROOT / "src/native-permissions.toml").read_bytes()
+    )
+    source.write_text(
+        (ROOT / "src/permissions.toml")
+        .read_text()
+        .replace(
+            'prefix = "gh pr merge"', f"prefix = {json.dumps(executable + ' terminal send')}", 1
+        )
+    )
+    with pytest.raises(ValueError, match="unsupported command prefix"):
+        permission_contract(source)
 
 
 @pytest.mark.parametrize("relative", ["claude/settings.json.tmpl", "codex/rules/default.rules"])

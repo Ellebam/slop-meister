@@ -17,7 +17,7 @@ TASK = (
     "or sync across devices? For local storage, the file must live in the operator's home "
     "and work from every current directory."
 )
-SUMMARY = ("Goal", "Plan", "Your call", "Risk")
+SUMMARY = ("Goal", "Plan", "Your call", "Risk", "Proof")
 SUMMARY_WORDS = 150
 MESSAGE_WORDS = 350
 UNREADABLE = {
@@ -29,6 +29,16 @@ UNREADABLE = {
     "a step name": r"\bstep \d",
 }
 SESSION_SECONDS = 300
+MODEL = os.environ.get("SLOPMEISTER_LIVE_MODEL")
+EFFORT = os.environ.get("SLOPMEISTER_LIVE_EFFORT")
+DISPATCH = os.environ.get("SLOPMEISTER_LIVE_DISPATCH") == "1"
+DISPATCH_TASK = (
+    "Act as the dispatcher for a dry run. Read the delivered plot-session skill and "
+    "dispatcher procedure. Do not launch a worker or change files. Choose the mode and "
+    "give a one-sentence reason for this issue. Reply with 'Mode:' and 'Reason:' lines.\n\n"
+    "Issue body:\nMode: spine\n\nInvestigate why a command refuses to start. "
+    "Reproduce and report the cause. Do not implement a fix."
+)
 
 
 @pytest.mark.timeout(SESSION_SECONDS + 30)
@@ -39,6 +49,22 @@ def test_sow_sends_the_one_message_before_editing(tmp_path, tool):
     changes = git(tmp_path, workspace, ["status", "--porcelain"]).splitlines()
     assert [line for line in changes if not line.endswith("-NOTES.md")] == [], changes
     assert opening_faults(reply) == [], reply
+
+
+@pytest.mark.skipif(not DISPATCH, reason="dispatcher live validation is opt-in")
+@pytest.mark.timeout(SESSION_SECONDS + 30)
+@pytest.mark.parametrize("tool", ["claude", "codex"])
+def test_dispatcher_chooses_mode_for_diagnosis(tmp_path, tool):
+    workspace = prepare(tmp_path)
+    reply = (
+        claude(tmp_path, workspace, DISPATCH_TASK)
+        if tool == "claude"
+        else codex(tmp_path, workspace, DISPATCH_TASK)
+    )
+    assert re.search(r"(?im)^\s*(?:\*\*)?mode:?(?:\*\*)?\s*:?\s*freeform\b", reply), reply
+    assert re.search(r"(?im)^\s*(?:\*\*)?reason:?(?:\*\*)?\s*:?\s*\S", reply), reply
+    assert re.search(r"(?i)diagnos|investigat|reproduc|research|debug", reply), reply
+    assert git(tmp_path, workspace, ["status", "--porcelain"]) == "", reply
 
 
 def opening_faults(reply):
@@ -71,23 +97,33 @@ def opening_faults(reply):
 
 
 def asks_the_fork(forks):
-    local = re.search(r"\blocal(?:ly)?\b|\bon this computer\b", forks, re.I)
+    local = re.search(r"\blocal(?:ly)?\b|\b(?:on )?this computer\b", forks, re.I)
     sync = re.search(r"\bsync", forks, re.I)
     decided = (
         r"\bno recommendation\b|\bexcluded?\b|\bout of scope\b|\brejected\b|\bI (?:cho|decid|pick)"
     )
-    option = r"(?i:\blocal|\bon this computer\b|\bsync)|\b[AB]\b"
-    picks = [line for line in forks.splitlines() if re.search(r"\brecommend", line, re.I)]
+    option = r"(?i:\blocal|\b(?:on )?this computer\b|\bsync)|\b[AB]\b"
+    recommendation = (
+        r"(?<!not )(?<!n't )(?<!never )\b(?:recommend(?:s|ation)?|(?:is|are) recommended"
+        r"|recommended(?=\s*(?:[.!:*]|\n|$)))\b"
+        r"|\(recommended\)"
+    )
+    picks = [line for line in forks.splitlines() if re.search(recommendation, line, re.I)]
     recommends = any(re.search(option, line) for line in picks)
-    affirmed = re.findall(r"(?<!not )(?<!n't )(?<!never )\brecommend", forks, re.I)
+    affirmed = re.findall(recommendation, forks, re.I)
     recommends = recommends and len(affirmed) == 1
     recommends = recommends and not re.search(decided, forks, re.I)
     return bool(local and sync and recommends)
 
 
 def environment():
-    drop = ("GIT_CONFIG", "CLAUDE_CONFIG_DIR")
-    return {key: value for key, value in os.environ.items() if not key.startswith(drop)}
+    drop = ("GIT_CONFIG", "CLAUDE_CONFIG_DIR", "ORCA_")
+    # A nested client must not reuse its parent's active tool-call identity.
+    return {
+        key: value
+        for key, value in os.environ.items()
+        if key != "CODEX_TOOL_CALL_ID" and not key.startswith(drop)
+    }
 
 
 def git(root, cwd, arguments):
@@ -115,7 +151,7 @@ def prepare(root):
     return workspace
 
 
-def claude(root, workspace):
+def claude(root, workspace, prompt="/sow " + TASK):
     argv = [
         CLAUDE,
         "-p",
@@ -130,18 +166,28 @@ def claude(root, workspace):
         str(workspace / ".claude/access-settings.json"),
         "--permission-mode",
         "auto",
-        "--",
-        "/sow " + TASK,
     ]
+    if MODEL:
+        argv += ["--model", MODEL]
+    if EFFORT:
+        argv += ["--effort", EFFORT]
+    argv += ["--", prompt]
     out = run(Command(argv, workspace, environment(), root / "claude", SESSION_SECONDS))
-    return json.loads(out)["result"]
+    result = json.loads(out)
+    if MODEL:
+        assert MODEL in result.get("modelUsage", {}), result.get("modelUsage")
+    return result["result"]
 
 
-def codex(root, workspace):
+def codex(root, workspace, prompt="$sow " + TASK):
     last = root / "codex-last-message.txt"
     roots = ["-c", 'project_root_markers=["AGENTS.md"]', "-c", "project_doc_fallback_filenames=[]"]
     argv = [str(CODEX), "exec", *roots, "--sandbox", "workspace-write"]
     argv += ["-C", str(workspace), "--json"]
-    argv += ["--output-last-message", str(last), "$sow " + TASK]
+    if MODEL:
+        argv += ["--model", MODEL]
+    if EFFORT:
+        argv += ["-c", f'model_reasoning_effort="{EFFORT}"']
+    argv += ["--output-last-message", str(last), prompt]
     run(Command(argv, workspace, environment(), root / "codex", SESSION_SECONDS))
     return last.read_text()
