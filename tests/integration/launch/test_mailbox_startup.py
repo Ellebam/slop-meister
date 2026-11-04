@@ -1,7 +1,6 @@
 """Every startup route prepares the own inbox before the model can skip it."""
 
 import json
-import shlex
 import subprocess
 import sys
 
@@ -9,9 +8,14 @@ import pytest
 
 from slopmeister.dispatch import command as dispatcher
 from slopmeister.launch import command
-from slopmeister.launch.model import Launch
+from slopmeister.launch.model import INBOX_NOTICE, Launch
 from tests.integration.launch.helpers import executable
-from tests.support.fakes import fake_binary
+
+AGENT = """#!/usr/bin/env python3
+import json, os, sys
+with open(os.environ['MAILBOX_CALLS'], 'a') as out:
+    out.write(json.dumps(['agent', sys.argv[-1]]) + '\\n')
+"""
 
 ORCA = """#!/usr/bin/env python3
 import json, os, sys
@@ -55,7 +59,7 @@ def _world(tmp_path, monkeypatch, case):
     workspace.mkdir()
     calls = tmp_path / "calls.jsonl"
     binary = executable(tmp_path / "bin/orca", ORCA)
-    agent = fake_binary(tmp_path / "bin", "agent", 'printf \'["agent"]\\n\' >> "$MAILBOX_CALLS"')
+    agent = executable(tmp_path / "bin/agent", AGENT)
     monkeypatch.setenv("PLOT_SESSION_ORCA", str(binary))
     monkeypatch.setenv("PLOT_SESSION_STATE_DIR", str(tmp_path))
     monkeypatch.setenv("ORCA_TERMINAL_HANDLE", "term_fixture")
@@ -71,9 +75,10 @@ def _startup(workspace, agent, route):
     kickoff = workspace / "kickoff"
     kickoff.write_text("Synthetic arithmetic")
     if route == "worker":
-        launch = Launch("fixture", "fixture", str(workspace.parent))
+        launch = Launch("fixture", "fixture", str(workspace.parent), claude_bin=str(agent))
         launch.wt = workspace
-        launch.line = f"cd {shlex.quote(str(workspace))} && {shlex.quote(str(agent))}"
+        launch.kickoff_file.write_text("Synthetic arithmetic\n")
+        launch.line = command.line(launch)
         command.write(launch)
         return ["zsh", "-f", str(launch.command_file)]
     if route == "reported-dispatcher-line":
@@ -95,14 +100,27 @@ def test_inbox_is_ready_before_the_agent_starts(tmp_path, monkeypatch, route, ca
     result = subprocess.run(_startup(workspace, agent, route), capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     observed = [json.loads(line) for line in calls.read_text().splitlines()]
-    expected = [["terminal", "list"], ["orchestration", "run-current", "--from", "term_fixture"]]
+    lookup = ["orchestration", "run-current", "--from", "term_fixture", "--full"]
+    expected = [["terminal", "list"], lookup]
     if case == "new":
-        expected.append(
-            ["orchestration", "run-create", "--from", "term_fixture", "--objective", workspace.name]
-        )
-    assert observed == [*expected, ["agent"]]
-    assert "task inbox ready: run_fixture" in result.stdout
+        create = ["orchestration", "run-create", "--from", "term_fixture"]
+        expected.append([*create, "--objective", workspace.name, "--full"])
+    assert observed == [*expected, ["agent", "Synthetic arithmetic"]]
+    assert "task inbox ready: run_fixture" in result.stderr
     assert not (workspace.parent / "BREACH").exists()
+
+
+@pytest.mark.parametrize(
+    "route", ["worker", "reported-dispatcher-line", "same-terminal-dispatcher"]
+)
+def test_failed_inbox_setup_reaches_the_first_prompt(tmp_path, monkeypatch, route):
+    """Bug: the failure reached only the pane's stderr, which the agent's screen hides."""
+    workspace, calls, agent = _world(tmp_path, monkeypatch, "lookup-error")
+    result = subprocess.run(_startup(workspace, agent, route), capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    observed = [json.loads(line) for line in calls.read_text().splitlines()]
+    assert observed[-1] == ["agent", "Synthetic arithmetic" + INBOX_NOTICE]
+    assert "task inbox unavailable: unavailable" in result.stderr
 
 
 @pytest.mark.parametrize(
@@ -128,7 +146,8 @@ def test_unavailable_inbox_never_replaces_a_binding_or_blocks_the_task(
     result = subprocess.run(_startup(workspace, agent, "worker"), capture_output=True, text=True)
     assert result.returncode == 0
     observed = [json.loads(line) for line in calls.read_text().splitlines()]
-    assert len(observed) == reads + 1 and observed[-1] == ["agent"]
+    assert len(observed) == reads + 1
+    assert observed[-1] == ["agent", "Synthetic arithmetic" + INBOX_NOTICE]
     assert "task inbox unavailable:" in result.stderr
     assert "PRIVATE_BODY" not in result.stdout + result.stderr
     assert not (workspace.parent / "BREACH").exists()

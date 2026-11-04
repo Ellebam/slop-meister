@@ -161,7 +161,7 @@ def _records(path: Path):
 def _claude_record(path: Path, kickoff: str) -> bool:
     return any(
         record.get("type") == "user"
-        and _text((record.get("message") or {}).get("content"), "text") == kickoff
+        and model.delivered(_text((record.get("message") or {}).get("content"), "text"), kickoff)
         for record in _records(path)
     )
 
@@ -205,7 +205,7 @@ def _codex_record(path: Path, launch: Launch) -> bool:
         record.get("type") == "response_item"
         and (record.get("payload") or {}).get("type") == "message"
         and record["payload"].get("role") == "user"
-        and _text(record["payload"].get("content"), "input_text") == launch.kickoff
+        and model.delivered(_text(record["payload"].get("content"), "input_text"), launch.kickoff)
         for record in records
     )
 

@@ -1,7 +1,7 @@
 """Freeze and materialize one exact uncommitted repository candidate."""
 
-from contextlib import contextmanager
 from dataclasses import dataclass
+import json
 import os
 from pathlib import Path
 import re
@@ -9,7 +9,6 @@ import subprocess
 import tempfile
 
 from slopmeister.session import launch_identity
-from slopmeister.spine.tester.runs import save
 
 BASE_REF = "refs/slopmeister/base"
 CANDIDATE_REF = "refs/slopmeister/candidate"
@@ -129,8 +128,19 @@ def freeze(workspace: Path, task: str) -> RepositoryCandidate:
         "tree": tree,
         "scope": list(scope),
     }
-    save(root / "candidate.json", value)
+    _save(root / "candidate.json", value)
     return load(workspace, task)
+
+
+def _save(path: Path, value: dict) -> None:
+    fd, temporary = tempfile.mkstemp(dir=path.parent, prefix=path.name, suffix=".part")
+    try:
+        with os.fdopen(fd, "w") as stream:
+            json.dump(value, stream, indent=2)
+            stream.write("\n")
+        os.replace(temporary, path)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
 
 
 def load(workspace: Path, task: str) -> RepositoryCandidate:
@@ -163,13 +173,6 @@ def load(workspace: Path, task: str) -> RepositoryCandidate:
     )
 
 
-def load_for_session(workspace: Path, task: str, tool: str) -> RepositoryCandidate:
-    identity = launch_identity.read(workspace, tool)
-    if task != identity["task"]:
-        raise ValueError("tester task differs from launcher task")
-    return load(workspace, task)
-
-
 def materialize(frozen: RepositoryCandidate, destination: Path) -> Path:
     load(frozen.workspace, frozen.task)
     _git(destination.parent, "init", "-q", str(destination))
@@ -198,12 +201,6 @@ def reading_guide(frozen: RepositoryCandidate) -> str:
         "`git status --untracked-files=all` and `git diff HEAD`, and read every untracked file, "
         "each is new in the candidate."
     )
-
-
-@contextmanager
-def isolated(frozen: RepositoryCandidate):
-    with tempfile.TemporaryDirectory(prefix="slopmeister-candidate-") as temporary:
-        yield materialize(frozen, Path(temporary) / "checkout")
 
 
 def _staged_tree(workspace: Path, base: str, update: str) -> str:

@@ -1,1 +1,1 @@
-"""The opposite-tool tester."""
+"""Immutable repository candidates for the independent diff check."""

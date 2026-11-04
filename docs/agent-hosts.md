@@ -53,7 +53,7 @@ Each workstation holds the two tier tokens and the Home Assistant route in owner
 
 ## Browser prerequisites
 
-[Browser login](browser-login.md) keeps Orca as the default. Explicit Chrome needs installed Chrome and Node with WebSocket support. The operator can install the pinned optional page tool with `task browser:install`. Persistent authentication requires its separate explicit selection and is never enabled by onboarding.
+[Browser login](browser-login.md) requires running Chrome with the Playwright Extension, installed Node and the pinned page tool from `task browser:install`. The operator configures the extension token and its secret tier. Login commands open task tabs in the operator's Chrome. Onboarding never installs the extension or imports a certificate without an order.
 
 ## Grove
 

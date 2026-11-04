@@ -138,6 +138,54 @@ def check_ignored(root: Path, paths: list[str], state_dir: Path) -> None:
         raise SlopmeisterError(f"ignored work: {shown}{tail}; pass --force to confirm deletion")
 
 
+def listed(paths: list[str]) -> str:
+    """The first paths a refusal names, so the operator sees what --force would lose."""
+    shown = ", ".join(json.dumps(path) for path in sorted(paths)[:SHOWN_PATHS])
+    return shown + (f" and {len(paths) - SHOWN_PATHS} more" if len(paths) > SHOWN_PATHS else "")
+
+
+def nested(path: Path) -> None:
+    """A child linked worktree owns a separate record that recursive deletion would strand."""
+    for directory, names, files in os.walk(path):
+        common = Path(directory) / ".git"
+        if ".git" in names and common.parent != path and (outside := _outside(common, path)):
+            raise SlopmeisterError(f"nested linked worktree {outside}, remove it separately")
+        names[:] = [name for name in names if name != ".git"]
+        link = Path(directory) / ".git"
+        if link.parent == path or ".git" not in files:
+            continue
+        # A pipe would block the read, and a link can hide what it points at.
+        if not stat.S_ISREG(link.lstat().st_mode):
+            raise SlopmeisterError(f"nested Git link {link} is not a file, remove it separately")
+        value = link.read_text().strip()
+        if not value.startswith("gitdir: "):
+            continue
+        metadata = (link.parent / value.removeprefix("gitdir: ")).resolve()
+        pointer = metadata / "gitdir"
+        linked = pointer.is_file() and (metadata / pointer.read_text().strip()).resolve() == link
+        outside = None if linked else _outside(metadata, path)
+        if linked or outside:
+            raise SlopmeisterError(
+                f"nested linked worktree {outside or link.parent}, remove it separately"
+            )
+
+
+def _outside(common: Path, path: Path) -> Path | None:
+    """The first worktree a nested repository registers outside the removed workspace."""
+    registrations = common / "worktrees"
+    # Reads raise on an unreadable registration, so an unseen outside worktree refuses removal.
+    for entry in registrations.iterdir() if registrations.exists() else ():
+        registration = entry / "gitdir"
+        if not stat.S_ISREG(registration.lstat().st_mode):
+            raise SlopmeisterError(
+                f"nested Git registration {registration} is not a file, remove it separately"
+            )
+        pointer = (entry / registration.read_text().strip()).resolve()
+        if not pointer.is_relative_to(path):
+            return pointer.parent
+    return None
+
+
 def remove_tree(root: Path) -> None:
     """Delete root. Only directories inside it become writable, and no symlink is followed."""
 

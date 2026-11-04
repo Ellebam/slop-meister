@@ -87,6 +87,10 @@ COMMON = (
     Entry("plots/home/bin/op", ".local/bin/op", EXEC),
     Entry("slopmeister/__init__.py", f"{OP_LIBRARY}/slopmeister/__init__.py"),
     Entry("slopmeister/session/__init__.py", f"{OP_LIBRARY}/slopmeister/session/__init__.py"),
+    Entry(
+        "slopmeister/session/launch_identity.py",
+        f"{OP_LIBRARY}/slopmeister/session/launch_identity.py",
+    ),
     Entry("slopmeister/session/secret_run.py", f"{OP_LIBRARY}/slopmeister/session/secret_run.py"),
     Entry(
         "slopmeister/session/secret_metadata.py",

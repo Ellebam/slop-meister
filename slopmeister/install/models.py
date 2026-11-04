@@ -13,6 +13,7 @@ class InstallRequest:
     grants: list[str]
     dispatcher_jira: bool = False
     manager: bool = False
+    proof_owner: dict | None = None
 
 
 @dataclass(frozen=True)

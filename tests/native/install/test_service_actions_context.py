@@ -34,8 +34,7 @@ def test_context_selectors_reach_only_the_named_operation(
 ):
     module, data, _ = consumer(tmp_path, monkeypatch)
     data["action"] = action
-    monkeypatch.setenv("SLOPMEISTER_SERVICE_ACTION_INPUT", json.dumps(args))
-    assert module.operation(data)["mode"] == mode
+    assert module.operation(data, args)["mode"] == mode
 
 
 @pytest.mark.parametrize(
@@ -72,10 +71,9 @@ def test_context_selector_rejection_precedes_credential_resolution(
     module, data, _ = consumer(tmp_path, monkeypatch)
     data["action"] = action
     (tmp_path / "config.json").write_text(json.dumps(data))
-    monkeypatch.setenv("SLOPMEISTER_SERVICE_ACTION_INPUT", json.dumps(args))
     monkeypatch.setattr(module, "service_token", lambda *_args: pytest.fail("credentials touched"))
     with pytest.raises(ValueError, match="ARGUMENTS_NOT_SUPPORTED"):
-        module.fetch()
+        module.fetch(args)
 
 
 class Client:
@@ -210,7 +208,6 @@ def test_context_deadline_includes_credential_setup_instead_of_resetting_it(tmp_
     data["action"] = "jira-read"
     del data["password_ref"], data["certificate_document"]
     (tmp_path / "config.json").write_text(json.dumps(data))
-    monkeypatch.setenv("SLOPMEISTER_SERVICE_ACTION_INPUT", '["--issue","TEST-7"]')
     now = [1000.0]
     monkeypatch.setattr(module.time, "monotonic", lambda: now[0])
 
@@ -227,7 +224,7 @@ def test_context_deadline_includes_credential_setup_instead_of_resetting_it(tmp_
         return b'{"result":"JIRA_CONTEXT_PASS"}'
 
     monkeypatch.setattr(module, "invoke", invoke)
-    assert json.loads(module.fetch())["result"] == "JIRA_CONTEXT_PASS"
+    assert json.loads(module.fetch(["--issue", "TEST-7"]))["result"] == "JIRA_CONTEXT_PASS"
 
 
 def test_expired_deadline_refuses_before_starting_another_child(monkeypatch):

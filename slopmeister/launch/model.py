@@ -44,6 +44,18 @@ def pause(seconds: float) -> None:
 BROKER_MARK = "SLOPMEISTER_SECRET_BROKER=1"
 
 
+NOTICE_VARIABLE = "inbox_notice"
+
+INBOX_NOTICE = (
+    "\n\nLauncher notice: this session's task inbox could not be set up. Set it up through the "
+    "plot-session skill's communicate.md, then report the failure with task status."
+)
+
+
+def delivered(prompt: str | None, kickoff: str) -> bool:
+    return prompt in (kickoff, kickoff + INBOX_NOTICE)
+
+
 def shq(value: str) -> str:
     """Single-quote a value for the shell line the tab runs, the idiom the receipts pin."""
     return "'" + value.replace("'", "'\\''") + "'"
@@ -70,6 +82,8 @@ class Launch:
     redispatch: bool = False
     abandon: bool = False
     manager: bool = False
+    proof_for: str = ""
+    proof_handle: str = ""
     directory_requested: bool = False
     model_set: bool = False
     extra: list[str] = field(default_factory=list)

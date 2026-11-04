@@ -6,6 +6,7 @@ import tomllib
 
 from slopmeister.install import snapshot
 from slopmeister.install.entries import entry_text
+from slopmeister.install.prepare import PROOF_OWNER_EXCEPTION
 from tests.integration.install.installer_helpers import ROOT, install, prepared, state
 
 
@@ -35,7 +36,10 @@ def test_native_settings_and_remaining_helpers_are_snapshotted(installed):
     # The contract is rendered into dist, which is what the installer delivers.
     source = json.loads((ROOT / "dist/claude/settings.json").read_text())
     assert not access["hooks"] and "hooks" not in project
-    assert access["autoMode"] == source["autoMode"]
+    assert access["autoMode"] == {
+        **source["autoMode"],
+        "allow": [*source["autoMode"]["allow"], PROOF_OWNER_EXCEPTION],
+    }
 
 
 def test_tampered_native_rule_is_refused_and_exact_restoration_recovers(installed):

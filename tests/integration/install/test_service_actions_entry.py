@@ -25,15 +25,11 @@ def test_direct_entry_keeps_selectors_literal_before_credentials(tmp_path):
     data = profile() | {"token_file": str(tmp_path / "missing-service.env")}
     (action / "config.json").write_text(json.dumps(data))
     entry = action / "entry.py"
-    output = tmp_path / "result.json"
-    output.write_bytes(b"")
-    output.chmod(0o600)
 
     def run(*selector):
-        output.write_bytes(b"")
         return subprocess.run(
-            [*PYTHON, str(entry), "--output", str(output), *selector],
-            env=dict(os.environ, RV340_SECRET="s3cr3t-demo"),
+            [*PYTHON, str(entry), *selector],
+            env=dict(os.environ, RV340_SECRET="s3cr3t-demo", TMPDIR=str(tmp_path)),
             capture_output=True,
             text=True,
             timeout=15,
@@ -41,17 +37,19 @@ def test_direct_entry_keeps_selectors_literal_before_credentials(tmp_path):
 
     valid = run("--find", "--text", "{{.RV340_SECRET}}")
     assert valid.returncode != 0
+    output = Path(json.loads(valid.stdout)["result_file"])
     assert json.loads(output.read_text())["result"] == "LOCAL_CREDENTIAL_NOT_PROVISIONED"
     assert "s3cr3t-demo" not in valid.stdout + valid.stderr + output.read_text()
     invalid = run("unexpected")
     assert invalid.returncode != 0
+    output = Path(json.loads(invalid.stdout)["result_file"])
     assert json.loads(output.read_text())["result"] == "ARGUMENTS_NOT_SUPPORTED"
 
 
 @pytest.mark.parametrize("unsafe", ["symlink", "permissions", "nonempty", "hardlink"])
 def test_direct_entry_refuses_unsafe_result_file_before_any_provider(tmp_path, unsafe):
     """Bug: a selected read overwrites a linked, shared or prior result file."""
-    action = tmp_path / "action"
+    action = tmp_path / "jira-write"
     shutil.copytree(SOURCE, action / "service_actions")
     shutil.copyfile(SOURCE / "entry.py", action / "entry.py")
     output = tmp_path / "result.json"
@@ -91,18 +89,21 @@ def test_direct_entry_captures_complete_large_result_without_tool_output(tmp_pat
         "    sys.stdout.buffer.write(blob)\n"
         "    return 0\n"
     )
-    output = tmp_path / "result.json"
-    output.write_bytes(b"")
-    output.chmod(0o600)
     result = subprocess.run(
-        [*PYTHON, str(action / "entry.py"), "--output", str(output), "--issue", "TEST-7"],
+        [*PYTHON, str(action / "entry.py"), "--issue", "TEST-7"],
+        env=dict(os.environ, TMPDIR=str(tmp_path)),
         capture_output=True,
         text=True,
         timeout=15,
     )
-    assert result.returncode == 0 and result.stdout == "" and result.stderr == ""
+    assert result.returncode == 0 and result.stderr == "", result.stdout + result.stderr
+    receipt = json.loads(result.stdout)
+    assert receipt["result"] == "SYNTHETIC_PASS"
+    output = Path(receipt["result_file"])
+    assert output.parent == tmp_path
     assert output.stat().st_size == 2097152 and output.stat().st_mode & 0o777 == 0o600
     assert json.loads(output.read_bytes())["result"] == "SYNTHETIC_PASS"
+    assert len(result.stdout) < 1024
 
 
 def test_rendered_result_directory_is_admitted_without_a_symlink_parent(tmp_path):
@@ -113,7 +114,7 @@ def test_rendered_result_directory_is_admitted_without_a_symlink_parent(tmp_path
     directory = subprocess.check_output(["/usr/bin/mktemp", "-d", template], text=True).strip()
     pattern = directory + "/result.XXXXXXXX"
     output = Path(subprocess.check_output(["/usr/bin/mktemp", pattern], text=True).strip())
-    action = tmp_path / "action"
+    action = tmp_path / "jira-write"
     package = action / "service_actions"
     shutil.copytree(SOURCE, package)
     shutil.copyfile(SOURCE / "entry.py", action / "entry.py")

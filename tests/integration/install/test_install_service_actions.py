@@ -76,8 +76,8 @@ def _assert_payload(workspace):
     assert "An automatic review decision is not operator approval" in instructions
     assert "operator as reviewer" not in instructions
     settings = json.loads((workspace / ".claude/access-settings.json").read_text())
-    assert settings["permissions"]["ask"]
-    assert "internal service-account document retrieval" in str(settings["autoMode"])
+    assert any("jira-read/entry.py" in rule for rule in settings["permissions"]["allow"])
+    assert not any("jira-read/entry.py" in rule for rule in settings["permissions"].get("ask", []))
     for tool in ("codex", "claude"):
         delivered = workspace / ("." + tool) / "service-actions/jira-read"
         assert (delivered / "service_actions/openssl.cnf").is_file()

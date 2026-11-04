@@ -11,7 +11,14 @@ import tempfile
 from slopmeister.claims import evidence
 from slopmeister.errors import SlopmeisterError
 from slopmeister.paths import ROOT, main_checkout, session_root
-from slopmeister.removal import IGNORED_ARGS, check_ignored, read_inventory, remove_tree
+from slopmeister.removal import (
+    IGNORED_ARGS,
+    check_ignored,
+    listed,
+    nested,
+    read_inventory,
+    remove_tree,
+)
 from slopmeister.session import git_environment
 from slopmeister.slots import allocation, claimed, down, leftover
 from slopmeister.threads import occupants
@@ -101,17 +108,12 @@ def _occupied(path: Path) -> None:
         raise SlopmeisterError(f"a worker still occupies {path}, refusing: {names}")
 
 
-def _claim(path: Path, repo: Path | None, own: bool) -> None:
-    if not (own and claimed.handback_recorded(path, repo)):
-        claimed.refuse(path, "<plot>", repo)
-
-
 def _check(path: Path, repo: Path | None, args: argparse.Namespace) -> bool:
     registered = _registered(path, repo)
     if args.self and not registered:
         raise SlopmeisterError("--self requires a registered worktree")
     _slot(path, repo)
-    _claim(path, repo, args.self)
+    claimed.refuse(path, "<plot>", repo)
     if Path.cwd().resolve().is_relative_to(path):
         raise SlopmeisterError("run workspace removal from outside the selected workspace")
     if registered:
@@ -122,7 +124,7 @@ def _check(path: Path, repo: Path | None, args: argparse.Namespace) -> bool:
         leftover.confirm(args.force, _retry(path))
     if repo is None and not args.force:
         check_ignored(path, ["? " + p.name for p in path.iterdir()], path / ".slopmeister-config")
-    _nested(path)
+    nested(path)
     if args.self:
         down._calling_worker(path, "workspace")
     else:
@@ -144,28 +146,14 @@ def _clean(path: Path, repo: Path, force: bool) -> None:
         raise SlopmeisterError("locked worktree, unlock it before workspace removal")
     if not _git(path, "branch", "--show-current").strip() and not force:
         raise SlopmeisterError("detached HEAD may lose commits, pass --force to confirm deletion")
-    if _git(path, "status", "--porcelain", "--untracked-files=all") and not force:
-        raise SlopmeisterError("uncommitted work, pass --force to confirm deletion")
+    changed = _git(path, "status", "--porcelain", "--untracked-files=all").splitlines()
+    if changed and not force:
+        names = listed([line[3:] for line in changed])
+        raise SlopmeisterError(f"uncommitted work: {names}; pass --force to confirm deletion")
     if not force:
         entries = _git(path, *IGNORED_ARGS).split("\0")
         ignored = [entry for entry in entries if entry.startswith(("? ", "S ", "s ", "h "))]
         check_ignored(path, ignored, metadata / "slopmeister-config")
-
-
-def _nested(path: Path) -> None:
-    """A child linked worktree owns a separate record that recursive deletion would strand."""
-    for directory, names, files in os.walk(path):
-        names[:] = [name for name in names if name != ".git"]
-        link = Path(directory) / ".git"
-        if link.parent == path or ".git" not in files or link.is_symlink():
-            continue
-        value = link.read_text().strip()
-        if not value.startswith("gitdir: "):
-            continue
-        metadata = (link.parent / value.removeprefix("gitdir: ")).resolve()
-        pointer = metadata / "gitdir"
-        if pointer.is_file() and (metadata / pointer.read_text().strip()).resolve() == link:
-            raise SlopmeisterError(f"nested linked worktree {link.parent}, remove it separately")
 
 
 def _retry(path: Path) -> str:
@@ -198,7 +186,6 @@ def _self(path: Path, repo: Path, args: argparse.Namespace) -> int:
         return 0
     request = down.Request(str(repo), plot, path.name, args.force, "")
     down._stop_worker(request, repo, path)
-    claimed.complete_handback(path, repo)
     args.self = False
     _check(path, repo, args)
     return _remove(path, repo)

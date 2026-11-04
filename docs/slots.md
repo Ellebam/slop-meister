@@ -29,7 +29,6 @@ max = 3
 compose = "docker/compose.yml"
 testers = 1
 setup = ["task", "setup"]
-setup_files = [".env.local"]
 
 [slots.ports]
 PG_PORT = 45432
@@ -46,8 +45,6 @@ Read the project's compose files and environment examples before writing a defin
 | Ports | Integers from 1024 to 65535, never booleans or quoted numbers. Every expanded slot must stay in range, and the port sets of all slot numbers must be disjoint, before any app starts listening. |
 | `testers` | Optional tester-only slots after the worker range, default 0. Worker max plus testers cannot exceed 99. Port validation includes both ranges. |
 | `setup` | Optional nonempty argument array, executed directly after worker stack readiness with the slot environment. No shell parsing. |
-| `setup_files` | Unique relative paths created by setup. Existing, tracked, linked, parent, Git-metadata and allocation paths are refused. Unchanged recorded outputs may be removed; changed outputs require confirmation. |
-| Disposable directories | Optional `disposable` lists exact relative build directories. Require documented recreation and no secret or proof. Setup-output path checks apply. Only ignored, readable regular files qualify. Tracked files and symlinks remain protected. |
 | Compose path | A nonempty relative path with no `..` segment or control character. Spaces are literal. It must name a readable file at allocation time. Its resolved path must remain inside the checkout, including through symlinks. |
 
 Cross-plot port overlap is reported by `task slot:status`. It is allowed in definitions because those plots may never run together. Allocation checks live listeners before using the ports.
@@ -75,7 +72,7 @@ Run `task slot:down` from outside the worktree being removed. It checks that the
 
 A worker occupies the worktree when a `claude`, `codex` or `opencode` client process has its working directory at the worktree or beneath it. `bin/slopmeister occupants` is the one definition, shared with the launcher's redispatch, and the refusal names every occupant. Use launcher redispatch or abandonment to close a known worker before `slot:down`; that path records its descendants before signalling, stops them child-first and verifies every recorded process has gone. Manually closing a terminal must stop that worker's descendants too, because resource teardown cannot reconstruct ownership after the client disappears. When a slotted launch fails, the launcher's message stands and no cleanup command is printed, because the launcher can fail after its worker has started.
 
-A worker releases its own slot with `--self`, run from the main checkout and outside the tool's sandbox, on the operator's cleanup request or in harvest. Inside a sandbox the worker inventory cannot run and the command refuses. The command applies the same checks while the worker still runs. It also requires that the calling worker is the only occupant, so the nearest worker process above the command must be the one in the worktree. A reviewer, a tester or another session is refused. The command then starts one process that outlives the worker and returns. That process stops the worker and its descendants through the redispatch shutdown, which also closes the worker's terminal, completes any intact recorded claim hand-back, then runs strict ordinary teardown and exits. Its output goes to `tmp/slots/<name>.down.log`, which ends with the release line or with the refusal that stopped it.
+A worker releases its own slot with `--self`, run from the main checkout and outside the tool's sandbox, on the operator's cleanup request or in harvest. Inside a sandbox the worker inventory cannot run and the command refuses. The command applies the same checks while the worker still runs. It also requires that the calling worker is the only occupant, so the nearest worker process above the command must be the one in the worktree. A reviewer, a tester or another session is refused. The command then starts one process that outlives the worker and returns. That process stops the worker and its descendants through the redispatch shutdown, which also closes the worker's terminal, then runs strict ordinary teardown and exits. Its output goes to `tmp/slots/<name>.down.log`, which ends with the release line or with the refusal that stopped it.
 
 | Removed | Kept |
 |---|---|
@@ -92,15 +89,15 @@ A leftover is a directory at the worktree path that has neither `.git` nor `.slo
 
 Repeating teardown with `--slot <n>` reports nothing live and exits 0. Without the number, it refuses because neither a removed worktree nor a leftover can identify the slot.
 
-Ignored work and hidden tracked changes are checked too. Only unchanged delivered files, unchanged recorded setup output, declared disposable directories and recognized caches are disposable. Session scratch is disposable only when the saved delivery records ownership. Before self-removal, harvest preserves named proof. Root `tmp/` proof must have an external private copy with matching bytes; changed, missing or linked copies refuse cleanup.
+Ignored work and hidden tracked changes are checked too. Unchanged delivered files and recognized caches are disposable. Session scratch is disposable only when the saved delivery records ownership. Setup output is ordinary untracked or ignored work. The retired `setup_files` and `disposable` declarations are rejected. Preserve required proof outside the worktree before removal. Unknown or changed work requires explicit accepted loss and `--force`.
 
-## Independent testers
+## Independent checks
 
-Add `--slot-target <plot>` to `tester launch` when its guide needs services. The tester receives its own checkout, ports and Compose project. With `testers` set, it uses only the reserved range. Otherwise it competes for ordinary free slots. Directory subjects cannot take a slot.
+Add `--slot-target <plot>` to `review review --mode diff --guide <absolute-guide>` when its guide needs services. The check receives its own checkout, ports and Compose project. With `testers` set, it uses only the reserved range. Otherwise it competes for ordinary free slots. Directory subjects cannot take a slot.
 
-The allocation lease prevents simultaneous use and remains held through the tester process. Compose readiness runs before admission. The guide still owns dependency installation and repository setup; worker setup is not replayed automatically. Collect releases tester resources before publishing the final result. Cleanup failure retains its ownership record and reports the blocked state.
+The allocation lease remains held until the check ends. Compose readiness runs before the reviewer starts. The guide owns dependency installation and application setup. Cleanup releases only that run's resources. A failed release or unverified reviewer stop retains the checkout and ownership record, with its diagnostic.
 
-For interrupted tester cleanup, inspect `slot:status`, then use `slot:down` with the saved plot, tester name and slot number. Tester recovery accepts neither `--self` nor `--force`. A live lease, wrong checkout identity, edited allocation, occupant or live listener refuses recovery. Keep the record until recovery succeeds.
+For interrupted cleanup, inspect `slot:status`, then use `slot:down` with the saved plot, check name and slot number. Recovery accepts neither `--self` nor `--force`. A live lease, wrong checkout identity, edited allocation, occupant or live listener refuses recovery. Keep the record until recovery succeeds.
 
 ## Inspect live work
 

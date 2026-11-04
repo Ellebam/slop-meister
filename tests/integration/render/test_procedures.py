@@ -20,14 +20,14 @@ PROCEDURES = (
     "ship",
     "execute-plan",
     "test-guide",
-    "leak-check",
+    "rinse",
 )
 POINTS = {
     "local-qa": {
         "local-qa-drive": "How a change is driven here",
         "local-qa-gates": "Local gates here",
     },
-    "test-guide": {"test-guide-access": "How a tester reaches the change"},
+    "test-guide": {"test-guide-access": "How the independent check reaches the change"},
 }
 
 
@@ -58,7 +58,7 @@ def test_ripe_checks_acceptance_without_waiving_operator_gates():
     """Bug: reassessment can declare work done without acceptance or operator authority."""
     ripe = (ROOT / "src/skills/ripe/SKILL.md").read_text()
     assert "Check each acceptance point" in ripe
-    assert "Never skip a required gate" in ripe
+    assert "Never skip a gate" in ripe
     assert "Do not edit product files" in ripe
     assert "repeat a test or review" in ripe
     assert "invoke `ripe`" in (ROOT / "plots/code/plot.md").read_text()
@@ -145,13 +145,13 @@ def test_check_inject_spine():
     assert not (DIST / "codex/plots/inject.md").exists()
 
 
-def test_leak_check_is_required_only_where_we_do_not_own_the_project():
+def test_client_plot_requires_the_outward_trace_check():
     """Escaping bug: the rule lands in inject and stops own projects, or a covered plot loses it."""
     for tool in ("claude", "codex"):
         required = {
             plot.stem
             for plot in (DIST / tool / "plots").glob("*.md")
-            if "Invoke `leak-check` before anything leaves" in plot.read_text()
+            if "Invoke `rinse` before anything leaves" in plot.read_text()
         }
         assert required == {"example-client"}, tool
 

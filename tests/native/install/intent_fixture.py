@@ -29,6 +29,11 @@ def text(parts):
     return "\n".join(part.get("text", "") for part in parts if isinstance(part, dict))
 
 
+def is_review(body):
+    """The structured response format identifies a review independently of the model name."""
+    return (body.get("text") or {}).get("format", {}).get("type") == "json_schema"
+
+
 def assessment(body):
     content = "\n".join(text(item.get("content", [])) for item in body["input"])
     planned = json.loads(
@@ -69,7 +74,7 @@ class IntentModel(StandIn):
         self.server.requests.append(body)
         self.request_path().parent.mkdir(parents=True, exist_ok=True)
         self.request_path().write_text(json.dumps(body, indent=2))
-        if body.get("model") == "codex-auto-review":
+        if is_review(body):
             self.reply_text(body, json.dumps(assessment(body)))
         elif "security monitor" in text(body.get("system", [])).lower():
             self.reply_text(body, "<severity>10</severity>")
@@ -163,7 +168,7 @@ def marker_entry(world):
 
 
 def main_results(world):
-    requests = [body for body in world.server.requests if body.get("model") != "codex-auto-review"]
+    requests = [body for body in world.server.requests if not is_review(body)]
     result = json.dumps(tool_results(requests[-1]))
     assert "review failure" not in result and "not valid JSON" not in result
     return result

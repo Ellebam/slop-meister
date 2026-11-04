@@ -40,10 +40,11 @@ The helper checks the line structure. The line does not grant approval. Use the 
 1. Read the diff, `git diff` and `git diff --cached`.
 2. When commit or shipping permission is denied, verify the conversation contains explicit operator instruction for the named commit, push and PR create/update. Present the exact title and body before invoking the fixed helper. Without that instruction, prepare the handoff and stop.
 3. If the changes span logically distinct concerns, make separate commits, one concern, one commit.
-4. Stage explicitly, `git add <specific files>`, never `git add -A` or `git add .`.
-5. Commit messages follow the global layer, one imperative line, no body, no attribution trailer, unless the project's log shows another convention, then match the log. A denied commit uses the native exact-command approval boundary.
-6. Prepare the title and exact body under step 4, then run `python3 <this skill>/scripts/ship.py --cwd <absolute worktree> --title <title> --body-file <absolute body file>`. Fresh denied sessions route this fixed command through native approval, allowed sessions use standing authority. The fixed helper checks the declaration, the saved repository, remote and branch, and PR identity. It pushes without force or tags only when the remote branch differs from HEAD, creates or edits the PR only when its title or body differ, and reads each write back. It then reads mergeability up to five times two seconds apart and reports the answer without failing on it. It accepts no stronger action or arbitrary Git flags. Success prints one JSON line with `pr`, `sha`, `pushed`, `pr_action` (`created`, `updated` or `unchanged`) and `mergeable`. Failure prints `SPINE BLOCKED: shipping:` with the failed check or command and exits 1.
-7. Record the PR URL and shipped SHA in the notes. Git is the shipping state, the remote branch at HEAD with its open PR is shipped, anything else is not. After a failure or interruption, fix the named cause and rerun the same authorized command with the same inputs, a confirmed push or PR write is never repeated. Never bypass the helper or infer success from a launch line.
+4. Answer two questions. What must be committed so the change works? Go through every `git status` entry, untracked files included, and mark it needed or not. Is the commit safe? Check the plot's rules, `rinse` on the commit message, and on everything the push publishes where the plot requires its trace check, that only needed files are staged, and that the diff holds no secret. A secret stops the commit.
+5. Resolve every remaining untracked task file before shipping. Stage the needed files by name, `git add <specific files>`, never `git add -A` or `git add .`.
+6. Commit messages follow the global layer, one imperative line, no body, no attribution trailer, unless the project's log shows another convention, then match the log. A denied commit uses the native exact-command approval boundary.
+7. Prepare the title and exact body under step 4 and check them with `rinse`, then run `python3 <this skill>/scripts/ship.py --cwd <absolute worktree> --title <title> --body-file <absolute body file>`. Fresh denied sessions route this fixed command through native approval, allowed sessions use standing authority. The fixed helper checks the declaration, the saved repository, remote and branch, and PR identity. It pushes without force or tags only when the remote branch differs from HEAD, creates or edits the PR only when its title or body differ, and reads each write back. It then reads mergeability up to five times two seconds apart and reports the answer without failing on it. It accepts no stronger action or arbitrary Git flags. Success prints one JSON line with `pr`, `sha`, `pushed`, `pr_action` (`created`, `updated` or `unchanged`) and `mergeable`. Failure prints `SPINE BLOCKED: shipping:` with the failed check or command and exits 1.
+8. Confirm with `git ls-remote origin <branch>` that the remote branch is at HEAD, then that the pushed commit works: its CI where the repository has one, otherwise one clean checkout of that commit running the plan's focused check. A refused push or a failed check means not finished. Record the PR URL and shipped SHA in the notes. Git is the shipping state, the remote branch at HEAD with its open PR is shipped, anything else is not. After a failure or interruption, fix the named cause and rerun the same authorized command with the same inputs, a confirmed push or PR write is never repeated. Never bypass the helper or infer success from a launch line.
 
 ### 4. The pull request
 
@@ -58,7 +59,7 @@ Use the [task summary](../execute-plan/task-summary.md), carrying branch, commit
 ## Rules
 
 - Never force-push, never amend, never bypass hooks.
-- No secrets in the diff. Warn on env files, credentials, tokens.
+- No secrets in the diff, including env files, credentials and tokens.
 
 ## Arguments
 

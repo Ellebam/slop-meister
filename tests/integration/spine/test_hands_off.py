@@ -89,8 +89,8 @@ def test_hands_off_path_keeps_its_bounds():
     base = ROOT / "src/skills"
     execute = (base / "execute-plan/SKILL.md").read_text()
     review = (base / "cross-tool-review/SKILL.md").read_text()
-    assert "test that candidate" in execute
-    assert "freeze the candidate" in execute and "automatic tester loop" in execute
+    assert "final candidate" in execute
+    assert "freeze the final candidate" in execute and "A further check needs" in execute
     assert "ad-hoc review" in review
     assert "surviving findings" in review
     prune = (base / "prune/SKILL.md").read_text()
@@ -105,8 +105,8 @@ def test_complete_gate_runs_once_and_candidates_never_fail_a_run():
     proof = (skills / "local-qa/SKILL.md").read_text()
     assert "again only when" in proof
     execute = (skills / "execute-plan/SKILL.md").read_text()
-    assert "candidate never fails" in execute
-    assert "another tester run" in execute
+    assert "single scoped fix pass" in execute
+    assert "without a replacement diff check" in execute
 
 
 def test_spine_effort_instructions_cover_proof_and_followup_for_both_tools():

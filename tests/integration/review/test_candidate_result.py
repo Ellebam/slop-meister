@@ -2,14 +2,14 @@
 
 import json
 from pathlib import Path
-import tempfile
 import uuid
 
-from slopmeister.review import cli
+from slopmeister.review import check, cli
 from slopmeister.review.process import CommandResult
 from slopmeister.review.schema import ReviewResult, SecurityLens
 from slopmeister.session import launch_identity
 from slopmeister.spine import candidate
+from tests.integration.review.test_check import Checker
 from tests.support.repos import git, scratch_repo
 from tests.support.review_helpers import CLEAN_REVIEW_JSON
 
@@ -23,6 +23,7 @@ def ready(monkeypatch, tmp_path):
     monkeypatch.setenv("CODEX_THREAD_ID", session)
     launch_identity.write(workspace, (workspace.name, "codex", session))
     (workspace / "README.md").write_text("candidate\n")
+    (tmp_path / "guide.md").write_text("### Scenario basic: Read it\nRead README.md.\n")
     return workspace, candidate.freeze(workspace, workspace.name)
 
 
@@ -30,6 +31,7 @@ def arguments(workspace):
     return [
         "review", "--direction", "codex-to-claude", "--mode", "diff",
         "--cwd", str(workspace), "--candidate", "--prompt", "Review.",
+        "--guide", str(workspace.parent / "guide.md"),
     ]  # fmt: skip
 
 
@@ -89,9 +91,7 @@ def test_dirty_sentence_is_for_a_dirty_worktree_and_never_for_a_candidate(
 ):
     """Escaping bug: a materialized candidate always differs from its base and read as dirty."""
     workspace, _ = ready(monkeypatch, tmp_path)
-    # The materialized copy must sit under this test's directory to be read for real.
-    (tmp_path / "materialized").mkdir()
-    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path / "materialized"))
+    monkeypatch.setattr(check, "owned_reviewer_runner", Checker())
     monkeypatch.setattr(
         cli, "owned_reviewer_runner", lambda argv, **options: CommandResult(0, CLEAN_REVIEW_JSON)
     )
@@ -101,5 +101,6 @@ def test_dirty_sentence_is_for_a_dirty_worktree_and_never_for_a_candidate(
     assert "**Status:** CLEAN_ADVISORY" in gate and sentence not in gate
     plain = [argument for argument in arguments(workspace) if argument != "--candidate"]
     plain[plain.index("diff")] = "plan"
+    plain = plain[: plain.index("--guide")]
     assert cli.main(plain) == 0
     assert sentence in capsys.readouterr().out

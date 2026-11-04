@@ -53,7 +53,7 @@ def test_supervisor_passes_a_safe_server_ca_to_the_provider(tmp_path, monkeypatc
     module, data, ca = _pinned(tmp_path, monkeypatch)
     payloads = []
     monkeypatch.setattr(module, "invoke", _op(data, payloads))
-    assert json.loads(module.fetch())["result"] == "JIRA_CONTEXT_PASS"
+    assert json.loads(module.fetch(["--issue", "TEST-7"]))["result"] == "JIRA_CONTEXT_PASS"
     assert payloads[0]["server_ca"] == str(ca)
 
 
@@ -64,7 +64,7 @@ def test_supervisor_without_server_ca_sends_none(tmp_path, monkeypatch):
     ca.chmod(0o666)
     payloads = []
     monkeypatch.setattr(module, "invoke", _op(data, payloads))
-    module.fetch()
+    module.fetch(["--issue", "TEST-7"])
     assert "server_ca" not in payloads[0]
 
 
@@ -91,7 +91,7 @@ def test_swappable_server_ca_stops_before_the_provider(tmp_path, monkeypatch, un
     payloads = []
     monkeypatch.setattr(module, "invoke", _op(data, payloads))
     with pytest.raises(ValueError, match="LOCAL_CREDENTIAL_FILE_UNSAFE"):
-        module.fetch()
+        module.fetch(["--issue", "TEST-7"])
     assert payloads == []
 
 
@@ -112,8 +112,8 @@ def test_pin_with_client_certificate_stops_before_credentials_on_macos(
     if platform == "darwin":
         monkeypatch.setattr(module, "service_token", lambda _: pytest.fail("credentials read"))
         with pytest.raises(ValueError, match="CONFIG_INVALID"):
-            module.fetch()
+            module.fetch(["--issue", "TEST-7"])
         assert payloads == []
     else:
-        assert json.loads(module.fetch())["result"] == "JIRA_CONTEXT_PASS"
+        assert json.loads(module.fetch(["--issue", "TEST-7"]))["result"] == "JIRA_CONTEXT_PASS"
         assert len(payloads) == 1

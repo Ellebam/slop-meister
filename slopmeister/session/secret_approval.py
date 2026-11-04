@@ -7,14 +7,17 @@ only `approved` under this request's ID releases anything.
 
 from http.client import HTTPException
 import json
+import os
+from pathlib import Path
 import secrets
 import shlex
+import socket
 import time
 from urllib.error import HTTPError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
-from slopmeister.session import secret_tier
+from slopmeister.session import launch_identity, secret_tier
 
 SETTINGS = "home-assistant.json"
 FIELDS = {"ask_url", "answer_url", "token"}
@@ -24,6 +27,9 @@ EXCHANGE_TIMEOUT = 5
 ANSWER_LIMIT = 1048576
 # A mobile push drops a larger body, so the operator would approve text they cannot see.
 MESSAGE_LIMIT = 3800
+REASON_LIMIT = 160
+WORKSPACE = "SLOPMEISTER_SESSION_WORKSPACE"
+PHONE = "SLOPMEISTER_PHONE_SESSION"
 DECISIONS = ("approved", "denied")
 NO_REASON = (
     "a tier-two request needs a reason the operator can read. Put "
@@ -74,14 +80,58 @@ def route() -> dict[str, str]:
     return data
 
 
+def origin() -> dict[str, str]:
+    """Use launcher state or the phone service marker, never the command's current directory."""
+    cwd = os.getcwd()
+    if not cwd.isprintable():
+        raise ValueError("the current directory must contain only printable characters")
+    workspace = os.environ.get(WORKSPACE)
+    if workspace is None and os.environ.get(PHONE) == "1":
+        session = "Phone session"
+    else:
+        try:
+            if not workspace or not Path(workspace).is_absolute():
+                raise ValueError("missing workspace")
+            session = launch_identity.read(Path(workspace))["task"]
+        except OSError, ValueError, KeyError, TypeError, AttributeError:
+            raise ValueError(
+                "launcher identity is unavailable or unconfirmed; wait for launcher confirmation "
+                "or relaunch the session after installation. For a remote command, resolve in "
+                "the launched session and pipe through SSH standard input; see "
+                "docs/1password-access.md#remote-commands"
+            ) from None
+    return {
+        "session": session,
+        "host": socket.gethostname().partition(".")[0],
+        "cwd": cwd,
+        "reason": os.environ.get("SECRET_ASK_REASON", ""),
+    }
+
+
+def command_text(argv: list[str]) -> str:
+    """Keep ordinary commands familiar and control characters visible without forged lines."""
+    if any(arg and not arg.isprintable() for arg in argv):
+        return "Command arguments (JSON): " + json.dumps(argv)
+    return "Command: " + shlex.join(argv)
+
+
 def question(request: dict) -> dict:
     """What the operator reads before deciding, the purpose and the origin first."""
     references = ", ".join(f"{name}={value}" for name, value in request["env"].items())
     # One line, so a reason cannot write a line that reads like the command or the host.
     reason = " ".join(request["reason"].split())
+    if not reason:
+        raise ValueError(NO_REASON)
+    if len(reason) > REASON_LIMIT:
+        raise ValueError(f"shorten the reason in SECRET_ASK_REASON to {REASON_LIMIT} characters")
+    inputs = ""
+    if request["files"]:
+        inputs += "Env files: " + shlex.join(request["files"]) + "\n"
+    if request["literals"]:
+        inputs += "Literal names (values hidden): " + ", ".join(request["literals"]) + "\n"
     text = (
         f"Why: {reason}\nSession: {request['session']}\nHost: {request['host']}\n"
-        f"Command: {shlex.join(request['argv'])}\nReferences: {references}\n"
+        f"{command_text(request['argv'])}\nReferences: {references}\n{inputs}"
         f"Directory: {request['cwd']}"
     )
     body = {
@@ -133,10 +183,10 @@ def answer(settings: dict[str, str], identifier: str) -> str:
         data = json.loads(_exchange(Request(settings["answer_url"], headers=headers)))
     except HTTPError as error:
         if error.code == 401:
-            raise ValueError("answer route refused authentication (HTTP 401)") from None
+            raise Unreachable("answer route refused authentication (HTTP 401)") from None
         return ""
     except ValueError, HTTPException, RecursionError:
-        raise ValueError("answer route returned an invalid reply") from None
+        raise Unreachable("answer route returned an invalid reply") from None
     except OSError:
         return ""
     # A Home Assistant state carries the map under its attributes.
@@ -144,7 +194,7 @@ def answer(settings: dict[str, str], identifier: str) -> str:
         data = data.get("attributes", data)
     decisions = data.get("decisions") if isinstance(data, dict) else None
     if not isinstance(decisions, dict):
-        raise ValueError("answer route returned an invalid reply")
+        raise Unreachable("answer route returned an invalid reply")
     found = decisions.get(identifier, "")
     return found if found in DECISIONS else ""
 

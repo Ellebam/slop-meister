@@ -98,11 +98,10 @@ def test_summary_reaches_every_handoff_without_tool_drift():
                 assert "execute-plan/task-summary.md" in text, str(plot)
 
 
-def test_harvest_preserves_an_interrupted_first_touch_record_without_committing_it():
-    """Bug: a pre-write ownership record becomes unparseable or authorizes a commit."""
+def test_harvest_requires_clean_named_vault_results():
     text = (ROOT / "src/skills/harvest/SKILL.md").read_text()
-    assert "first-touch <state>" in text
-    assert "never commit it" in text
+    assert "each note this session edited shows clean" in text
+    assert "another session's change stays as it is" in text
 
 
 def test_review_replays_final_result_and_has_explicit_operator_replacement():
@@ -144,7 +143,7 @@ def test_commit_and_shipping_permissions_select_continuations_without_blocking_r
     assert "--candidate" in execute and "--candidate" in review
     assert "Shipping: N/A" in execute
     assert "final candidate" in execute
-    assert "same tree" in execute
+    assert "final candidate" in review
 
 
 def test_guide_cleanup_preserves_changed_files_for_any_subject():
@@ -154,10 +153,10 @@ def test_guide_cleanup_preserves_changed_files_for_any_subject():
     assert "unrecorded files" in source
 
 
-def test_branch_binary_rule_precedes_the_copyable_tester_command():
-    """Bug: copying the main checkout's command tests old code."""
-    source = (ROOT / "src/skills/execute-plan/SKILL.md").read_text()
-    assert source.index("contains `bin/slopmeister`") < source.index("tester launch")
+def test_review_uses_the_reviewed_checkouts_own_binary():
+    source = (ROOT / "src/skills/cross-tool-review/SKILL.md").read_text()
+    assert "reviewed checkout's own `bin/slopmeister`" in source
+    assert "--guide <absolute guide>" in source
 
 
 def test_promotion_prunes_candidates_before_adding_tests():
@@ -167,8 +166,6 @@ def test_promotion_prunes_candidates_before_adding_tests():
     assert "Invoke `prune`" in step
 
 
-def test_harvest_keeps_missing_write_record_stops():
-    """Bug: an unrecorded vault write passes."""
+def test_harvest_does_not_finish_with_a_failed_vault_commit():
     source = (ROOT / "src/skills/harvest/SKILL.md").read_text()
-    assert "no first-touch record" in source
-    assert "write record" in source
+    assert "commit that stays refused means not finished" in source

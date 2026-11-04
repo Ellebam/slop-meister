@@ -84,22 +84,9 @@ def _close(run: lifecycle.Run, args: argparse.Namespace) -> int:
     return 0
 
 
-def _abandon(run: lifecycle.Run, args: argparse.Namespace) -> int:
-    if run.saved["phase"] == "released":
-        print("already released")
-        return 0
-    after = args.action == "abandon-complete"
-    operation = lifecycle.Abandonment(run.path, run.saved, args.handoff, after)
-    lifecycle.abandon(run.ctx, operation)
-    print("claim released" if after else "abandonment recorded")
-    return 0
-
-
 MUTATIONS = {
     "reconcile": _claim,
     "close": _close,
-    "abandon-prepare": _abandon,
-    "abandon-complete": _abandon,
 }
 
 

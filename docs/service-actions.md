@@ -1,6 +1,6 @@
 # Selected service actions
 
-A plot can declare fixed read and write actions whose complete execution requires native approval review after the operator authorizes the action. Codex uses Approve for me. Claude keeps its explicit action ask. Slopmeister delivers the consumer and its non-secret profile into a new session. These actions retain this route independently of the [two-tier secret route](1password-access.md). No Home Assistant decision or desktop prompt is added.
+A plot can declare fixed readers that run without a separate approval and writers that require native approval of each exact command. Slopmeister delivers the consumer and its non-secret profile into a new session. These actions retain this route independently of the [two-tier secret route](1password-access.md). No Home Assistant decision or desktop prompt is added.
 
 ## Declare and provision
 
@@ -28,9 +28,9 @@ The `origin` field accepts an HTTPS base URL with an optional application path, 
 
 For PAT-only HTTPS, omit both `password_ref` and `certificate_document`. Supplying only one is invalid. When both are present, the existing in-memory client-certificate flow is retained. Omitting them skips certificate and certificate-password retrieval entirely and still uses normal server TLS verification.
 
-The optional `server_ca` field names an absolute path to a PEM certificate. The request then trusts only that certificate for the origin instead of the system trust store. The supervisor refuses it unless it is a regular file owned by the operator, reached without symlinks and not writable by group or others. Keep it in a private `0700` directory like the token file, because the supervisor does not check the directories above it. Linux curl uses OpenSSL with an empty CA directory. macOS uses SecureTransport for pinned PAT-only requests and refuses a pin with a client certificate before credentials are read. Field profiles omit it. The [Atlassian sandbox](atlassian-sandbox.md) uses it for its per-machine `localhost` certificate.
+The optional `server_ca` field names an absolute path to a PEM certificate. The request then trusts only that certificate for the origin instead of the system trust store. The supervisor refuses it unless it is a regular file owned by the operator, reached without symlinks and not writable by group or others. Keep it in a private `0700` directory like the token file, because the supervisor does not check the directories above it. Linux curl uses OpenSSL with an empty CA directory. macOS uses SecureTransport for pinned PAT-only requests and refuses a pin with a client certificate before credentials are read. Field profiles omit it.
 
-The token file is an owned regular `0600` file in a private `0700` directory. It contains one `OP_SERVICE_ACCOUNT_TOKEN` assignment followed by a newline. Provision it through an operator-authorized secret-entry path. Do not print it, put it in Git or iCloud, link it into a repository, copy it into worktrees, or export it in shell startup files. The consumer reads it directly only after native action approval. Directory sessions use the same location.
+The token file is an owned regular `0600` file in a private `0700` directory. It contains one `OP_SERVICE_ACCOUNT_TOKEN` assignment followed by a newline. Provision it through an operator-authorized secret-entry path. Do not print it, put it in Git or iCloud, link it into a repository, copy it into worktrees, or export it in shell startup files. The consumer reads it directly after selector validation, and after native approval for a write. Directory sessions use the same location.
 
 The service account must have read access to exactly the selected vault. This is vault-wide access, not per-item authorization. Keep its expiry and rotation policy explicit. An absent, revoked or expired token fails without desktop fallback. Rotation means replacing the protected file through the approved secret-entry path and revoking the old token in 1Password. Removing a plot declaration prevents new delivery but does not revoke an existing snapshot or token. Revoke upstream access when immediate removal is needed.
 
@@ -42,39 +42,28 @@ The fixed entry and standard-library implementation under `slopmeister/session/s
 
 ## Run the action
 
-Verify operator authorization for the complete fixed read. Create its private result directory and file before submission:
+Run the exact absolute entry shown in the delivered instructions with literal selectors. On Linux use the selected Linux Python path. Reads need no precreated output file, research budget or approval. Do not add a wrapper, shell chain, redirection or module invocation.
 
 ```bash
-# macOS
-/usr/bin/mktemp -d /private/tmp/slopmeister-read.XXXXXXXX
-# Linux
-/usr/bin/mktemp -d /tmp/slopmeister-read.XXXXXXXX
-/usr/bin/mktemp <returned-directory>/result.XXXXXXXX
+/opt/homebrew/bin/python3 -E -s -S <workspace>/.codex/service-actions/jira-read/entry.py --find --assignee me
+/opt/homebrew/bin/python3 -E -s -S <workspace>/.claude/service-actions/jira-read/entry.py --find --assignee me
 ```
 
-Use the returned absolute paths. On Linux use the selected Python path. Request native review of the selected tool's absolute delivered entry with `--output` set to that precreated result file. Do not use shell redirection because it bypasses the native command rule. Set a native tool timeout of at least 330 seconds:
+The fixed entry creates a private `0600` result file and prints one JSON line with `result` and `result_file`. Collect the same native session if the tool yields before completion. Accept success only after exit 0 and the expected result code. Read the returned file with ordinary file tools. Keep failures for diagnosis and do not resubmit an uncertain execution.
 
-```bash
-# Codex
-/opt/homebrew/bin/python3 -E -s -S <workspace>/.codex/service-actions/jira-read/entry.py --output <private-result-file> --find --assignee me
-
-# Claude Code
-/opt/homebrew/bin/python3 -E -s -S <workspace>/.claude/service-actions/jira-read/entry.py --output <private-result-file> --find --assignee me
-```
-
-Both tools route the exact absolute entry through native review. Codex's automatic reviewer may approve without a human prompt. Claude keeps its explicit ask. Do not save a session-wide exception or alter delivered code. The delivered instructions identify the consumer revision. Native protection and snapshot validation guard ordinary edits, not a hostile process with the same local account.
+Both tools allow only the selected absolute read command. A different command receives ordinary native evaluation. The delivered instructions identify the consumer revision. Native protection and snapshot validation guard ordinary edits, not a hostile process with the same local account.
 
 Claude's Edit deny rules use absolute workspace paths for both delivered action directories. The launcher passes these rules through an explicit settings file, where a single leading slash would anchor them at that file's directory. Edit rules also cover the native Write tool.
 
 Both tools receive read-only action files (`0444`), owner-readable private profiles (`0400`) and read-only action directories (`0555`). This blocks ordinary patch, edit and file-creation attempts independently of command sandboxing. The existing installer snapshot detects changes to content or permissions. These modes do not prevent the local owner from deliberately changing permissions. Preserve existing snapshots and start a fresh session to receive a changed consumer. Remove an explicitly retired workspace through the [supported removal command](workspace-removal.md).
 
-The fixed entry passes raw argv to the supervisor without Task template expansion. Use only its absolute command, never a cwd-relative Python module call. The native rules bind review to that entry; they remain secondary guardrails, not isolation against a hostile process with the same local account.
+The fixed entry passes raw argv to the supervisor without Task template expansion. Use only its absolute command, never a cwd-relative Python module call. The allow rules bind the selected read to that entry; they remain secondary guardrails, not isolation against a hostile process with the same local account.
 
 If the native command returns a running session, collect that same session until it finishes. Never submit the action again to recover a lost response. Accept success only after native exit `0`, an owned regular `0600` result file, complete valid JSON with the expected `JIRA_CONTEXT_PASS` or `CONFLUENCE_FETCH_PASS` code, and no output beyond the consumer's 2 MiB limit. A nonzero or uncertain exit is not success even when the file contains data. Keep the file for diagnosis without claiming a provider failure from a local authorization error. Delete only this task's result after its context is no longer needed.
 
-Every Slopmeister Codex launch and printed resume line pins `on-request` with `auto_review`. Ordinary permitted commands still run normally. An explicitly chosen manual reviewer may override that launch default for a session. Claude keeps auto mode and explicit action ask rules. An effective managed deny still wins and must be diagnosed, never bypassed. A Codex reviewer denial is not operator approval. Native `/approve` offers the operator one exact retry, still subject to automatic review.
+Every Slopmeister Codex launch and printed resume line pins `on-request` with `auto_review`. Ordinary permitted commands still run normally. An explicitly chosen manual reviewer may override that launch default for a session. Claude keeps auto mode and explicit ask rules for native write tools. An effective managed deny still wins and must be diagnosed, never bypassed. A Codex reviewer denial is not operator approval. Native `/approve` offers the operator one exact retry, still subject to automatic review.
 
-Approval covers the fixed consumer's service-account identity and vault checks, its optional internal certificate-document retrieval, masked PAT and optional certificate-password resolution and bounded GET requests. Direct `op read`, item/document retrieval, injection and unmasked output remain forbidden. An arbitrary wrapper or script is not this exception. Native command matching cannot enforce a boundary across arbitrary subprocess indirection.
+The fixed reader performs service-account identity and vault checks, optional internal certificate-document retrieval, masked PAT and optional certificate-password resolution, and bounded GET requests. Direct `op read`, item/document retrieval, injection and unmasked output remain forbidden. An arbitrary wrapper or script is not this exception. Native command matching cannot enforce a boundary across arbitrary subprocess indirection.
 
 When configured, curl receives the PKCS#12 bundle and password through private pipes. No certificate or key file is written, and curl's arguments contain no secret. The HTTP process receives no service-account token. Server trust comes from the system or selected pin, never the client bundle. Redirects and inherited proxy settings are disabled. Linux certificate requests set `OPENSSL_CONF` to the delivered configuration, replacing host OpenSSL policy and activating default and legacy providers. This accepts old RC2-40 encryption. Certificate-free requests and Mac requests retain their environment.
 
@@ -84,14 +73,14 @@ This GET-only consumer does not make a personal PAT read-only. Jira permissions 
 
 Select `confluence-read` in the plot declaration and provision its own `confluence-read.json` profile using the same schema with that action name and its pinned Confluence origin. Credential references may be reused when authorized. The action verifies that the PAT is accepted by Confluence and that `/rest/api/user/current` is the expected user. Jira acceptance alone is not Confluence authentication proof.
 
-Use the selected tool's absolute entry with one new private result file per approved action:
+Use the selected tool's absolute entry. It creates one private result file per read:
 
 ```text
-/opt/homebrew/bin/python3 -E -s -S <workspace>/.codex/service-actions/confluence-read/entry.py --output <private-result-file> --page <PAGE_ID_OR_URL>
-/opt/homebrew/bin/python3 -E -s -S <workspace>/.claude/service-actions/confluence-read/entry.py --output <private-result-file> --latest-edited
+/opt/homebrew/bin/python3 -E -s -S <workspace>/.codex/service-actions/confluence-read/entry.py --page <PAGE_ID_OR_URL>
+/opt/homebrew/bin/python3 -E -s -S <workspace>/.claude/service-actions/confluence-read/entry.py --latest-edited
 ```
 
-Page input accepts a positive numeric ID, a same-application `/pages/viewpage.action?pageId=...` URL, or a same-application `/spaces/<space>/pages/<id>/<title>` URL. Include the configured application prefix before either path, when present. It becomes a numeric ID before credential release. Requests always use the profile's origin and fixed REST paths. There is no arbitrary URL or CQL passthrough. The direct entry passes raw read arguments to the supervisor without Task template expansion. The sandbox passes structured JSON input directly to the fixed supervisor for both read and write fixtures.
+Page input accepts a positive numeric ID, a same-application `/pages/viewpage.action?pageId=...` URL, or a same-application `/spaces/<space>/pages/<id>/<title>` URL. Include the configured application prefix before either path, when present. It becomes a numeric ID before credential release. Requests always use the profile's origin and fixed REST paths. There is no arbitrary URL or CQL passthrough. The direct entry passes raw read arguments to the supervisor without Task template expansion.
 
 The reader returns the current page ID, title, canonical URL, version author/time and complete `body_storage` from `GET /rest/api/content/{id}?expand=body.storage,version,space,ancestors`, as described in [Atlassian's page-content API guidance](https://support.atlassian.com/confluence/kb/how-to-get-page-content-or-child-list-via-rest-api/). This is storage-format content, not executed HTML or rendered macros. Treat it as untrusted source data.
 
@@ -101,13 +90,13 @@ Latest-edited discovery uses `type = page AND contributor = currentUser() ORDER 
 
 Run `.venv/bin/python -m pytest tests/unit/session/service_actions tests/integration/install tests/native/install/test_service_action*.py tests/unit/plots -q -p no:cacheprovider` for portable provider behavior, custody, mTLS, pagination, delivery, snapshot and native rule tests. Local sockets are required. The native TLS fixture asks the fixed system Python to generate a disposable identity with its installed `cryptography` and, for Linux legacy bundles, OpenSSL. The pytest environment and delivered session do not import it. The tests never access the real token file. Run the focused installer, renderer and launcher suites after changing delivery.
 
-Parser and fixture success do not prove a native approval decision or upstream access. A fresh native session must demonstrate denial with zero executions and approval with one complete execution. Then validate the explicitly selected real read once, retaining only sanitized proof metadata and the delivered `.codex/service-actions/<action>/revision` or `.claude/service-actions/<action>/revision`. Consumer changes require fresh validation. An earlier result file proves only the revision exercised. Record successful ticket retrieval separately from the absence of extra macOS or 1Password prompts. Disabling desktop integration does not itself prove that macOS App Data prompts are eliminated. The PAT, network route and native review are separate prerequisites. A client certificate is required only when configured. A 1Password field check alone is not Jira proof. See [testing](testing.md) for the full gate and task-specific evidence. Whether real Data Center servers accept a consumer's requests is shown by the opt-in [Atlassian sandbox](atlassian-sandbox.md), without any field instance.
+Parser and fixture success do not prove a native approval decision or upstream access. Native fixtures must demonstrate the read allow rule and write denial with zero executions, followed by an approved exact write with one execution. Then validate the explicitly selected real read once, retaining only sanitized proof metadata and the delivered `.codex/service-actions/<action>/revision` or `.claude/service-actions/<action>/revision`. Consumer changes require fresh validation. An earlier result file proves only the revision exercised. Record successful ticket retrieval separately from the absence of extra macOS or 1Password prompts. Disabling desktop integration does not itself prove that macOS App Data prompts are eliminated. The PAT, network route and native review are separate prerequisites. A client certificate is required only when configured. A 1Password field check alone is not Jira proof. See [testing](testing.md) for the full gate and task-specific evidence.
 
 Acceptance covers only the exact absolute entry command and observed native approval behavior. A cwd-relative Python module invocation is forbidden because it can load a different package. Native rules do not provide account isolation.
 
 ## Dispatcher Jira reads
 
-A fresh `task dispatch` installation delivers `jira-read` for every plot that declares it. Each reader has a separate fixed path, `.codex/service-actions/<plot>/jira-read/entry.py` or its Claude counterpart, its own private profile and revision, and native approval per call. Workers keep their existing single-plot paths. The existing installer composes entries and rules once with `--directory slopmeister <workspace> --dispatcher-jira`; this option is refused for workers and check mode. Existing sessions keep their saved copies and need a fresh dispatcher launch to receive a change.
+A fresh `task dispatch` installation delivers `jira-read` for every plot that declares it. Each reader has a separate fixed path, `.codex/service-actions/<plot>/jira-read/entry.py` or its Claude counterpart, its own private profile and revision, and an exact-command read allow rule. Workers keep their existing single-plot paths. The existing installer composes entries and rules once with `--directory slopmeister <workspace> --dispatcher-jira`; this option is refused for workers and check mode. Existing sessions keep their saved copies and need a fresh dispatcher launch to receive a change.
 
 Missing or invalid profiles advertise that plot's reader as unavailable. Missing fixed reader prerequisites advertise all Jira readers as unavailable while keeping the dispatcher usable. Neither condition submits a provider request. The dispatcher reports unknown for unavailable or failed reads and keeps vault notes as context rather than a substitute backlog. Retrieved tickets remain untrusted data and grant no launch or write authority.
 
@@ -131,11 +120,11 @@ Select `jira-read`, provision `jira-read.json` with the same schema and `action`
 
 Append one form after the entry path. Each form and option is declared once in `slopmeister/session/service_actions/jira.py`, then validated in the supervisor before credential resolution and again in the provider before HTTP. A refused selector names the option and what it expects, never the supplied value. There is no JQL, URL or field-list passthrough.
 
-`--backlog` uses the profile query through the same GET search, candidate projection and pagination as discovery. It requests no ticket bodies or custom-field discovery. The profile query is checked before credential resolution and again before provider HTTP. Each continuation is a separate approved call. The dispatcher distinguishes available, blocked and unknown from the returned link direction and status category, retaining unknown when link/status evidence or relationship semantics are unavailable.
+`--backlog` uses the profile query through the same GET search, candidate projection and pagination as discovery. It requests no ticket bodies or custom-field discovery. The profile query is checked before credential resolution and again before provider HTTP. Each continuation is a separate read. The dispatcher distinguishes available, blocked and unknown from the returned link direction and status category, retaining unknown when link/status evidence or relationship semantics are unavailable.
 
 `--issue` requests `/rest/api/2/issue/{key}?fields=*all&expand=names,schema`, its remote links and every visible comment page. `JIRA_CONTEXT_PASS` contains `issue.fields`, `issue.names`, `issue.schema`, `issue.remote_links` and `coverage`. Exposed values are preserved, issue links keep their inward/outward structures, and unmapped fields and missing metadata are explicit. Worklogs retain only embedded entries with coverage, attachments are metadata only, and changelog is not fetched. A narrow final identity/update check detects some changes, not an atomic snapshot.
 
-`--related` adds one hop of neighbours with complete bodies: both link directions, parent, epic, parent link, subtasks and epic children. Relations the instance cannot resolve are listed as not searched. More than 50 neighbours fails with `RELATED_LIMIT`. `--issues` reads 1 to 50 known keys through one key search with names and schema once, and fails if Jira returns fewer than its reported total. Both list keys the account could not read in `not_returned`. Batch reads complete embedded comments only when the embedded set is short, and they are not snapshots.
+`--related` adds one hop of neighbours with complete bodies: both link directions, parent, epic, parent link, subtasks and epic children. Relations the instance cannot resolve are listed as not searched. More than 50 neighbours fails with `RELATED_LIMIT`. `--issues` reads 1 to 50 known keys through one key search with names and schema once, and fails if Jira returns fewer than its reported total. Both list requested keys Jira did not return in `not_returned`. Moved tickets return their current key, and an old batch key remains in that list. Batch reads complete embedded comments only when the embedded set is short, and they are not snapshots.
 
 `--find` combines typed filters into fixed JQL. Text, names and keys are escaped into string literals. Status categories use their IDs and Sprint, Epic Link, Parent Link and Rank clauses use `cf[id]` resolved from `/rest/api/2/field` by schema type, so localized field names do not matter. An explicit filter or order that does not resolve to exactly one field or board filter fails with `SELECTOR_UNAVAILABLE` instead of running a wider search. Results are candidate metadata, including `status_category` and raw `issuelinks`. Absent links remain null, distinct from an empty list. Link type/direction and the embedded linked ticket status are preserved for blockers outside the query as well. `--projects`, `--boards` and `--sprints` list the IDs other forms take, the latter two through the Jira Software agile API where the instance provides it.
 
@@ -163,9 +152,9 @@ Current page reads, including the page selected by latest-edited discovery, incl
 
 [Native write actions](service-actions-native.md) owns writer selection, exact command approval, supported forms, change guards, results and startup checks. Reads keep the contract on this page.
 
-## Limits, collection and research permission
+## Limits and collection
 
-Every read permits at most 100 HTTP requests, 25 seconds per request and 300 seconds total execution including credential setup. Pre-execution native approval time is outside that budget. Each provider response and the final serialized UTF-8 JSON result, including its newline, is limited to 2097152 bytes. Final emission escapes transport-sensitive control characters and uses compact JSON. Optional certificate and credential input limits remain unchanged. Required-collection failures, invalid pagination, duplicates, changed totals, detected content changes, timeouts and size limits produce bounded failures, never clipped success.
+Every read permits at most 100 HTTP requests, 25 seconds per request and 300 seconds total execution including credential setup. Each provider response and the final serialized UTF-8 JSON result, including its newline, is limited to 2097152 bytes. Final emission escapes transport-sensitive control characters and uses compact JSON. Optional certificate and credential input limits remain unchanged. Required-collection failures, invalid pagination, duplicates, changed totals, detected content changes, timeouts and size limits produce bounded failures, never clipped success.
 
 The private result file is distinct from the native tool's display limit. Inspect its ownership, mode and byte count, then record the SHA-256 without printing its contents:
 
@@ -183,8 +172,8 @@ Read bounded text from that same file by Unicode character offset, advancing thr
 python3 -c 'from pathlib import Path; import sys; s = Path(sys.argv[1]).read_text(encoding="utf-8"); n = int(sys.argv[2]); print(s[n:n + 1024], end="")' <private-result-file> 0
 ```
 
-Check the same file size and SHA-256 again after collection, then parse the complete UTF-8 JSON and verify its result and coverage. Reading it consumes no new provider action or research budget. If the native command's exit or file identity is uncertain, preserve the file and report unknown rather than submit another read.
+Check the same file size and SHA-256 again after collection, then parse the complete UTF-8 JSON and verify its result and coverage. Reading it consumes no new provider action. If the native command's exit or file identity is uncertain, preserve the file and report unknown rather than submit another read.
 
-When authorization is missing, Jira and Confluence research requests name the objective, project, board, ticket, space or page-tree boundary, maximum body reads and maximum discovery calls. Agents choose useful next reads inside that approved scope. New submissions, including search continuation, consume the appropriate budget; reading an existing result file does not. Request new permission before extending scope or exhausting budgets. Existing sufficient authorization is reused. Native approval still applies to each submitted action. No new batch executor, background crawler or identity fallback is introduced.
+Selected reads need no separate research approval or action budget. Keep reads relevant to the task, respect the fixed execution bounds and report unavailable results as unknown. An allowed read grants no write. No background crawler or identity fallback is provided.
 
 Run `.venv/bin/python -m pytest -q tests/unit/session/service_actions tests/integration/install/test_service_actions_*.py tests/integration/install/test_native_write_lifecycle.py tests/native/install/test_service_action*.py tests/native/install/test_native_write*.py tests/unit/plots`. These cases use synthetic profiles, fake `op`, disposable HTTPS providers and delivered consumer copies. They prove the bounded consumer, real curl TLS, actual client approval/refusal, parent-owned input channels and writer cleanup under scripted decisions. They do not prove a production model's judgment or current customer permissions. Validate real provider access separately only when authorized, and approve each write's complete command.

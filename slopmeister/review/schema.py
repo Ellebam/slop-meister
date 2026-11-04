@@ -10,6 +10,8 @@ from pathlib import PurePosixPath
 
 VALID_SEVERITIES = {"MUST-FIX", "SHOULD-FIX", "NITPICK"}
 VALID_CONFIDENCES = {"high", "medium", "low"}
+SCENARIO_STATUSES = {"pass", "fail", "could_not_run"}
+CHECK_KEYS = {"scenarios", "guide_findings"}
 
 
 class ReviewErrorCategory(StrEnum):
@@ -62,10 +64,20 @@ class SecurityLens:
 
 
 @dataclass(frozen=True)
+class Scenario:
+    id: str
+    status: str
+    reason: str
+    evidence: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True)
 class ReviewResult:
     findings: tuple[ReviewFinding, ...]
     security_lens: SecurityLens
     preexisting_dirty: bool = False
+    scenarios: tuple[Scenario, ...] = ()
+    guide_findings: tuple[tuple[str, str], ...] = ()
 
 
 def _invalid(message: str) -> CrossToolReviewError:
@@ -143,14 +155,14 @@ def _security_lens(value: object, count: int) -> SecurityLens:
     return SecurityLens(index, tuple(checks), _string(value, "evidence", "security_lens"))
 
 
-def parse_review_json(raw: str) -> ReviewResult:
+def parse_review_json(raw: str, check: bool = False) -> ReviewResult:
     try:
         payload = json.loads(raw)
     except json.JSONDecodeError as error:
         raise _invalid(f"review JSON is malformed: {error.msg}") from error
     if not isinstance(payload, dict):
         raise _invalid("review JSON root must be an object")
-    if not set(payload) <= {"findings", "security_lens"}:
+    if not set(payload) <= {"findings", "security_lens"} | (CHECK_KEYS if check else set()):
         raise _invalid("review JSON root contains unknown keys")
     rows = payload.get("findings")
     if not isinstance(rows, list):
@@ -159,19 +171,42 @@ def parse_review_json(raw: str) -> ReviewResult:
     return ReviewResult(findings, _security_lens(payload.get("security_lens"), len(findings)))
 
 
-def review_json_schema() -> str:
+def review_json_schema(check: bool = False) -> str:
+    properties = {
+        "security_lens": _lens_schema(),
+        "findings": {"type": "array", "items": _finding_schema()},
+    }
+    if check:
+        properties.update(_check_schema())
     return json.dumps(
         {
             "type": "object",
             "additionalProperties": False,
-            "required": ["findings", "security_lens"],
-            "properties": {
-                "security_lens": _lens_schema(),
-                "findings": {"type": "array", "items": _finding_schema()},
-            },
+            "required": sorted(properties),
+            "properties": properties,
         },
         sort_keys=True,
     )
+
+
+def _strings(*names: str) -> dict:
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": list(names),
+        "properties": {name: {"type": "string"} for name in names},
+    }
+
+
+def _check_schema() -> dict:
+    scenario = _strings("id", "status", "reason")
+    scenario["required"].append("evidence")
+    scenario["properties"]["status"] = {"type": "string", "enum": sorted(SCENARIO_STATUSES)}
+    scenario["properties"]["evidence"] = {"type": "array", "items": _strings("path", "quote")}
+    return {
+        "scenarios": {"type": "array", "items": scenario},
+        "guide_findings": {"type": "array", "items": _strings("scenario", "problem")},
+    }
 
 
 def _finding_schema() -> dict:

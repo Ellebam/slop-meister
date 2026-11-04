@@ -99,7 +99,7 @@ Plot procedures render under `dist/<tool>/targets/<plot>/skills/`, with manifest
 |---|---|
 | `local-qa-drive` | How to exercise the change through its real interface. |
 | `local-qa-gates` | Checks that run only on this machine. |
-| `test-guide-access` | How a tester reaches the change. |
+| `test-guide-access` | How the independent check reaches the change. |
 
 The base owns each heading and a generic lead sentence, and an empty fragment leaves that generic rule alone. These procedures carry no double-brace tokens and render identically for both tools.
 

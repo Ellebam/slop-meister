@@ -12,6 +12,8 @@ from slopmeister.session import secret_approval, secret_tier
 pytestmark = pytest.mark.xdist_group("secret-approval")
 
 REQUEST = {
+    "files": [],
+    "literals": [],
     "env": {"DEMO": "op://Production/Item/credential"},
     "argv": ["deploy", "the host"],
     "cwd": "/work/example-app",
@@ -99,7 +101,7 @@ def test_denial_is_read_as_denial(home_assistant):
 def test_answer_that_is_not_the_map_is_refused(home_assistant):
     """Bug: an error page or a list from Home Assistant crashes the wait or approves."""
     home_assistant.answer = ["approved"]
-    with pytest.raises(ValueError, match="answer route returned an invalid reply"):
+    with pytest.raises(secret_approval.Unreachable, match="answer route returned an invalid reply"):
         secret_approval.decision(home_assistant.settings, "mine")
 
 

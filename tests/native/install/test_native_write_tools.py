@@ -9,7 +9,7 @@ import sys
 import pytest
 
 from slopmeister.session.service_actions.constants import PYTHON
-from tests.native.install.intent_fixture import claude_host, close, main_results
+from tests.native.install.intent_fixture import claude_host, close, is_review, main_results
 from tests.native.install.native_tool_fixture import marker_consumer, prepared_native
 from tests.support.standin import run
 
@@ -94,7 +94,7 @@ def test_native_write_tool_runs_only_with_exact_operator_approval(tmp_path, tool
         else:
             prompt = "I approve this exact command:\n" + world.command if approved else "Go."
             run(replace(world.client, argv=[*world.client.argv[:-1], prompt]))
-            assert any(body.get("model") == "codex-auto-review" for body in world.server.requests)
+            assert any(is_review(body) for body in world.server.requests)
             main_results(world)
         offered = {item.get("name") for item in world.server.requests[0].get("tools", [])}
         assert name in offered or name.rsplit("__", 1)[0] in offered, offered
@@ -204,7 +204,7 @@ def test_native_write_tool_refuses_compact_approval_override(tmp_path, override)
             in world.client.evidence.with_suffix(".stderr").read_text()
         )
         assert world.output.read_text() == ""
-        assert not any(body.get("model") == "codex-auto-review" for body in world.server.requests)
+        assert not any(is_review(body) for body in world.server.requests)
     finally:
         close(world)
 
@@ -228,6 +228,6 @@ def test_native_approval_pin_survives_home_and_project_config_mismatch(tmp_path,
         world.server.script = [("mcp__jira_write__run", {"command": world.command})]
         run(replace(world.client, argv=argv))
         assert world.output.read_text() == ""
-        assert any(body.get("model") == "codex-auto-review" for body in world.server.requests)
+        assert any(is_review(body) for body in world.server.requests)
     finally:
         close(world)

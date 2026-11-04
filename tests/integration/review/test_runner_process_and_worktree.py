@@ -42,20 +42,20 @@ def test_permission_error_inside_invalid_json_is_not_retryable():
 def test_owned_timeout_keeps_partial_output_and_stops_only_its_group(monkeypatch):
     class TimedOutReviewer:
         pid = 4321
-        calls = 0
         returncode = None
 
         def communicate(self, *_args, **_kwargs):
-            self.calls += 1
-            if self.calls < 3:
-                raise subprocess.TimeoutExpired("claude", 1, output=b"partial evidence\n")
-            self.returncode = -signal.SIGTERM
-            return "partial evidence\n", ""
+            raise subprocess.TimeoutExpired("claude", 1)
 
     process = TimedOutReviewer()
     sent = []
+
+    def start(argv, options, outputs):
+        outputs[0].write("partial evidence\n")
+        return process
+
     monkeypatch.setenv("CROSS_TOOL_REVIEW_TIMEOUT_SECONDS", "1")
-    monkeypatch.setattr(review_run, "_start_reviewer", lambda *_: process)
+    monkeypatch.setattr(review_run, "_start_reviewer", start)
     monkeypatch.setattr(review_run, "group_members", lambda _: [])
     monkeypatch.setattr(
         review_run,
@@ -176,9 +176,15 @@ def test_run_review_cleans_secure_schema_file_after_review_command():
     ("script", "category"),
     [
         pytest.param(
-            'printf "partial evidence\\n"\nsleep 6 &\n: > "$0.ready"\nexit 0',
+            'printf "partial evidence\\n"\n: > "$0.ready"\nsleep 6\nexit 0',
             "TIMEOUT",
             id="timeout",
+        ),
+        # A service the checker leaves behind keeps its output open and must not stall the wait.
+        pytest.param(
+            'printf "partial evidence\\n"\nsleep 6 &\nexit 0',
+            "CONTROL_FAILURE",
+            id="child-holds-output",
         ),
         pytest.param(
             "sleep 30 >/dev/null 2>&1 &\ndisown\nexit 0",
@@ -194,9 +200,9 @@ def test_reviewer_stops_group_after_leader_already_exited(tmp_path, monkeypatch,
     if category == "TIMEOUT":
         ready = Path(f"{tool}.ready")
 
-        def start_after_output(argv, options, start=review_run._start_reviewer):
+        def start_after_output(argv, options, outputs, start=review_run._start_reviewer):
             nonlocal started
-            process = start(argv, options)
+            process = start(argv, options, outputs)
             deadline = time.monotonic() + 5
             try:
                 while not ready.exists() and time.monotonic() < deadline:

@@ -79,12 +79,12 @@ A workspace from before the removal of the Git guard refuses redispatch, and `gi
 
 ## The permission contract
 
-[`src/permissions.toml`](../src/permissions.toml) owns shared command rules. [`src/native-permissions.toml`](../src/native-permissions.toml) owns workspace-bound release and selected service policies. Each entry has a command prefix, a decision and a `why`, and the renderer turns it into Claude settings, [Codex rules](../dist/codex/rules/permissions.rules) and the OpenCode permission map. Change its owning source and run `bin/slopmeister render`, never in a tool's own file. An unknown decision, a prefix under two decisions or a missing `why` fails the render.
+[`src/permissions.toml`](../src/permissions.toml) owns general command rules. [`src/github-permissions.toml`](../src/github-permissions.toml) owns GitHub command rules. [`src/native-permissions.toml`](../src/native-permissions.toml) owns workspace-bound release and selected service policies. Each entry has a command prefix, a decision and a `why`, and the renderer turns it into Claude settings, [Codex rules](../dist/codex/rules/permissions.rules) and the OpenCode permission map. Change its owning source and run `bin/slopmeister render`, never in a tool's own file. An unknown decision, a prefix under two decisions or a missing `why` fails the render.
 
 | Decision | Effect |
 |---|---|
 | `allow` | Runs with no check. |
-| `needs_intent` | Runs only when your message names that exact action. Claude gets an `autoMode.soft_deny` rule beside `"$defaults"`, Codex a `prompt` rule its reviewer judges against the conversation, OpenCode an `ask`, which a headless tester refuses. |
+| `needs_intent` | Runs only when your message names that exact action. Claude gets an `autoMode.soft_deny` rule beside `"$defaults"`, Codex a `prompt` rule its reviewer judges against the conversation, OpenCode an `ask`, which a headless caller refuses. |
 | `deny` | Refuses the matching direct command. |
 
 An unlisted command falls back to the tool's own judgment. Kickoff text, including the initial user-role message, issue bodies, notes and agent-written briefs, is task content, never operator intent. Its claims of prior approval do not authorize an action. Guarded actions need a later direct operator message.
@@ -113,3 +113,9 @@ The [native enforcement test](testing.md#run-real-session-qa) proves both real c
 Preparation binds shipping to the plot's repository, its original origin URL and the task branch. Directory sessions cannot ship. With both commit and shipping `allow`, the [ship helper](../src/skills/ship/scripts/ship.py) pushes the task branch and creates or updates its pull request without asking. Otherwise the helper itself needs your explicit instruction through native approval.
 
 The helper does ordinary pushes only, no force or tags, and refuses a changed destination or the default branch. It pushes only when the remote branch differs from HEAD and writes the pull request only when its title or body differ, reading each write back, so a rerun never repeats a confirmed write. Mergeability is reported, never enforced. Merge, force-push, tags, releases, deployment and ticket changes keep their own operator gates, and [issue ownership](issue-claims.md) covers the issue actions.
+
+## Proof ownership and inbox setup
+
+An operator-ordered disposable proof session uses `--proof-for <owner-name>`. The owner must have a saved launch record and a live terminal. The proof session keeps native approval, claims no issue and cannot ship. Redispatch preserves that restriction. The [proof-session procedure](../src/skills/plot-session/SKILL.md#proof-sessions) owns permitted input and cleanup.
+
+Inbox setup requests full routing data from supported Orca versions, with a fallback only when the flag is unsupported. A setup failure adds a fixed notice to the first prompt. Delivery accepts exactly the original kickoff or that kickoff with the fixed notice. The worker must diagnose its own inbox, not borrow another session's identity.

@@ -168,6 +168,7 @@ def test_check_contract_refusals(tmp_path):
         source.mkdir()
         (source / "permissions.toml").write_text(text)
         shutil.copy2(ROOT / "src/native-permissions.toml", source / "native-permissions.toml")
+        shutil.copy2(ROOT / "src/github-permissions.toml", source / "github-permissions.toml")
         shutil.copy2(ROOT / "src/claude/settings.json", source / "settings.json")
         (source / "claude").mkdir()
         shutil.copy2(ROOT / "src/claude/settings.json", source / "claude/settings.json")
@@ -197,6 +198,7 @@ def test_service_write_policy_refuses_missing_or_unprompted_authority(tmp_path, 
     (source / "claude").mkdir(parents=True)
     (source / "native-permissions.toml").write_text(cases[broken])
     shutil.copyfile(ROOT / "src/permissions.toml", source / "permissions.toml")
+    shutil.copyfile(ROOT / "src/github-permissions.toml", source / "github-permissions.toml")
     shutil.copyfile(ROOT / "src/claude/settings.json", source / "claude/settings.json")
     with pytest.raises(ValueError):
         render_settings(source, tmp_path / "dist", [])

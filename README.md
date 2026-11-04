@@ -70,7 +70,7 @@ sequenceDiagram
     W->>O: Review the plan
     O-->>W: Findings
     W->>W: Build, prove and try to break it
-    W->>O: Independent testing and diff review
+    W->>O: Review diff and run the test guide
     O-->>W: Evidence and findings
     W->>You: Testing handoff
     You->>W: Accept testing, then harvest
@@ -78,7 +78,7 @@ sequenceDiagram
 
 The **plot** describes a project's rules, task source and permissions. The **field** in your vault holds its knowledge. Workers **sow** a plan, **groom** documentation, **prune** unnecessary work and check whether the result is **ripe**. **Bloom** explains complex work visually, and optional **Grove** hosting lets you read those pages on your phone.
 
-Plots can declare setup commands and [separate service allocations for independent testers](docs/slots.md#independent-testers). [Peer mailboxes](src/skills/plot-session/communicate.md) carry information without granting authority. [Harvest](src/skills/harvest/SKILL.md) is the operator-ordered ending for every session state. Sessions no longer create automatic retro notes. Existing notes and [explicit legacy-log commands](docs/vault-version-control.md#session-retros-and-legacy-logs) remain available.
+Plots can declare setup commands and [separate service allocations for independent checks](docs/slots.md#independent-checks). [Peer mailboxes](src/skills/plot-session/communicate.md) carry information without granting authority. [Harvest](src/skills/harvest/SKILL.md) is the operator-ordered ending for every session state. Sessions no longer create automatic retro notes. Existing notes and [explicit legacy-log commands](docs/vault-version-control.md#session-retros-and-legacy-logs) remain available.
 
 A worker receives a fixed copy of its instructions. Changing the sources affects later sessions. Commit, shipping, publication and stronger actions retain their separate permission boundaries.
 
@@ -106,7 +106,7 @@ Secrets use two tiers on macOS and Ubuntu. Tier one resolves through a local 1Pa
 
 The 1Password desktop integration is the second route. You can order it for an exact command in any session, including when Home Assistant is unavailable. [Secret requests](docs/1password-access.md) explains setup, approvals and limits.
 
-Workers can [sign into websites in isolated browsers](docs/browser-login.md) under the existing secret-tier rules. Explicitly selected persistent Chrome sessions can reuse authentication without a new credential approval. [Item metadata search](docs/1password-access.md#item-metadata) finds 1Password item titles without reading values. Metadata search always requires your explicit instruction and a Home Assistant approval.
+Workers can [sign into websites through the Chrome extension](docs/browser-login.md) under the existing secret-tier rules. The connection uses the operator’s Chrome and opens its own task tabs. [Item metadata search](docs/1password-access.md#item-metadata) finds 1Password item titles without reading values. Metadata search always requires your explicit instruction and a Home Assistant approval.
 
 [Phone access](docs/phone-access.md) covers the Claude app and Orca Mobile. Tailscale provides private access to the optional Linux services. Pairing, certificates and real approvals need checks on your own devices.
 

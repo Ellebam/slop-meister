@@ -13,6 +13,7 @@ import time
 from slopmeister.errors import SlopmeisterError
 from slopmeister.launch import closure
 from slopmeister.launch.model import Launch, Stop
+from slopmeister.removal import nested
 from slopmeister.slots import allocation, claimed, leftover, setup, tester
 from slopmeister.slots.down_arguments import Request as Request
 from slopmeister.slots.down_arguments import parse as parse
@@ -124,6 +125,7 @@ def _worktree_slot(request: Request, worktree: Path) -> int:
     ).stdout.strip()
     if dirty and not request.force:
         raise SlopmeisterError(f"uncommitted work in {worktree}; pass --force to confirm deletion")
+    nested(worktree)
     if not request.force:
         setup.check_ignored_output(worktree, owned)
     return owned.slot
@@ -140,8 +142,7 @@ def _context(request: Request) -> tuple[dict, Path, Path, int]:
         raise SlopmeisterError(f"{worktree} is a symlink and is never followed, refusing")
     if worktree.is_dir() and Path.cwd().resolve().is_relative_to(worktree.resolve()):
         raise SlopmeisterError(f"refusing to tear down this shell's worktree; run from {root}")
-    if not (request.own and claimed.handback_recorded(worktree)):
-        claimed.refuse(worktree, request.target)
+    claimed.refuse(worktree, request.target)
     if worktree.is_dir() and not leftover.found(worktree):
         return slots, root, worktree, _worktree_slot(request, worktree)
     if not request.wanted:
@@ -194,7 +195,6 @@ def main(argv: Sequence[str]) -> int:
         print(f"slot: releasing {request.name}, this worker stops now, result in {log}")
         return 0
     _stop_worker(request, root, worktree)
-    claimed.complete_handback(worktree, root)
     return _release(replace(request, own=False))
 
 

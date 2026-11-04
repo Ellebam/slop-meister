@@ -29,8 +29,8 @@ def _stderr_lines() -> list[str]:
 def _wait_for_stderr(monkeypatch, ready):
     original = review_run._start_reviewer
 
-    def start_ready(argv, options):
-        process = original(argv, options)
+    def start_ready(argv, options, outputs):
+        process = original(argv, options, outputs)
         deadline = time.monotonic() + 10
         while not ready.exists():
             if time.monotonic() >= deadline:

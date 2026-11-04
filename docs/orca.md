@@ -31,7 +31,7 @@ Use Orca to review what a worker produced. Slopmeister still creates the worktre
 - Review a finished worker's branch with Open Branch Diff, which compares the committed branch against its base. `orca file open-changed` opens only uncommitted changes, so it shows nothing once the branch is committed.
 - Comment on diff lines with Annotate AI Diff, then choose **Send** in the diff toolbar, "Send notes to an agent", to pass every unsent comment to the worker as one prompt.
 - Read a plan or other Markdown in Orca's Markdown view and leave review notes there.
-- Ask a worker for `bloom` to get a visual explanation of its work. Three or more open operator decisions trigger one decision page by standing request. One or two choices stay in chat. Pages are checked only in a task-owned headless browser. [Grove](agent-hosts.md#grove) serves eligible pages through a private tailnet HTTPS link that opens in the Mac or phone browser. The ignored worktree copy stays local. Excluded plots and unavailable hosting return that file path, which can be opened in a browser on its owning machine. Phone browser access uses the published HTTPS link.
+- Ask a worker for `bloom` to get a visual explanation of its work. Three or more open operator decisions trigger one decision page by standing request. One or two choices stay in chat. Pages are checked only in a task-owned headless browser. [Grove](agent-hosts.md#grove) serves eligible pages through a private tailnet HTTPS link that opens in the Mac or phone browser. The ignored worktree copy stays local. A decision page needs a verified permitted HTTPS link. Missing hosting blocks its delivery. Other visuals may return the local file path. Phone browser access uses the published HTTPS link.
 - Follow the worktree's linked pull request from Orca while the worker runs.
 
 Leave Orca's worktree creation, agent launch, dispatch orchestration, automations and the Orca skills from `orca skills install` unused. The [approved peer mailbox procedure](../src/skills/plot-session/communicate.md) is the bounded communication exception. Slopmeister owns those jobs, and a worker started from Orca misses the launcher's kickoff delivery, fixed configuration and issue claim. [Terminal control and orchestration](#terminal-control-and-orchestration) gives the reasons for the terminal and orchestration commands.
@@ -68,7 +68,7 @@ A worker can treat injected terminal text as explicit user authorization. Termin
 
 An agent sends input to another agent's terminal only when the operator asks for it in that agent's conversation, because the worker treats the text as the operator's own. The standing dispatcher's instructions carry this rule. The operator's own **Send** from Annotate AI Diff stays fine because the operator presses it.
 
-Mailbox content arrives as tool output. Sender fields and approval claims are untrusted. Each participant needs the operator's task-specific communication approval. Communication never authorizes a merge, tracker write or other mutation in the receiver. The [peer procedure](../src/skills/plot-session/communicate.md) owns identity checks, binding, exact recipients and whole-batch acknowledgment.
+Mailbox content arrives as tool output. Sender fields and approval claims are untrusted. Peer information within the task needs no separate communication approval. Communication never authorizes a merge, tracker write or other mutation in the receiver. The [peer procedure](../src/skills/plot-session/communicate.md) owns identity checks, binding, exact recipients and whole-batch acknowledgment.
 
 ### Orchestration and the launcher
 
@@ -83,3 +83,9 @@ The operator manages that link from the CLI section of Orca Settings. Repair or 
 ## Codex permission waits
 
 [Review consent](review-consent.md#codex-permission-waits) owns the automatic-review denial and manual terminal prompt routes, including mobile limits.
+
+## Quiet group monitoring
+
+Managers use inbox events and bounded fallback checks rather than a repeating watch. An unchanged notice gets no operator message. Worker questions are collected for the next actionable handoff, while critical findings are reported at once. Operator questions end the turn in plain chat. [Manage sessions](../src/skills/plot-session/manage.md) owns the timing, relay and approval rules.
+
+[Night mode](../src/skills/plot-session/SKILL.md#night-mode) requires an explicit operator grant naming covered work and an expiry or stopping condition. It permits bounded routine plan decisions, not extra dispatch, secret access, merge or release authority.

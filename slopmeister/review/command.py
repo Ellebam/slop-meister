@@ -21,13 +21,13 @@ from slopmeister.review.schema import (
 )
 
 
-def _review_schema_file_path() -> str:
+def _review_schema_file_path(check: bool) -> str:
     descriptor, name = tempfile.mkstemp(prefix="cross-tool-review-schema-", suffix=".json")
     path = Path(name)
     try:
         os.chmod(path, 0o600)
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            handle.write(review_json_schema())
+            handle.write(review_json_schema(check))
     except Exception:
         with suppress(OSError):
             os.close(descriptor)
@@ -61,7 +61,7 @@ def build_review_command(
     prompt = build_review_prompt(target)
     model, effort = settings.for_direction(direction)
     if direction == ReviewDirection.CLAUDE_TO_CODEX:
-        return _codex_command((model, effort), prompt, target.cwd)
+        return _codex_command((model, effort), prompt, target)
     if direction == ReviewDirection.CODEX_TO_CLAUDE:
         return _claude_command((model, effort), target)
     raise CrossToolReviewError(f"unknown review direction: {direction}")
@@ -86,12 +86,12 @@ def _workspace_mcp_overrides(cwd: str) -> list[str]:
     return ["--config", f"mcp_servers={{{disabled}}}"]
 
 
-def _codex_command(settings: tuple[str, str], prompt: str, cwd: str) -> list[str]:
+def _codex_command(settings: tuple[str, str], prompt: str, target: ReviewTarget) -> list[str]:
     model, effort = settings
     return [
         "codex",
         "exec",
-        # The reviewer runs commands and tests like the tester; its prompt forbids changes.
+        # The reviewer runs commands and the guide's tests; its prompt forbids changes.
         "--dangerously-bypass-approvals-and-sandbox",
         # A plugin marketplace refresh and the turn-end notify program both outlive the CLI
         # and trip the group check, and the reviewer needs neither.
@@ -103,10 +103,10 @@ def _codex_command(settings: tuple[str, str], prompt: str, cwd: str) -> list[str
         f"model_reasoning_effort={effort!r}",
         "--config",
         "notify=[]",
-        *_workspace_mcp_overrides(cwd),
+        *_workspace_mcp_overrides(target.cwd),
         "--ephemeral",
         "--output-schema",
-        _review_schema_file_path(),
+        _review_schema_file_path(bool(target.check_root)),
         prompt,
     ]
 
@@ -130,10 +130,12 @@ def _claude_command(settings: tuple[str, str], target: ReviewTarget) -> list[str
         "--output-format",
         "json",
         "--json-schema",
-        review_json_schema(),
+        review_json_schema(bool(target.check_root)),
     ]
-    if target.read_dirs:
-        command.extend(["--add-dir", *target.read_dirs])
+    # The checker's file tools reach the guide and its own saved evidence.
+    directories = [*target.read_dirs, *([target.check_root] if target.check_root else [])]
+    if directories:
+        command.extend(["--add-dir", *directories])
     return command
 
 

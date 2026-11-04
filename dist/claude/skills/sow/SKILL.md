@@ -19,7 +19,7 @@ When the plot requires `groom`, use its read-only discovery to name affected rep
 
 Separate the ticket's required outcome from any mechanism it names, its proposed fixes are suggestions. A fork is real only when its options lead to different behaviour, visible output or scope and the ticket does not decide it. A background process, a new module, a new trust boundary or secret custody, a schema change or a material size increase the ticket did not ask for is always a fork. State every behaviour choice the ticket leaves open as a fork with its options, never as a remark inside another part. Security work is threat-mapped, name the concrete threat, the reachable path and the smallest sufficient change.
 
-Choose proof depth from what the change touches and state it in the opening, including whether an independent tester runs. Use existing tests for a covered code path, one real session per tool for instruction text when needed, a deploy window for a live system, and the must-fix gates for security. The operator can correct the proof with the plan answer. Extra probe or rerun rounds beyond that proof need the operator's order. Keep mandatory security, authority and recovery gates.
+Choose proof depth from what the change touches and state it in the opening. Every change the step 6 diff check covers is also tested by it against the test guide, so the opening names no tester choice. Use existing tests for a covered code path, one real session per tool for instruction text when needed, a deploy window for a live system, and the must-fix gates for security. The operator can correct the proof with the plan answer. Extra probe or rerun rounds beyond that proof need the operator's order. Keep mandatory security, authority and recovery gates.
 
 ## Write the notes
 
@@ -45,7 +45,7 @@ Run `prune` on your draft plan. Follow [task summary](../execute-plan/task-summa
 
 When three or more operator decisions are open, use one [Bloom decision page](../bloom/SKILL.md#decision-pages) by standing request. Link it in Details with one line per decision. This is still the one plan question, and source edits still wait for the answer. One or two decisions stay in chat with a recommendation and pros and cons per option.
 
-Then stop. This is the only question the spine asks.
+Under a valid grant of [Night mode](../plot-session/SKILL.md#night-mode), record your own routine plan answer citing the grant and continue to plan review. Otherwise stop until the operator answers. This is the spine's one plan question.
 
 ## After the answer
 

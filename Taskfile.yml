@@ -8,9 +8,6 @@ includes:
   render:
     taskfile: taskfiles/render.yml
     flatten: true
-  sandbox:
-    taskfile: taskfiles/sandbox.yml
-    flatten: true
   session:
     taskfile: taskfiles/session.yml
     flatten: true

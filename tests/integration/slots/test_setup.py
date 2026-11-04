@@ -1,4 +1,4 @@
-"""Repository setup runs before delivery and owns only its unchanged output."""
+"""Repository setup runs before delivery and ignored output needs explicit removal."""
 
 import json
 import os
@@ -39,8 +39,7 @@ def configured(tmp_path, *, compose=False, failure=False):
     plot.write_text(
         plot.read_text().replace(
             "max = 2\n",
-            'max = 2\nsetup = ["python3", "prepare.py"]\n'
-            'setup_files = [".env.local", ".hooks/generated"]\n',
+            'max = 2\nsetup = ["python3", "prepare.py"]\n',
         )
     )
     return repository, env
@@ -60,11 +59,11 @@ def launch(repository, env):
     )
 
 
-def release(repository, env):
-    return _task(env, "slot:down", "--", str(repository), "slopmeister", "slopmeister-one")
+def release(repository, env, *flags):
+    return _task(env, "slot:down", "--", str(repository), "slopmeister", "slopmeister-one", *flags)
 
 
-def test_setup_output_and_generated_hook_directory_are_removed_without_force(tmp_path):
+def test_setup_output_requires_explicit_removal(tmp_path):
     repository, env = configured(tmp_path, compose=True)
     result = launch(repository, env)
     assert result.returncode == 0, result.stdout + result.stderr
@@ -74,18 +73,17 @@ def test_setup_output_and_generated_hook_directory_are_removed_without_force(tmp
     cache.mkdir()
     (cache / ".gitignore").write_text("*\n")
     (cache / "CACHEDIR.TAG").write_text("disposable cache metadata\n")
-    record = json.loads((Path(env["SLOT_STATE_DIR"]) / "slopmeister-slot1/setup.json").read_text())
-    assert set(record) == {".env.local", ".hooks/generated/hook"}
+    assert not (Path(env["SLOT_STATE_DIR"]) / "slopmeister-slot1/setup.json").exists()
     result = release(repository, env)
+    assert result.returncode != 0 and "ignored work" in result.stderr
+    result = release(repository, env, "--force")
     assert result.returncode == 0, result.stdout + result.stderr
     assert not worktree.exists()
     assert not (Path(env["SLOT_STATE_DIR"]) / "slopmeister-slot1").exists()
 
 
-def disposable_fixture(tmp_path, kind):
+def ignored_fixture(tmp_path, kind):
     world, repository, env = _world(tmp_path)
-    plot = world.root / "plots/slopmeister/plot.toml"
-    plot.write_text(plot.read_text().replace("max = 2\n", 'max = 2\ndisposable = ["artifacts"]\n'))
     (repository / ".gitignore").write_text("artifacts/\nartifacts-other/\n")
     directory = "artifacts-other" if kind == "sibling" else "artifacts"
     relative = f"{directory}/output"
@@ -100,8 +98,8 @@ def disposable_fixture(tmp_path, kind):
 
 
 @pytest.mark.parametrize("kind", ["regular", "sibling", "symlink", "tracked"])
-def test_declared_disposable_output_keeps_the_release_boundary(tmp_path, kind):
-    repository, env, relative = disposable_fixture(tmp_path, kind)
+def test_ignored_output_keeps_the_release_boundary(tmp_path, kind):
+    repository, env, relative = ignored_fixture(tmp_path, kind)
     result = launch(repository, env)
     assert result.returncode == 0, result.stdout + result.stderr
     worktree = repository / ".worktrees/slopmeister-one"
@@ -116,13 +114,9 @@ def test_declared_disposable_output_keeps_the_release_boundary(tmp_path, kind):
     if kind == "tracked":
         git(worktree, "update-index", "--skip-worktree", relative)
     result = release(repository, env)
-    if kind == "regular":
-        assert result.returncode == 0, result.stdout + result.stderr
-        assert not worktree.exists()
-    else:
-        assert result.returncode != 0 and "ignored work" in result.stderr, result.stderr
-        assert output.read_text() == "worker work\n"
-        assert (Path(env["SLOT_STATE_DIR"]) / "slopmeister-slot1/.slot.env").is_file()
+    assert result.returncode != 0 and "ignored work" in result.stderr, result.stderr
+    assert output.read_text() == "worker work\n"
+    assert (Path(env["SLOT_STATE_DIR"]) / "slopmeister-slot1/.slot.env").is_file()
     assert outside.read_text() == "worker work\n"
 
 
@@ -144,7 +138,7 @@ def test_teardown_preserves_worker_edits_and_unrelated_ignored_files(tmp_path, n
         output.unlink()
     else:
         output.write_bytes(before)
-    result = release(repository, env)
+    result = release(repository, env, "--force")
     assert result.returncode == 0, result.stdout + result.stderr
 
 

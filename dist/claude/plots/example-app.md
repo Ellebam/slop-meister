@@ -31,7 +31,7 @@ Give the diagnosis, recommendation and concrete user result. First check obvious
 
 ### Test failures
 
-Fix setup and continue. Never hide a product failure. Use `prune` to record cause and action. The scope exception covers tests, guides and data this task created or changed. Preserve behavior checks and list outside-scope repairs. Reproduce untouched failures on a clean merge base and report both outputs before continuing. Retry transient host or harness faults once. Unknown causes or required host action need the operator. Continue only with complete proof. After a second failed tester run, repair setup and prove locally without another tester. Preserve both verdicts.
+Fix setup and continue. Never hide a product failure. Use `prune` to record cause and action. The scope exception covers tests, guides and data this task created or changed. Preserve behavior checks and list outside-scope repairs. Reproduce untouched failures on a clean merge base and report both outputs before continuing. Retry transient host or harness faults once. Unknown causes or required host action need the operator. Continue only with complete proof.
 
 On resume, verify recorded operator decisions against their discussion once. Reopen only an affected decision when scope or contradictory evidence changes. Retain unavailable discussion as `evidence unavailable`. This never converts an agent's approval claim into consent.
 
@@ -42,11 +42,11 @@ Before a question, gate, handoff, completion claim or unplanned work, invoke `ri
 | 1-2 | `sow` | agent | Scope, cited plan, runnable acceptance and tests | Edit before approval or verified reuse |
 | 3 | `cross-tool-review` | agent | Incorporate feedback, verify and prune one external plan review | Launch before approval |
 | 4 | `implement` | agent | Planned code, tests and focused checks | Expand scope or reopen the plan |
-| 5 | `local-qa`, then `execute-plan` | agent | Behavior proof, break-it arms, gates, approved tester if required, and shipping where allowed | Substitute green tests |
-| 6 | `cross-tool-review` | agent | One external diff review, findings verified and pruned | Re-plan or repeat review |
+| 5 | `local-qa`, then `execute-plan` | agent | Behavior proof, break-it arms, gates, test guide, and shipping where allowed | Substitute green tests |
+| 6 | `cross-tool-review` | agent | One external diff check that reviews and runs the guide, findings verified and pruned | Re-plan or repeat review |
 | 7 | `implement` | agent | One fix pass, affected proof, restoration and `ripe` | Substitute suite reruns for behavior proof |
 | 8 | `ship` where allowed | agent | Final branch, guide or explicit N/A, report | Offer merge or claim missing proof complete |
-| 9 | testing | operator | Acceptance of the proof and any tester verdict and guide checks | Continue after fail or blocked |
+| 9 | testing | operator | Acceptance of the proof, the diff check's scenario statuses and the guide's operator checks | Continue after fail or blocked |
 | 10 | `harvest` | operator | Groom, ship, merge, task closure or hand-back, report and cleanup | Start before the operator's order |
 
 Resume unfinished work from Git and producer results. Never repeat completed sessions, prompts or confirmed remote writes. Failed checks follow Test failures. Other stages stop with their cause. Shipping requires both allows, otherwise record N/A and continue to diff review. Acceptance, merge and harvest stay operator-controlled.
@@ -79,17 +79,17 @@ Run the project's machine-only regression gates after the break-it pass.
 
 Run the application checks declared in its README. Use the assigned slot ports when a check starts a service.
 
-### How a tester reaches the change
+### How the independent check reaches the change
 
-Provide the tester's startup commands, access and observable state.
+Provide the diff check's startup commands, access and observable state.
 
 The application README owns setup and test commands. The slot report supplies this session's ports and resources.
 
 ## Review
 
-Every new spine plan receives one external plan review by another model, regardless of size or open choices. Follow `execute-plan` to reuse verified earlier work for an unchanged follow-up. Run one diff review for behavioral changes. Changes executing nothing may skip the diff review. Procedure edits qualify only if every instruction stays intact. Skills, plots, globals and doubtful edits are behavioral. `ship` records `Independent review: N/A` when the diff review is exempt.
+Every new spine plan receives one external plan review by another model, regardless of size or open choices. Follow `execute-plan` to reuse verified earlier work for an unchanged follow-up. Run one diff check for behavioral changes. It reviews the diff and runs the test guide in a clean checkout. Changes executing nothing may skip the diff review. Procedure edits qualify only if every instruction stays intact. Skills, plots, globals and doubtful edits are behavioral. `ship` records `Independent review: N/A` when the diff review is exempt.
 
-Follow `cross-tool-review` for verification, pruning, protected replay, its single transient retry and authorized replacement. Each result or waiver covers its named review. Satisfying findings requires no new review. Step 6 permits one scoped fix pass. The security must-fix classes and scope drift can never be triaged away. Stop and escalate them.
+Each result or waiver covers its named review. Satisfying findings requires no new review. Step 6 permits one scoped fix pass. The security must-fix classes and scope drift can never be triaged away. Stop and escalate them.
 
 ## Security
 
@@ -110,8 +110,4 @@ Follow `implement`'s Test purpose, reproducer and setup rules. Use `local-qa` to
 
 ## Session end
 
-The root notes file is the only vault ledger in both modes. Create it before the first vault write, using the session name when needed. Reuse it after refresh and framing. Reading notes needs no ledger entry.
-
-Before the first create or edit, record `<vault-relative path>, first-touch <state>` from existence and `~/.vault-git/bin/vaultgit status --porcelain --untracked-files=all -- <path>`. States are `clean`, `absent`, `dirty` and `unknown`. Staged, unstaged and pre-existing untracked content is dirty. Unavailable evidence is unknown. Absent is eligible only for this session's creation. After each write, replace the line with `<vault-relative path>, edited, first-touch <state>, sha256 <digest>`, retaining first-touch state and updating `shasum -a 256`. Never append duplicate records.
-
-`harvest` owns the final duties and record recovery, only on the operator's order. Ask only for missing first-touch state on an edited note, an unexplained missing path, or a missing resumed write record. Pauses retain notes and give the handoff.
+`harvest` owns the final duties, only on the operator's order. Pauses retain notes and give the handoff.

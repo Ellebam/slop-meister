@@ -13,7 +13,7 @@ DEFAULT_MAX = 6
 MAX_SLOTS = 99
 MIN_PORT = 1024
 MAX_PORT = 65535
-SLOT_KEYS = {"none", "max", "compose", "ports", "setup", "setup_files", "testers", "disposable"}
+SLOT_KEYS = {"none", "max", "compose", "ports", "setup", "testers"}
 
 
 def _slot_ports(slots: dict, path: Path) -> list[tuple[str, int]]:
@@ -49,11 +49,10 @@ def _validate_collisions(slots: dict, ports: list[tuple[str, int]], path: Path) 
             used[port] = f"{name} at slot {slot}"
 
 
-def _relative(value: Any, *, output: bool = False) -> bool:
+def _relative(value: Any) -> bool:
     if not isinstance(value, str) or not value or value.startswith("/"):
         return False
-    forbidden = {".", "..", "", ".git", ".slot.env"} if output else {".."}
-    return not set(value.split("/")) & forbidden and not CONTROL.search(value)
+    return ".." not in value.split("/") and not CONTROL.search(value)
 
 
 def _validate_setup(slots: dict, path: Path) -> None:
@@ -64,13 +63,6 @@ def _validate_setup(slots: dict, path: Path) -> None:
         or any(not isinstance(arg, str) or not arg or CONTROL.search(arg) for arg in command)
     ):
         fail(path, "slots.setup", "expected a nonempty argument array without control characters")
-    for key in ("setup_files", "disposable"):
-        names = slots.get(key, [])
-        if not isinstance(names, list) or any(not _relative(n, output=True) for n in names):
-            fail(path, "slots." + key, "expected unique relative output paths")
-        needs_setup = key == "setup_files" and command is None
-        if len(names) != len(set(names)) or (names and needs_setup):
-            fail(path, "slots." + key, "expected unique outputs, setup_files requires setup")
 
 
 def validate(data: dict, path: Path) -> None:

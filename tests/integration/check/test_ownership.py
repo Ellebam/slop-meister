@@ -233,6 +233,7 @@ def test_timeout_stop_failure_remains_a_reportable_result(tmp_path, monkeypatch)
     subject = jobs.Check("timeout", ("true",))
     assert jobs._run_child(jobs.Launch(subject, {}, stream), context) == jobs.EXIT_TIMEOUT
     assert "cleanup failed: stuck" in stream.getvalue()
+    assert stream.getvalue().index("Check exceeded its") < stream.getvalue().index("cleanup failed")
 
 
 def test_interrupted_removal_keeps_the_folder_provable(run_root, monkeypatch):

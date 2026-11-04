@@ -85,20 +85,12 @@ def test_a_tracker_outside_the_repository_uses_the_plot_or_the_report():
     assert "operator" in other[0] and "The same." in other[1]
 
 
-def test_an_unfinished_ticket_ships_leaves_the_issue_open_and_hands_the_claim_back():
+def test_unfinished_work_keeps_its_workspace_and_claim():
     branch = _section("## 3. The branch")
-    open_pr = _row(branch, "Commits or uncommitted task changes, both allows, not finished")[0]
-    assert "PENDING" in open_pr and "stays open" in open_pr
-    ticket = _section("## 4. The ticket")
-    unfinished = _row(ticket, "Managed GitHub issue, both allows")[1]
-    assert ".slopmeister-tmp/<TASK-ID>-handoff.md" in unfinished
-    assert "claims abandon-prepare --workspace <absolute-worker-root> --handoff <that copy>" in (
-        unfinished
-    )
-    assert "stays open" in unfinished and "claims close" not in unfinished
-    state = _section("## 1. Read the state")
-    assert "overrides" in state
-    assert "recorded claim hand-back" in _section("## 6. Remove yourself")
+    assert "Nothing" in _row(branch, "Not finished")[0]
+    unfinished = _row(_section("## 4. The ticket"), "Managed GitHub issue, both allows")[1]
+    assert "claim stays" in unfinished and "issue stays open" in unfinished
+    assert "worktree, slot and claim stay untouched" in _section("## 6. Remove yourself")
 
 
 def test_merge_and_close_bind_to_both_allows_and_every_real_action_keeps_its_guard():
@@ -114,8 +106,8 @@ def test_merge_and_close_bind_to_both_allows_and_every_real_action_keeps_its_gua
     ticket = _section("## 4. The ticket")
     assert "needs both allows" in ticket
     remove = _section("## 6. Remove yourself")
-    assert "unknown work" in remove
-    assert "unsaved" in remove
+    assert "unknown ignored work" in remove
+    assert "uncommitted" in remove
     assert "`--force` only when" in remove
     assert "cannot remove itself" in remove
 
@@ -124,5 +116,5 @@ def test_the_report_and_recovery_records_precede_cleanup():
     assert SOURCE.index("## 5. The report") < SOURCE.index("## 6. Remove yourself")
     report = _section("## 5. The report")
     assert "delivered first" in _section("## 6. Remove yourself")
-    assert "recovery records" in report
-    assert "handoff copy" in report
+    assert "evidence" in report and "checkout" in report
+    assert "next step and unanswered questions" in report

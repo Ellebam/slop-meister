@@ -31,7 +31,6 @@ COMMANDS: dict[str, tuple[str, str]] = {
         "budgets, imports, the allowlist, field identifiers and plot style",
     ),
     "render": ("slopmeister.render.build", "render src and plots into dist"),
-    "sandbox": ("slopmeister.sandbox.cli", "the opt-in local Jira and Confluence sandbox"),
     "review": ("slopmeister.review.cli", "run, replay or replace one cross-tool review"),
     "slots": ("slopmeister.slots.cli", "allocate, inspect and release target slots"),
     "spine-timing": (
@@ -39,7 +38,6 @@ COMMANDS: dict[str, tuple[str, str]] = {
         "where spine worker sessions spent their time",
     ),
     "startup-context": ("slopmeister.threads.startup_context", "a transcript's startup context"),
-    "tester": ("slopmeister.spine.tester.cli", "launch or collect one opposite-tool tester"),
     "vault": ("slopmeister.vault.runtime", "initialize, lint and write vault history"),
     "workstation": ("slopmeister.workstation.cli", "diagnose, compare and install this machine"),
     "workspace-remove": ("slopmeister.workspace_removal", "remove one retired workspace safely"),

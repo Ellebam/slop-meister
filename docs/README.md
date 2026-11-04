@@ -25,11 +25,10 @@ New here? Start with the [project overview](../README.md), then follow [one sess
 | Find a 1Password item by title without reading values | [Item metadata search](1password-access.md#item-metadata) |
 | Add a project | [Onboard a project](context-layer.md#onboard-a-project) |
 | Prepare project secrets | [1Password integration](1password.md) |
-| Run parallel stacks and service testers | [Slots](slots.md) |
-| Try Atlassian service actions against local Jira and Confluence | [Atlassian sandbox](atlassian-sandbox.md) |
+| Run parallel stacks and independent checks | [Slots](slots.md) |
 | Start a dispatcher from a phone, or recover one after a restart | [Phone access on macOS and Ubuntu](phone-access.md) |
 | Set up another agent machine, or learn what every agent machine must do | [Agent machines](agent-hosts.md) |
-| Run OpenCode as a worker or tester | [OpenCode](opencode.md) |
+| Run OpenCode as an interactive worker | [OpenCode](opencode.md) |
 | Keep the Go plugin available to Codex from a local marketplace, optional | [Codex plugins](codex-plugins.md) |
 | Publish a tested version | [Release maintenance](releases.md) |
 | Change configuration and check it | [Contributing](../CONTRIBUTING.md) |
@@ -56,7 +55,7 @@ New here? Start with the [project overview](../README.md), then follow [one sess
 | How are ports and resources kept apart? | [Slots](slots.md) |
 | Who owns each part of an agent machine? | [Agent machines](agent-hosts.md) |
 | How much context does startup use? | [Startup measurement method](startup-context.md) |
-| Where are plots and the reviewer and tester defaults declared? | [Plot declarations](plot-shape.md#declaration) and [reviewer and tester settings](../slopmeister/review/defaults.toml) |
+| Where are plots and the reviewer defaults declared? | [Plot declarations](plot-shape.md#declaration) and [reviewer settings](../slopmeister/review/defaults.toml) |
 
 ## Find a procedure
 

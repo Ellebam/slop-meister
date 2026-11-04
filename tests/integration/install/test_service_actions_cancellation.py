@@ -17,7 +17,6 @@ from tests.integration.install.helpers import profile
 RUNNER_ENV = {
     "PATH": "/usr/bin:/bin",
     "PYTHONPATH": str(Path(__file__).resolve().parents[3]),
-    "SLOPMEISTER_SERVICE_ACTION_INPUT": '["--issue", "TEST-7"]',
 }
 
 
@@ -62,7 +61,7 @@ def _runner(tmp_path, data, op, timeout):
         + " if run.argv[1:3] == ['run','--']: run=replace(run,timeout=timeout,deadline=None)\n"
         + " return original(run)\n"
         + "supervisor.invoke=bounded\n"
-        + "raise SystemExit(supervisor.main([]))\n"
+        + "raise SystemExit(supervisor.main(['--issue', 'TEST-7']))\n"
     )
     return subprocess.Popen(
         [sys.executable, str(script)],

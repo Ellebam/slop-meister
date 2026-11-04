@@ -35,7 +35,7 @@ def action_context(tmp_path, actions, profile_root=None):
 def fixture(tmp_path):
     root = tmp_path / "slopmeister"
     (root / "src").mkdir(parents=True)
-    for name in ("permissions.toml", "native-permissions.toml"):
+    for name in ("permissions.toml", "native-permissions.toml", "github-permissions.toml"):
         shutil.copyfile(ROOT / "src" / name, root / "src" / name)
     source = root / "slopmeister/session/service_actions"
     source.mkdir(parents=True)
@@ -65,7 +65,6 @@ def selected_context(tmp_path, actions=("jira-read",)):
 def consumer(tmp_path, monkeypatch):
     monkeypatch.setattr(supervisor, "ROOT", tmp_path)
     monkeypatch.setattr(supervisor.runtime, "require", lambda **_kwargs: None)
-    monkeypatch.setenv("SLOPMEISTER_SERVICE_ACTION_INPUT", json.dumps(["--issue", "TEST-7"]))
     data = profile()
     data["native"] = False
     token = tmp_path / "service.env"

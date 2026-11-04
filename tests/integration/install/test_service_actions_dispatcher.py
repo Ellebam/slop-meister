@@ -30,7 +30,7 @@ def _selected(tmp_path):
     return contexts
 
 
-def test_multiple_plot_entries_keep_their_profiles_and_both_native_prompts(tmp_path):
+def test_multiple_plot_entries_keep_their_profiles_and_both_read_allow_rules(tmp_path):
     """Bug: the second Jira payload overwrites the first profile or native rule file."""
     contexts = _selected(tmp_path)
     files, permissions, instructions = action_payload(contexts[0], contexts)
@@ -40,7 +40,7 @@ def test_multiple_plot_entries_keep_their_profiles_and_both_native_prompts(tmp_p
             prefix = f"{native}/service-actions/{context.plot}/jira-read/"
             assert json.loads(files[prefix + "config.json"][0])["plot"] == context.plot
             entry = str(context.workspace / prefix / "entry.py")
-            assert entry in rules and any(entry in ask for ask in permissions["ask"])
+            assert entry in rules and any(entry in ask for ask in permissions["allow"])
             assert entry in instructions
     assert instructions.count("Use only the approved action.") == 1
 
@@ -63,7 +63,7 @@ def test_one_unusable_profile_does_not_hide_the_other_reader(tmp_path, unsafe):
     files, permissions, instructions = action_payload(contexts[0], contexts)
     assert ".codex/service-actions/example/jira-read/config.json" in files
     assert not any("service-actions/second/" in name for name in files)
-    assert not any("service-actions/second/" in rule for rule in permissions["ask"])
+    assert not any("service-actions/second/" in rule for rule in permissions["allow"])
     assert "second: Jira reader unavailable" in instructions
 
 

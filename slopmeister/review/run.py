@@ -1,19 +1,19 @@
 """Read-only reviewer child execution and mutation checks."""
 
 from collections.abc import Callable, Sequence
+from dataclasses import replace
 from functools import partial
 import json
 from pathlib import Path
 import subprocess
+import tempfile
 
 from slopmeister.check import jobs
 from slopmeister.review.command import build_review_command, cleanup_schema_file
 from slopmeister.review.config import command_timeout_seconds, load_config
-from slopmeister.review.directory import isolated_target, verify_copy
 from slopmeister.review.process import (
     CommandResult,
     _AnchoredPopen,
-    _finish_output,
     group_members,
     project_child_env,
     stderr_tail,
@@ -38,26 +38,38 @@ def owned_reviewer_runner(argv: Sequence[str], **options) -> CommandResult:
     """Own the review process group so a timed-out reviewer is not left running."""
     if Path(argv[0]).name not in {"claude", "codex"}:
         return subprocess_runner(argv, **options)
-    process = _start_reviewer(argv, options)
-    timeout = command_timeout_seconds()
-    try:
-        stdout, stderr = process.communicate(options.get("stdin_text"), timeout=timeout)
-    except subprocess.TimeoutExpired as error:
-        _stop_reviewer(process)
-        stdout, stderr = _finish_output(process, (error.stdout, error.stderr))
-        raise CrossToolReviewError(
-            f"reviewer timed out after {timeout}s",
-            category=ReviewErrorCategory.TIMEOUT,
-            process_stopped=True,
-            raw_stdout=redact(stdout),
-            stderr_tail=stderr_tail(stderr),
-        ) from None
-    except BaseException:
-        _stop_reviewer(process)
-        raise
-    _check_reviewer_group(process)
-    process.reap()
+    # Files, not pipes: a service the checker leaves behind would hold a pipe open, and the wait
+    # would last as long as that service instead of ending at the reviewer's exit.
+    with _output() as stdout_file, _output() as stderr_file:
+        process = _start_reviewer(argv, options, (stdout_file, stderr_file))
+        timeout = command_timeout_seconds()
+        try:
+            process.communicate(options.get("stdin_text"), timeout=timeout)
+        except subprocess.TimeoutExpired:
+            _stop_reviewer(process)
+            raise CrossToolReviewError(
+                f"reviewer timed out after {timeout}s",
+                category=ReviewErrorCategory.TIMEOUT,
+                process_stopped=True,
+                raw_stdout=redact(_read(stdout_file)),
+                stderr_tail=stderr_tail(_read(stderr_file)),
+            ) from None
+        except BaseException:
+            _stop_reviewer(process)
+            raise
+        _check_reviewer_group(process)
+        process.reap()
+        stdout, stderr = _read(stdout_file), _read(stderr_file)
     return CommandResult(process.returncode, stdout, stderr, process_stopped=True)
+
+
+def _output():
+    return tempfile.TemporaryFile("w+", encoding="utf-8", errors="replace")
+
+
+def _read(stream) -> str:
+    stream.seek(0)
+    return stream.read()
 
 
 def _check_reviewer_group(process: subprocess.Popen) -> None:
@@ -97,7 +109,7 @@ def stop_owned_group(process: subprocess.Popen) -> None:
     jobs.stop_group(process, anchored=True)
 
 
-def _start_reviewer(argv: Sequence[str], options: dict) -> subprocess.Popen:
+def _start_reviewer(argv: Sequence[str], options: dict, outputs: tuple) -> subprocess.Popen:
     cwd, env, stdin_text = (options.get(name) for name in ("cwd", "env", "stdin_text"))
     try:
         return _AnchoredPopen(
@@ -105,8 +117,8 @@ def _start_reviewer(argv: Sequence[str], options: dict) -> subprocess.Popen:
             cwd=cwd,
             env=dict(env) if env is not None else None,
             stdin=subprocess.PIPE if stdin_text is not None else subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=outputs[0],
+            stderr=outputs[1],
             text=True,
             start_new_session=True,
         )
@@ -181,26 +193,41 @@ def _run_repository_review(
     runner = options.get("runner", subprocess_runner)
     settings = options.get("config") or load_config()
     child_env = project_child_env(options.get("env"))
-    before, dirty = _worktree(target.cwd)
+    check = options.get("check")
+    # A check runs in its own copy, so the guard watches the worker's live workspace.
+    guarded = str(check.workspace) if check else target.cwd
+    before, dirty = _worktree(guarded)
     argv = build_review_command(direction, target, config=settings)
     try:
-        mutation = partial(_mutation, target.cwd, before)
+        mutation = partial(_mutation, guarded, before)
         review = _execute_review(direction, target, (runner, child_env, argv, mutation))
-        after, _ = _worktree(target.cwd)
+        after, _ = _worktree(guarded)
     finally:
         cleanup_schema_file(argv)
     if before != after:
         raise CrossToolReviewError("reviewer changed the worktree; refusing clean verdict")
+    if check:
+        check.verify()
     check_returncode(review)
-    parsed = parse_result(direction, review)
-    return ReviewResult(parsed.findings, parsed.security_lens, dirty)
+    parsed = parse_result(direction, review, check)
+    return replace(parsed, preexisting_dirty=dirty and check is None)
 
 
 def _run_directory_review(direction, target, options) -> ReviewResult:
+    if target.subject_manifest and target.read_dirs:
+        raise CrossToolReviewError(
+            "--subject-manifest cannot be combined with --read-dir",
+            category=ReviewErrorCategory.START_PRECONDITION,
+        )
     subject = directory_subject.load(target.subject_manifest)
     temporary, copied = directory_subject.isolated_copy(subject)
     directory_subject.load(subject.manifest)
-    isolated = isolated_target(target, subject, copied)
+    isolated = replace(
+        target,
+        cwd=str(copied),
+        subject_manifest=None,
+        subject_scope=directory_subject.scope_lines(subject),
+    )
     runner = options.get("runner", subprocess_runner)
     settings = options.get("config") or load_config()
     child_env = project_child_env(options.get("env"))
@@ -209,10 +236,12 @@ def _run_directory_review(direction, target, options) -> ReviewResult:
     try:
         mutation = partial(_directory_mutation, copied, before, subject.manifest)
         review = _execute_review(direction, isolated, (runner, child_env, argv, mutation))
-        verify_copy(copied, before, subject.manifest)
+        if before != directory_subject.tree_digest(copied):
+            raise CrossToolReviewError("reviewer changed directory subject copy")
+        directory_subject.load(subject.manifest)
         check_returncode(review)
-        parsed = parse_result(direction, review)
-        return ReviewResult(parsed.findings, parsed.security_lens, False)
+        parsed = parse_result(direction, review, options.get("check"))
+        return replace(parsed, preexisting_dirty=False)
     finally:
         cleanup_schema_file(argv)
         temporary.cleanup()

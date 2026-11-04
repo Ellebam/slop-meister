@@ -12,7 +12,7 @@ import tomllib
 from slopmeister import paths
 from slopmeister.errors import SlopmeisterError
 from slopmeister.launch import terminal
-from slopmeister.launch.model import BROKER_MARK, Launch, shq
+from slopmeister.launch.model import BROKER_MARK, INBOX_NOTICE, NOTICE_VARIABLE, Launch, shq
 from slopmeister.opencode import launch as opencode
 
 CODEX_APPROVAL = " -c 'approval_policy=\"on-request\"' -c 'approvals_reviewer=\"auto_review\"'"
@@ -51,11 +51,21 @@ def _mailbox_id(run: object, handle: str, objective: str) -> str:
     return run["id"]
 
 
-def initialize_mailbox(workspace: Path) -> None:
-    """The native terminal owns setup, before a model can omit the inbox instruction."""
+def initialize_mailbox(workspace: Path) -> str:
+    """The native terminal owns setup, before a model can omit the inbox instruction. The
+    returned notice reaches the model's first prompt, because the pane's output is hidden."""
     try:
         handle = _mailbox_handle()
-        current = terminal._orca("orchestration", "run-current", "--from", handle, checked=True)
+        # Newer Orca prints the binding's owner only with --full, older Orca refuses the flag.
+        full: tuple[str, ...] = ("--full",)
+        lookup = ("orchestration", "run-current", "--from", handle)
+        try:
+            current = terminal._orca(*lookup, *full, checked=True)
+        except SlopmeisterError as error:
+            if str(error) != "invalid_argument":
+                raise
+            full = ()
+            current = terminal._orca(*lookup, checked=True)
         if "run" not in current:
             raise SlopmeisterError("unsupported inbox lookup")
         run = current["run"]
@@ -67,19 +77,24 @@ def initialize_mailbox(workspace: Path) -> None:
                 handle,
                 "--objective",
                 workspace.name,
+                *full,
                 checked=True,
             )
             run = created.get("run")
         identity = _mailbox_id(run, handle, workspace.name)
-        print(f"task inbox ready: {identity}", flush=True)
+        print(f"task inbox ready: {identity}", file=sys.stderr)
+        return ""
     except SlopmeisterError as error:
         print(f"task inbox unavailable: {error}", file=sys.stderr)
+        return INBOX_NOTICE
 
 
 def mailbox_line(workspace: Path) -> str:
-    """Run setup inside the new pane, never under the launching agent's identity."""
+    """Run setup inside the new pane, never under the launching agent's identity. The unexported
+    variable carries the failure notice into the prompt and nowhere else."""
     args = (sys.executable, "-E", "-s", "-m", "slopmeister.launch.command", str(workspace))
-    return f"(cd {shq(str(paths.ROOT))} && " + " ".join(shq(value) for value in args) + ")"
+    run = f"cd {shq(str(paths.ROOT))} && " + " ".join(shq(value) for value in args)
+    return f'{NOTICE_VARIABLE}="$({run})"'
 
 
 def _tail(launch: Launch) -> str:
@@ -122,7 +137,7 @@ def _native_approvals(launch: Launch) -> str:
 
 def line(launch: Launch) -> str:
     """Extra arguments land before a non-variadic separator so no option swallows the kickoff."""
-    prompt = f'-- "$(cat {shq(str(launch.kickoff_file))})"'
+    prompt = f'-- "$(cat {shq(str(launch.kickoff_file))})${{{NOTICE_VARIABLE}}}"'
     wt = shq(str(launch.wt))
     if launch.tool == "opencode":
         return opencode.line(launch)
@@ -169,4 +184,4 @@ def write(launch: Launch) -> None:
 
 
 if __name__ == "__main__":
-    initialize_mailbox(Path(sys.argv[1]))
+    print(initialize_mailbox(Path(sys.argv[1])), end="")

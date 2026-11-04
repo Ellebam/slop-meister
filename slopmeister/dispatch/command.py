@@ -10,7 +10,7 @@ import sys
 from slopmeister import paths
 from slopmeister.errors import SlopmeisterError
 from slopmeister.launch.command import CODEX_APPROVAL, initialize_mailbox, mailbox_line
-from slopmeister.launch.model import BROKER_MARK, shq
+from slopmeister.launch.model import BROKER_MARK, NOTICE_VARIABLE, shq
 
 # Wraps the tool so the machine does not sleep while it is idle, see docs/agent-hosts.md.
 # Idle only on Linux: a block on sleep itself needs an administrator outside a local login
@@ -92,14 +92,12 @@ def prefix(settings: Settings, workspace: Path) -> list[str]:
 
 def line(workspace: Path, argv: list[str], kickoff: Path) -> str:
     quoted = " ".join(shq(value) for value in argv)
-    return (
-        mailbox_line(workspace)
-        + f'\ncd {shq(str(workspace))} && exec {quoted} -- "$(cat {shq(str(kickoff))})"'
-    )
+    prompt = f'"$(cat {shq(str(kickoff))})${{{NOTICE_VARIABLE}}}"'
+    return mailbox_line(workspace) + f"\ncd {shq(str(workspace))} && exec {quoted} -- {prompt}"
 
 
 def execute(workspace: Path, argv: list[str], kickoff: str) -> None:
     sys.stdout.flush()
     os.chdir(workspace)
-    initialize_mailbox(workspace)
-    os.execvpe(argv[0], [*argv, "--", kickoff], os.environ)
+    notice = initialize_mailbox(workspace)
+    os.execvpe(argv[0], [*argv, "--", kickoff + notice], os.environ)

@@ -11,7 +11,7 @@ from slopmeister.launch.tool_arguments import config_override as config_override
 
 USAGE = (
     "usage: slopmeister plot-session [<repo-path>] <plot> <name> "
-    "[--redispatch | --abandon --handoff <path>] [--directory] [--manager] "
+    "[--redispatch | --abandon --handoff <path>] [--directory] [--manager] [--proof-for <name>] "
     "[--tool claude|codex|opencode] "
     "[--host <alias>] [--model <model>] "
     "[--issue <n> | --issue-id <n> | --note <path>] [-- <extra tool args>]"
@@ -58,6 +58,10 @@ def _option(launch: Launch, args: list[str]) -> int:
         return 1
     if flag == "--model":
         _model(launch, args)
+    elif flag == "--proof-for" and not launch.proof_for:
+        launch.proof_for = _value(args)
+        if not launch.proof_for:
+            raise die("--proof-for needs a name, an empty owner would launch an ordinary session")
     elif flag in ("--handoff", "--tool", "--note"):
         setattr(launch, flag[2:], _value(args))
     else:
@@ -164,3 +168,16 @@ def check_sources(launch: Launch) -> None:
         raise die("--handoff requires --abandon")
     if launch.manager and (launch.redispatch or launch.abandon):
         raise die("a manager is declared at first dispatch, redispatch keeps it")
+
+
+def check_proof(launch: Launch) -> None:
+    if not launch.proof_for:
+        return
+    if launch.redispatch or launch.abandon or launch.manager or launch.issue_id:
+        raise die(
+            "a proof session is declared at first dispatch and claims no issue or worker group"
+        )
+    if not SESSION_NAME.fullmatch(launch.proof_for):
+        raise die(f"--proof-for '{launch.proof_for}' must match {SESSION_NAME.pattern}")
+    if launch.tool == "opencode":
+        raise die("a proof session needs Claude or Codex native approval, not OpenCode")

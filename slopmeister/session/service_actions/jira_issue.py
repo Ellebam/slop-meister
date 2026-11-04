@@ -1,7 +1,7 @@
 """Complete Jira ticket bodies, for one key or a bounded batch."""
 
 from .constants import SUCCESS
-from .wire import bounded, literal
+from .wire import bounded, issue_key, literal
 
 VISIBILITY = "tickets this account can see; an absent ticket is not proven to be missing"
 
@@ -65,13 +65,10 @@ def _comments(client, key: str, embedded_total) -> list:
             return comments
 
 
-def _body(client, issue: dict, key: str) -> dict:
-    fields = issue.get("fields")
-    if (
-        issue.get("key") != key
-        or not isinstance(issue.get("id"), str)
-        or not isinstance(fields, dict)
-    ):
+def _body(client, issue: dict) -> dict:
+    # Jira answers an old key with the ticket's current key after a move.
+    key, fields = issue.get("key"), issue.get("fields")
+    if not issue_key(key) or not isinstance(issue.get("id"), str) or not isinstance(fields, dict):
         raise ValueError("RESPONSE_INVALID")
     links = client.get(f"rest/api/2/issue/{key}/remotelink")
     if not isinstance(links, list) or not all(isinstance(link, dict) for link in links):
@@ -103,7 +100,7 @@ def _check_update(client, issue: dict, updated) -> str:
 
 def read_issue(client, expected: str, key: str) -> dict:
     issue = client.get(f"rest/api/2/issue/{key}", {"fields": "*all", "expand": "names,schema"})
-    body = _body(client, issue, key)
+    body = _body(client, issue)
     body.update(names=issue.get("names"), schema=issue.get("schema"))
     coverage = _coverage(issue)
     coverage["comments"] = _complete_comments(client, body, always=True)
@@ -127,11 +124,11 @@ def bodies(client, keys: list[str]) -> dict:
     if not isinstance(found, list) or page.get("startAt") != 0:
         raise ValueError("RESPONSE_INVALID")
     found = {issue.get("key") if isinstance(issue, dict) else None: issue for issue in found}
-    if len(found) != page["total"] or not all(key in keys for key in found):
+    if len(found) != page["total"] or len(found) > len(keys):
         raise ValueError("RESPONSE_INVALID")
     issues = []
-    for key, issue in found.items():
-        body = _body(client, issue, key)
+    for issue in found.values():
+        body = _body(client, issue)
         body["coverage"] = {**_coverage(issue), "comments": _complete_comments(client, body, False)}
         issues.append(body)
     missing = [key for key in keys if key not in found]

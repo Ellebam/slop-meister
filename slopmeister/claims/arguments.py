@@ -10,8 +10,6 @@ ACTIONS = (
     "inspect",
     "backlog",
     "reconcile",
-    "abandon-prepare",
-    "abandon-complete",
     "close",
 )
 
@@ -28,7 +26,6 @@ def parse(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--session")
     parser.add_argument("--evidence", type=Path)
     parser.add_argument("--pid", type=int)
-    parser.add_argument("--handoff", type=Path)
     parser.add_argument("--reason", choices=("completed", "not-planned"), default="completed")
     parser.add_argument("--json", action="store_true")
     return parser.parse_args(argv)

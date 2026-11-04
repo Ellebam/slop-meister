@@ -1,6 +1,5 @@
-"""Private ownership records shared by the browser entry and its two browser routes."""
+"""Private ownership records shared by the browser entry and its Chrome connection."""
 
-from contextlib import suppress
 import json
 import os
 from pathlib import Path
@@ -8,18 +7,20 @@ import stat
 import subprocess
 import sys
 from urllib.parse import urlsplit
-from uuid import UUID
 
 PREFIX = "slopmeister-browser-"
 TEMP_ROOT = Path("/tmp").resolve()
-MARKER = "credentials-used"
-MAX_PREFERENCES_BYTES = 16 * 1024 * 1024
+WORKSPACE = "SLOPMEISTER_SESSION_WORKSPACE"
+# A program started from the checkout has no skill entry beside it.
+CHECKOUT_HELPER = Path(__file__).resolve().parents[2] / "src/skills/browser-login/scripts/input.cjs"
 
 
-def identifier(value: str) -> str:
-    if not isinstance(value, str) or str(UUID(value)) != value:
-        raise ValueError("BROWSER_ID_REFUSED")
-    return value
+def workspace() -> Path:
+    """The launched session's workspace, so a command run from another directory still owns it."""
+    value = os.environ.get(WORKSPACE, "")
+    if value and Path(value).is_absolute() and Path(value).is_dir():
+        return Path(value).resolve()
+    return Path.cwd().resolve()
 
 
 def save(root: Path, metadata: dict) -> None:
@@ -35,22 +36,6 @@ def metadata(root: Path) -> dict:
         raise ValueError("BROWSER_STATE_REFUSED") from None
     if not isinstance(data, dict) or not isinstance(data.get("worktree"), str):
         raise ValueError("BROWSER_STATE_REFUSED")
-    persistent = data.get("persistent", False)
-    fields = data.get("credential_fields", [])
-    if (
-        type(persistent) is not bool
-        or (persistent and data.get("browser") != "chrome")
-        or not isinstance(fields, list)
-        or not all(isinstance(value, str) for value in fields)
-    ):
-        raise ValueError("BROWSER_STATE_REFUSED")
-    browser = data.get("browser", "orca")
-    if browser not in {"orca", "chrome"}:
-        raise ValueError("BROWSER_STATE_REFUSED")
-    if browser == "orca":
-        for name in ("profile", "page"):
-            if data.get(name):
-                identifier(data[name])
     if not Path(data["worktree"]).is_absolute():
         raise ValueError("BROWSER_STATE_REFUSED")
     return data
@@ -87,30 +72,8 @@ def https_url(value: str) -> tuple[str, str]:
     return f"https://{url.netloc}", url.path or "/"
 
 
-def credential_state(root: Path, create: bool = False) -> bool:
-    marker = root / MARKER
-    if create:
-        with suppress(FileExistsError):
-            descriptor = os.open(
-                marker, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600
-            )
-            os.close(descriptor)
-    try:
-        info = marker.lstat()
-    except FileNotFoundError:
-        return False
-    if (
-        not stat.S_ISREG(info.st_mode)
-        or info.st_uid != os.getuid()
-        or info.st_nlink != 1
-        or info.st_size
-        or info.st_mode & 0o077
-    ):
-        raise ValueError("BROWSER_STATE_REFUSED")
-    return True
-
-
-SECONDS = 30
+# Long enough for a login of several steps, each waiting for its next page.
+SECONDS = 60
 ENVIRONMENT = {
     "HOME",
     "USER",
@@ -134,9 +97,6 @@ def environment(root: Path) -> dict[str, str]:
 
 
 def execute(root: Path, argv: list[str], payload: dict | None = None) -> dict:
-    env = environment(root)
-    if payload is not None:
-        env["ELECTRON_RUN_AS_NODE"] = "1"
     try:
         result = subprocess.run(
             argv,
@@ -144,7 +104,7 @@ def execute(root: Path, argv: list[str], payload: dict | None = None) -> dict:
             capture_output=True,
             text=True,
             cwd=root,
-            env=env,
+            env=environment(root),
             timeout=SECONDS,
             umask=0o077,
         )
@@ -159,17 +119,10 @@ def execute(root: Path, argv: list[str], payload: dict | None = None) -> dict:
 def request(root: Path, engine: Path, payload: dict) -> dict:
     helper = Path(sys.argv[0]).resolve().with_name("input.cjs")
     if not helper.is_file():
+        helper = CHECKOUT_HELPER
+    if not helper.is_file():
         raise ValueError("BROWSER_HELPER_UNAVAILABLE")
     return execute(root, [str(engine), str(helper)], payload)
-
-
-def workspace() -> Path:
-    value = os.environ.get("SLOPMEISTER_SESSION_WORKSPACE", "")
-    return (
-        Path(value).resolve()
-        if value and Path(value).is_absolute() and Path(value).is_dir()
-        else Path.cwd().resolve()
-    )
 
 
 def data_home() -> Path:
@@ -177,20 +130,6 @@ def data_home() -> Path:
     if not path.is_absolute() or path.resolve() != path:
         raise ValueError("BROWSER_DATA_DIRECTORY_REFUSED")
     return path / "slopmeister"
-
-
-def private_directory(path: Path) -> None:
-    if not path.is_absolute() or path.resolve() != path:
-        raise ValueError("BROWSER_PROFILE_REFUSED")
-    path.mkdir(mode=0o700, exist_ok=True)
-    info = path.lstat()
-    if (
-        not stat.S_ISDIR(info.st_mode)
-        or info.st_uid != os.getuid()
-        or info.st_mode & 0o077
-        or path.resolve() != path
-    ):
-        raise ValueError("BROWSER_PROFILE_REFUSED")
 
 
 def private_json(path: Path, limit: int, reason: str):
@@ -214,26 +153,15 @@ def private_json(path: Path, limit: int, reason: str):
         raise ValueError(reason) from None
 
 
-def profile_preferences(path: Path) -> dict:
-    try:
-        data = private_json(path, MAX_PREFERENCES_BYTES, "BROWSER_PROFILE_PREFERENCES_REFUSED")
-    except FileNotFoundError:
-        return {}
-    except json.JSONDecodeError, UnicodeError:
-        raise ValueError("BROWSER_PROFILE_DAMAGED: preserve the profile") from None
-    if not isinstance(data, dict):
-        raise ValueError("BROWSER_PROFILE_DAMAGED: preserve the profile")
-    return data
-
-
-def clear_empty_window_area(preferences: dict) -> None:
-    browser = preferences.get("browser")
-    if not isinstance(browser, dict):
-        return
-    placement = browser.get("window_placement")
-    if not isinstance(placement, dict):
-        return
-    area = [placement.get("work_area_" + key) for key in ("left", "top", "right", "bottom")]
-    # A disconnected desktop can save an empty monitor area that Chrome cannot restore.
-    if all(type(value) is int for value in area) and (area[2] <= area[0] or area[3] <= area[1]):
-        del browser["window_placement"]
+def private_directory(path: Path) -> None:
+    if not path.is_absolute() or path.resolve() != path:
+        raise ValueError("BROWSER_STATE_REFUSED")
+    path.mkdir(mode=0o700, exist_ok=True)
+    info = path.lstat()
+    if (
+        not stat.S_ISDIR(info.st_mode)
+        or info.st_uid != os.getuid()
+        or info.st_mode & 0o077
+        or path.resolve() != path
+    ):
+        raise ValueError("BROWSER_STATE_REFUSED")

@@ -8,6 +8,7 @@ import sys
 
 import pytest
 
+from slopmeister.launch.model import INBOX_NOTICE
 from tests.integration.launch.helpers import (
     Machine,
     executable,
@@ -72,7 +73,7 @@ def test_command_file_starts_opencode_with_owned_configuration(tmp_path):
     subprocess.run(["zsh", "-f", command], env={**world.env, "MODEL_ARGS": str(record)}, check=True)
     recorded = json.loads(record.read_text())
     worktree = repo / ".worktrees/example-client-oc"
-    assert recorded["argv"] == [str(worktree), "-m", "p/m", "--prompt", kickoff]
+    assert recorded["argv"] == [str(worktree), "-m", "p/m", "--prompt", kickoff + INBOX_NOTICE]
     assert not list(tmp_path.rglob("SHOULD-NOT-EXIST"))
     assert recorded["env"]["OPENCODE_DISABLE_CLAUDE_CODE"] == "1"
     rules = json.loads(recorded["env"]["OPENCODE_CONFIG_CONTENT"])["permission"]["bash"]

@@ -9,6 +9,7 @@ import threading
 import time
 
 from slopmeister.check import ownership
+from slopmeister.errors import UsageError
 
 CHECK_TIMEOUT, EXIT_TIMEOUT, EXIT_UNSTARTED = 600, 124, 125
 GROUP_STOP_TIMEOUT, PROCESS_INSPECT_TIMEOUT, POLL_INTERVAL = 4, 2, 0.02
@@ -156,8 +157,19 @@ class Launch:
     stream: object
 
 
+def execution_timeout() -> int:
+    message = "SLOPMEISTER_CHECK_TIMEOUT_SECONDS must be a positive integer"
+    try:
+        seconds = int(os.environ.get("SLOPMEISTER_CHECK_TIMEOUT_SECONDS", CHECK_TIMEOUT))
+    except ValueError as error:
+        raise UsageError(message) from error
+    if seconds < 1:
+        raise UsageError(message)
+    return seconds
+
+
 def _run_child(launch: Launch, context: Context) -> int:
-    check = launch.check
+    check, limit = launch.check, execution_timeout()
     with context.lock:
         if context.cancelled.is_set():
             return EXIT_UNSTARTED
@@ -172,13 +184,13 @@ def _run_child(launch: Launch, context: Context) -> int:
         )
         context.active[check.id] = process
     try:
-        if not wait_unreaped(process, CHECK_TIMEOUT, context.cancelled):
+        if not wait_unreaped(process, limit, context.cancelled):
             _stop_child(process, launch.stream, anchored=True)
             return EXIT_UNSTARTED
         return process.wait()
     except subprocess.TimeoutExpired:
+        print(f"Check exceeded its {limit}-second execution limit.", file=launch.stream, flush=True)
         _stop_child(process, launch.stream, anchored=True)
-        launch.stream.write(f"Check exceeded its {CHECK_TIMEOUT}-second execution limit.\n")
         return EXIT_TIMEOUT
     except BaseException:
         _stop_child(process, launch.stream, anchored=True)
@@ -200,7 +212,7 @@ def execute(check: Check, context: Context) -> dict | None:
         try:
             launch = Launch(check, _environment(job_root), stream)
             rc = _run_child(launch, context)
-        except OSError as error:
+        except (OSError, UsageError) as error:
             stream.write(str(error) + "\n")
             rc = EXIT_UNSTARTED
         finally:

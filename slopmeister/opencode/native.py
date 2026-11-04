@@ -13,13 +13,11 @@ import shutil
 import subprocess
 import tempfile
 
-from slopmeister.review.process import project_child_env
+from slopmeister.launch.model import delivered
 
 PERMISSION = Path(__file__).resolve().parents[2] / "dist/opencode/permission.json"
 ENV_REFERENCE = re.compile(r"\{env:([A-Za-z_][A-Za-z0-9_]*)\}")
 COMMAND_SECONDS = 60
-# Shorter values would rewrite ordinary text, the provider keys this guards are far longer.
-MIN_SECRET_LENGTH = 8
 
 
 class Blocked(ValueError):
@@ -78,17 +76,8 @@ def require_provider(env: Mapping[str, str]) -> list[str]:
     return names
 
 
-def permission(edit: bool = True) -> dict:
-    rules = json.loads(PERMISSION.read_text())
-    return rules if edit else {**rules, "edit": "deny"}
-
-
-def child_env(source: Mapping[str, str], names: list[str], rules: dict) -> dict:
-    env = project_child_env(source)
-    env.update({name: source[name] for name in names if source.get(name)})
-    env["OPENCODE_DISABLE_CLAUDE_CODE"] = "1"
-    env["OPENCODE_CONFIG_CONTENT"] = json.dumps({"permission": rules}, separators=(",", ":"))
-    return env
+def permission() -> dict:
+    return json.loads(PERMISSION.read_text())
 
 
 def _json(store: Store, *args: str, empty: object = None) -> object:
@@ -175,7 +164,7 @@ def find(store: Store, prompt: str, since_ms: int) -> tuple[dict, dict]:
         if int(row.get("created", 0)) < since_ms:
             continue
         exported = export(store, row["id"])
-        if first_prompt(exported) == prompt:
+        if delivered(first_prompt(exported), prompt):
             matches.append(exported)
     if len(matches) != 1:
         raise Blocked(
@@ -184,18 +173,3 @@ def find(store: Store, prompt: str, since_ms: int) -> tuple[dict, dict]:
             "inspect with opencode session list in that directory, never relaunch over a worker",
         )
     return matches[0], receipt(matches[0])
-
-
-def scrub(root: Path, values: list[str], subject: Path) -> None:
-    """Remove exact provider values from run files, never from the subject under test."""
-    secrets = [value.encode() for value in values if len(value) >= MIN_SECRET_LENGTH]
-    if not secrets:
-        return
-    for path in root.rglob("*"):
-        if path.is_file() and not path.is_symlink() and not path.is_relative_to(subject):
-            data = path.read_bytes()
-            cleaned = data
-            for secret in secrets:
-                cleaned = cleaned.replace(secret, b"[REDACTED provider value]")
-            if cleaned != data:
-                path.write_bytes(cleaned)
