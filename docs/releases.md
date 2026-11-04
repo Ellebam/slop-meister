@@ -1,6 +1,6 @@
 # Releases
 
-## Unreleased
+## Upgrading to 0.5.0
 
 Start fresh workers for the changed fixed instructions. The independent diff check now runs the test guide in a clean copy. It replaces the separate tester command. Rinse replaces leak-check for outward drafts. Night mode requires an explicit bounded operator grant.
 
@@ -10,7 +10,7 @@ Browser login now uses the operator’s Chrome through the Playwright Extension.
 
 The retired slot `setup_files` and `disposable` declarations must be removed from local plot definitions. Setup commands remain supported. Public cleanup continues to protect unknown ignored work and uncommitted changes. Unfinished harvest keeps the workspace and claim. Vault notes are checked before editing and committed by name immediately after each edit.
 
-The optional host layer pins Home Assistant 2026.10.2. Deployment remains separate. This change leaves the project version unchanged, so it does not select a new release.
+The optional host layer pins Home Assistant 2026.10.2. Deploy the host services separately after reviewing their configuration.
 
 ## Upgrading to 0.4.0
 
