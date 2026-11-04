@@ -38,7 +38,11 @@ The Python consumer receives resolved values through `op run`. It sends them thr
 
 The input helper uses native DOM input setters, input and change events and a DOM click. This updates controlled forms without focus or typed keys, and it works on a tab that draws no frames, which happens on a remote desktop. Destination and control checks run before each step's input, so a later step cannot send a value to an unexpected host. A submit control must become enabled before its final check and click. A label whose `control` is the exact input counts as that input, because floating labels sit over their field.
 
-The pinned page tool saves a snapshot after page actions, and a snapshot shows a filled password. A guard therefore refuses page-tool use while a password or code field in any frame holds a value or a frame does not answer, checks again after each action because Chrome can reveal a saved password, withholds that action's output and deletes its snapshot. The helper clears filled controls after each step. Console capture is disabled because a site can log input independently of the cleared DOM. `run-code` stays refused, because it repeats its code in its output. No recording, trace, network capture or screencast starts.
+The pinned page tool saves a snapshot after page actions. That snapshot can show a filled password. Before each action, a guard checks every frame. It refuses page-tool use if a password or code field holds a value, or if a frame does not answer.
+
+The guard checks again after each action because Chrome can reveal a saved password. If that check fails, the runtime withholds the action's output and deletes its snapshot. The helper clears filled controls after each credential step.
+
+Console capture is disabled because a site can log input even after the helper clears the fields. `run-code` stays refused because it repeats its code in its output. No recording, trace, network capture or screencast starts.
 
 These guards reduce accidental capture. They do not restrict what arbitrary DOM evaluation could read. The [skill](../src/skills/browser-login/SKILL.md#start-and-work-on-the-page) owns the permitted page commands and DOM-read limits. The runtime allowlist is a transport boundary, not authority for a service change.
 

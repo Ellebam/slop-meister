@@ -33,7 +33,7 @@ Name the project with `-R <host>/<group>/<project>`. A group read takes `--group
 
 Each write needs the operator's request for that exact command and target in the conversation. This covers issue, merge request, work item, pipeline, release and project writes, `glab api`, and every other `glab` subcommand that creates, edits, deletes or publishes. `glab auth` and `glab config` are refused, because they change the stored login or can print the token. [src/permissions.toml](../src/permissions.toml) lists every entry. A refusal matches the direct command only. A flag before the subcommand, as in `glab --repo <project> config`, evades it.
 
-A plot for a project we do not fully own also runs `rinse` before anything leaves for it.
+Run [Rinse](../src/skills/rinse/SKILL.md) on every outward draft before showing or sending it, including text for projects we own.
 
 ## In Orca
 
