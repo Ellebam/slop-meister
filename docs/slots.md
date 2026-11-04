@@ -45,7 +45,6 @@ Read the project's compose files and environment examples before writing a defin
 | Ports | Integers from 1024 to 65535, never booleans or quoted numbers. Every expanded slot must stay in range, and the port sets of all slot numbers must be disjoint, before any app starts listening. |
 | `testers` | Optional tester-only slots after the worker range, default 0. Worker max plus testers cannot exceed 99. Port validation includes both ranges. |
 | `setup` | Optional nonempty argument array, executed directly after worker stack readiness with the slot environment. No shell parsing. |
-| Disposable directories | Optional `disposable` lists exact relative build directories. Require documented recreation and no secret or proof. Setup-output path checks apply. Only ignored, readable regular files qualify. Tracked files and symlinks remain protected. |
 | Compose path | A nonempty relative path with no `..` segment or control character. Spaces are literal. It must name a readable file at allocation time. Its resolved path must remain inside the checkout, including through symlinks. |
 
 Cross-plot port overlap is reported by `task slot:status`. It is allowed in definitions because those plots may never run together. Allocation checks live listeners before using the ports.

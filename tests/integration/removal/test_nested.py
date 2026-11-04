@@ -109,17 +109,22 @@ def test_separate_git_dir_repository_with_an_outside_worktree_refuses(workspace,
 
 
 @pytest.mark.parametrize("kind", ["symlink", "pipe"])
-def test_a_nested_git_link_that_is_no_file_refuses(workspace, invoke, tmp_path, kind):
+@pytest.mark.parametrize("layout", ["link", "registration"])
+def test_nested_git_metadata_that_is_no_file_refuses(workspace, invoke, tmp_path, kind, layout):
     """Bug: a symlinked link hides a nested worktree, and a pipe hangs the read."""
     _, worktree, _ = workspace
     nested = worktree / "inner"
     nested.mkdir()
+    pointer = nested / ".git"
+    if layout == "registration":
+        pointer = pointer / "worktrees/inner/gitdir"
+        pointer.parent.mkdir(parents=True)
     if kind == "symlink":
         target = tmp_path / "gitfile"
         target.write_text("gitdir: /nowhere\n")
-        (nested / ".git").symlink_to(target)
+        pointer.symlink_to(target)
     else:
-        os.mkfifo(nested / ".git")
+        os.mkfifo(pointer)
     result = invoke(worktree, "--force")
     assert result.returncode != 0 and "is not a file" in result.stderr
     assert worktree.is_dir()

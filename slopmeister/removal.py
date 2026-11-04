@@ -175,7 +175,12 @@ def _outside(common: Path, path: Path) -> Path | None:
     registrations = common / "worktrees"
     # Reads raise on an unreadable registration, so an unseen outside worktree refuses removal.
     for entry in registrations.iterdir() if registrations.exists() else ():
-        pointer = (entry / (entry / "gitdir").read_text().strip()).resolve()
+        registration = entry / "gitdir"
+        if not stat.S_ISREG(registration.lstat().st_mode):
+            raise SlopmeisterError(
+                f"nested Git registration {registration} is not a file, remove it separately"
+            )
+        pointer = (entry / registration.read_text().strip()).resolve()
         if not pointer.is_relative_to(path):
             return pointer.parent
     return None
