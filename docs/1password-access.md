@@ -4,7 +4,7 @@ Use `op run` for secret requests. The home installer puts Slopmeister's `op` fir
 
 Selected [service actions](service-actions.md) keep their existing in-app native approval and service-account access. They acquire no Home Assistant decision and no desktop 1Password prompt.
 
-For HTTPS logins, use the [browser-login procedure](browser-login.md). New credential requests keep the existing tier and approval rules. Explicitly selected persistent Chrome sessions can reuse retained authentication without another credential request or approval. Ordinary login authorization does not select that mode.
+For HTTPS logins, use the [browser-login procedure](browser-login.md). New credential requests keep the existing tier and approval rules. The Chrome extension route can reuse an existing signed-in service. The operator configures its connection token and tier. Login authority does not authorize service changes.
 
 ## Tiers
 
@@ -35,6 +35,8 @@ An authorized sign-in can use an existing item’s generated one-time code throu
 
 A factor created for a seeded test account on this task’s own loopback-only server is fixture data. Mint and enter it in one local process without printing the code or seed. Keep enrollment within that task and account.
 
+Environment files cannot set execution controls such as PATH, startup scripts, runtime injection options, proxies or trust roots. They also cannot replace launcher identity or secret-routing variables. The real CLI uses an owned private temporary directory outside the workspace. The consumer regains its original temporary-directory variables, with the service-account token removed.
+
 ## Tier two
 
 ```bash
@@ -43,9 +45,9 @@ SECRET_ASK_REASON="<what the command does and why>" op tier-two -- op run --env-
 
 Tier two has two layers, and both are required.
 
-The first layer is the operator's word. A plain `op run` on a tier-two reference releases nothing and names the form `op tier-two -- <command>`. That form is a `needs_intent` rule in both tools, so it runs only when the operator's own message orders that command. It sets the route for its process tree, so an `op run` inside a Task target needs no change. For a project target that already wraps `op run`, use `SECRET_ASK_REASON="<one line>" op tier-two -- task <target>`.
+The first layer is the operator's word. A plain `op run` on a tier-two reference releases nothing and names the form `op tier-two -- <command>`. That form is a `needs_intent` rule in both tools, so it runs only when the operator's own message orders that command. An explicit order to log into a named service also orders that login’s inspected browser fill. It sets the route for its process tree, so an `op run` inside a Task target needs no change. For a project target that already wraps `op run`, use `SECRET_ASK_REASON="<one line>" op tier-two -- task <target>`.
 
-The second layer is the approval. Each tier-two `op run` sends one question to Home Assistant. Its text starts with the reason from `SECRET_ASK_REASON`, the session and the host, then the exact command, the references and the directory. The session is the containing repository's directory name. The reason is required and shown as one line. Without it the request is refused and nothing is sent. The command prints `op: request <id> waits for Home Assistant approval` on stderr and waits up to ten minutes, so give the tool call a ten-minute timeout. Only Approve for this request's own ID starts the real `op run`. Deny prints `denied`, ten minutes of silence print `timed out`, and both exit 1. A wait that was killed asks again on the next run. A press for a request nobody waits for releases nothing.
+The second layer is the approval. Each tier-two `op run` sends one question to Home Assistant. Its text starts with the reason from `SECRET_ASK_REASON`, the session and the host, then the exact command, the references and the directory. The session comes from confirmed launcher identity, independently of the command's current directory. A phone service uses its fixed phone-session marker. The question also names input files and literal variable names, with values hidden. The reason is required, limited to 160 characters and shown as one line. Without it the request is refused and nothing is sent. The command prints `op: request <id> waits for Home Assistant approval` on stderr and waits up to ten minutes, so give the tool call a ten-minute timeout. Only Approve for this request's own ID starts the real `op run`. Deny prints `denied`, ten minutes of silence print `timed out`, and both exit 1. A wait that was killed asks again on the next run. A press for a request nobody waits for releases nothing.
 
 `op tier-two` and `op desktop` must be the outermost command. Below an `op run` or another route word they are refused, so the allowed `op run` prefix cannot carry them past the rule.
 

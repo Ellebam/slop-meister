@@ -1,7 +1,5 @@
 """Parse only the declared Jira and Confluence operations."""
 
-import json
-import os
 import re
 from urllib.parse import parse_qs, urlsplit
 
@@ -17,8 +15,8 @@ TABLES = {
     "confluence-write": confluence_write.TABLE,
 }
 READ_ACTIONS = ("jira-read", "confluence-read")
-DIRECT_ARG_LIMIT = 4096
-DIRECT_ARG_COUNT = 64
+READ_ARG_LIMIT = 4096
+ARG_COUNT = 64
 
 
 def _page(value: str, origin: str) -> str:
@@ -46,39 +44,20 @@ def parse(action: str, args: list[str]) -> dict:
     return parse_table(TABLES[action], args)
 
 
-def _arguments(action: str, direct_args: list[str] | None = None) -> list[str]:
-    structured = os.environ.get("SLOPMEISTER_SERVICE_ACTION_INPUT")
-    direct = direct_args is not None
-    read_direct = direct and action in READ_ACTIONS
-    if direct:
-        if structured is not None or action not in TABLES:
-            raise ValueError("ARGUMENTS_NOT_SUPPORTED")
-        args = direct_args
-    else:
-        try:
-            args = json.loads(structured or "[]")
-        except ValueError:
-            raise ValueError("ARGUMENTS_NOT_SUPPORTED") from None
-    limit = DIRECT_ARG_LIMIT if read_direct else BODY_LIMIT
-    if (
-        not isinstance(args, list)
-        or any(
-            not isinstance(arg, str)
-            or len(arg) > limit
-            or any(
-                ord(char) < 32 and (read_direct or char not in "\n\t") or 127 <= ord(char) <= 159
-                for char in arg
-            )
-            for arg in args
-        )
-        or (direct and len(args) > DIRECT_ARG_COUNT)
-    ):
+def _arguments(action: str, args: list[str]) -> list[str]:
+    if action not in TABLES or len(args) > ARG_COUNT:
         raise ValueError("ARGUMENTS_NOT_SUPPORTED")
+    read = action in READ_ACTIONS
+    limit = READ_ARG_LIMIT if read else BODY_LIMIT
+    for arg in args:
+        controls = (ord(c) < 32 and (read or c not in "\n\t") or 127 <= ord(c) <= 159 for c in arg)
+        if len(arg) > limit or any(controls):
+            raise ValueError("ARGUMENTS_NOT_SUPPORTED")
     return args
 
 
-def operation(data: dict, direct_args: list[str] | None = None) -> dict:
-    selected = parse(data["action"], _arguments(data["action"], direct_args))
+def operation(data: dict, args: list[str]) -> dict:
+    selected = parse(data["action"], _arguments(data["action"], args))
     if selected["mode"] == "backlog":
         backlog_query(data.get("backlog_jql"))
     if selected["mode"] == "page":

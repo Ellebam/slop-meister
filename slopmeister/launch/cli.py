@@ -43,6 +43,8 @@ def _validate(argv: Sequence[str], worktree_file: str = "") -> Launch:
     target.policy(launch)
     arguments.check_tool_arguments(launch)
     arguments.check_sources(launch)
+    arguments.check_proof(launch)
+    target.proof_owner(launch)
     target.declaration(launch)
     target.repository(launch)
     target.sources(launch)
@@ -65,6 +67,7 @@ def _validate(argv: Sequence[str], worktree_file: str = "") -> Launch:
 
 def _redispatch(launch: Launch) -> None:
     workspace.adopt(launch)
+    target.saved_proof(launch)
     workspace.capabilities(launch)
     if os.environ.get("PLOT_SESSION_NO_LAUNCH") != "1":
         native_check.check(launch)

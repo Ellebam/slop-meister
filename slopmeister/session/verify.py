@@ -89,6 +89,8 @@ def _check_identity(state: dict, repo: Path) -> None:
         refuse("saved configuration identity or permission disagrees with this launch")
     if state.get("shipping", "deny") not in ("allow", "deny"):
         refuse("saved shipping permission is invalid")
+    if state.get("proof_owner"):
+        refuse("a proof session never ships, whoever orders it")
     roots = state.get("roots")
     unsafe = not isinstance(roots, list) or not set(ROOTS).issubset(roots)
     unsafe = unsafe or any(

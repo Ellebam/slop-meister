@@ -21,6 +21,11 @@ def permission_contract(source: Path) -> dict:
     if set(native) != {"self_release", "service_action"} or set(native) & set(contract):
         raise ValueError("native permission policy has unknown, missing or duplicate groups")
     contract.update(native)
+    with source.with_name("github-permissions.toml").open("rb") as stream:
+        github = tomllib.load(stream)
+    if set(github) != {"command"} or not isinstance(github["command"], list):
+        raise ValueError("GitHub permission policy requires only a command list")
+    contract["command"] = [*github["command"], *contract.get("command", [])]
     contract["command"] = _single_prefixes(contract.get("command", []))
     _check_commands(
         source,

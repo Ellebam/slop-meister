@@ -13,7 +13,7 @@ Record every affected repository document and vault note with one action, update
 
 When edits are authorized, deliver the list before proof and review, or before the freeform handback. Replace wrong content in place, remove stale and repeated claims, merge useful detail into its owner and repair direct links, headings and entry routes. Preserve unique decisions and their reasons, safety gates and evidence a pending review needs. Follow the global writing standard. Do not add a second telling or polish unrelated content.
 
-Use the existing vault ledger before opening or editing a note, retain first-touch ownership and update its digest after each write. Determine dirty or foreign status from those ownership checks. Follow the existing named-path commit route at the handback. Never fold foreign changes into this work. Leave protected or out-of-scope repairs unchanged and report their paths and reasons.
+Follow the global rule for vault notes, check status before an edit and commit the note by name when the edit is done. Never fold foreign changes into this work. Leave protected or out-of-scope repairs unchanged and report their paths and reasons.
 
 Read the result as its user. Check facts against the changed behavior, follow affected links and confirm the owning route still reaches retained content. Run the applicable document, size and vault-area checks. A protected gap is a reported gap, not delivered maintenance.
 

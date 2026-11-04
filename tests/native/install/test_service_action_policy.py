@@ -1,9 +1,10 @@
-"""Installed Codex policy keeps selected actions behind native approval."""
+"""Native clients run the exact selected read and leave every other form to their own checks."""
 
 from dataclasses import replace
 import json
 import os
 from pathlib import Path
+import shlex
 import subprocess
 
 import pytest
@@ -13,14 +14,6 @@ from slopmeister.session.service_actions.constants import PYTHON, PYTHON_FLAGS
 from tests.integration.install.helpers import ROOT, profile, selected_context, unlock_deliveries
 from tests.native.install.test_permissions import client_command
 from tests.support.standin import capture_server, run, tool_results
-
-
-def test_action_prompt_names_review_without_claiming_operator_approval(tmp_path):
-    """Bug: the automatic reviewer is told a human approval is required or already present."""
-    entries, _, _ = action_payload(selected_context(tmp_path))
-    rules = entries[".codex/rules/service-actions.rules"][0].decode()
-    assert "Native approval review required" in rules
-    assert "Operator approval required" not in rules
 
 
 def _policy_command(tmp_path, namespaced=False):
@@ -49,15 +42,16 @@ def _policy_command(tmp_path, namespaced=False):
 
 
 @pytest.mark.parametrize("namespaced", [False, True])
-def test_broad_saved_allow_cannot_remove_action_prompt_or_direct_secret_deny(tmp_path, namespaced):
+def test_only_the_exact_read_entry_is_allowed_and_secret_denies_hold(tmp_path, namespaced):
     base = _policy_command(tmp_path, namespaced)
     action = "example/jira-read" if namespaced else "jira-read"
     entry = tmp_path / "session/.codex/service-actions" / action / "entry.py"
     direct = [str(PYTHON), *PYTHON_FLAGS, str(entry)]
     cases = [
-        ([*direct, "--output", str(tmp_path / "result"), "--issue", "TEST-7"], "prompt"),
+        ([*direct, "--issue", "TEST-7"], "allow"),
+        ([str(PYTHON), str(entry), "--issue", "TEST-7"], None),
         ([str(PYTHON), *PYTHON_FLAGS, str(tmp_path / "shadow/entry.py")], None),
-        ([str(PYTHON), *PYTHON_FLAGS, "-m", "service_actions.supervisor"], "forbidden"),
+        ([str(PYTHON), *PYTHON_FLAGS, "-m", "service_actions.supervisor"], None),
         (["op", "document", "get", "EXAMPLE"], "forbidden"),
     ]
     for argv, expected in cases:
@@ -65,45 +59,67 @@ def test_broad_saved_allow_cannot_remove_action_prompt_or_direct_secret_deny(tmp
         assert json.loads(result.stdout).get("decision") == expected, argv
 
 
-@pytest.mark.xdist_group("native-standin")
-@pytest.mark.parametrize("namespaced", [False, True])
-def test_real_codex_matches_fixed_entry_with_output_argument(tmp_path, namespaced):
-    """Bug: shell redirection hides the selected read from the native rule."""
+ENTRY = """import os, sys
+from pathlib import Path
+Path(os.environ["SLOPMEISTER_PROOF"]).write_text("RAN")
+"""
+
+
+def _deliver_entry(client, context, native):
+    action = "example/jira-read" if context.namespaced else "jira-read"
+    entry = client.cwd / native / "service-actions" / action / "entry.py"
+    entry.parent.mkdir(parents=True)
+    entry.write_text(ENTRY)
+    return entry
+
+
+def _codex_read(tmp_path, namespaced, shape):
+    """Run one Codex command against the delivered rule, with a proof path outside the sandbox."""
     server = capture_server(tmp_path / "requests", "codex", [])
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    proof = outside / "ran"
     try:
         client = client_command("codex", tmp_path, server.server_port)
         context = replace(
             selected_context(tmp_path / "fixture"), workspace=client.cwd, namespaced=namespaced
         )
         rules = action_payload(context)[0][".codex/rules/service-actions.rules"][0].decode()
-        assert "/.codex/" in rules.splitlines()[0] and 'decision="prompt"' in rules.splitlines()[0]
-        rules = rules.replace('decision="prompt"', 'decision="forbidden"', 1)
         (Path(client.env["CODEX_HOME"]) / "rules/service-actions.rules").write_text(rules)
-        action = "example/jira-read" if namespaced else "jira-read"
-        entry = client.cwd / ".codex/service-actions" / action / "entry.py"
-        entry.parent.mkdir(parents=True)
-        entry.write_text(
-            "from pathlib import Path\nimport sys\nPath(sys.argv[2]).write_text('RAN')\n"
-        )
-        output = client.cwd / "result.json"
-        output.write_bytes(b"")
-        command = f"{PYTHON} {' '.join(PYTHON_FLAGS)} {entry} --output {output} --issue TEST-7"
-        server.script = [("exec_command", {"cmd": command, "login": False})]
-        run(replace(client, argv=[*client.argv[:2], "--approve-for-me", *client.argv[2:]]))
+        entry = _deliver_entry(client, context, ".codex")
+        command = f"{PYTHON} {' '.join(PYTHON_FLAGS)} {entry} --issue TEST-7"
+        server.script = [("exec_command", {"cmd": shape(command)})]
+        sandbox = ["-c", "sandbox_workspace_write.exclude_slash_tmp=true"]
+        sandbox += ["-c", "sandbox_workspace_write.exclude_tmpdir_env_var=true"]
+        argv = [*client.argv[:2], "--approve-for-me", *sandbox, *client.argv[2:]]
+        env = {**client.env, "SLOPMEISTER_PROOF": str(proof)}
+        run(replace(client, argv=argv, env=env))
     finally:
         server.shutdown()
         server.server_close()
-    assert "rejected: Native approval review required" in json.dumps(
-        tool_results(server.requests[-1])
-    )
-    assert output.read_bytes() == b""
+    return proof, len(server.requests)
 
 
 @pytest.mark.xdist_group("native-standin")
 @pytest.mark.parametrize("namespaced", [False, True])
-def test_real_claude_asks_for_fixed_entry_in_auto_mode(tmp_path, namespaced):
-    """Bug: Claude auto mode runs the selected read without its explicit ask."""
+def test_real_codex_runs_the_exact_read_with_no_review(tmp_path, namespaced):
+    """Bug: a selected read stops at a reviewer or stays sandboxed, so a worker cannot finish."""
+    proof, requests = _codex_read(tmp_path, namespaced, lambda command: command)
+    assert proof.read_text() == "RAN" and requests == 2
+
+
+@pytest.mark.xdist_group("native-standin")
+def test_real_codex_keeps_a_chained_read_inside_the_sandbox(tmp_path):
+    """Bug: the allow rule carries an added command outside the sandbox with no review."""
+    proof, _ = _codex_read(tmp_path, False, lambda command: f"true && {command}")
+    assert not proof.exists()
+
+
+def _claude_read(tmp_path, namespaced, shape):
     server = capture_server(tmp_path / "requests", "claude", [])
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    proof = outside / "ran"
     try:
         client = client_command("claude", tmp_path, server.server_port)
         context = replace(
@@ -111,26 +127,40 @@ def test_real_claude_asks_for_fixed_entry_in_auto_mode(tmp_path, namespaced):
         )
         access = tmp_path / "access-settings.json"
         access.write_text(json.dumps({"permissions": action_payload(context)[1]}))
-        action = "example/jira-read" if namespaced else "jira-read"
-        entry = client.cwd / ".claude/service-actions" / action / "entry.py"
-        entry.parent.mkdir(parents=True)
-        entry.write_text(
-            "from pathlib import Path\nimport sys\nPath(sys.argv[2]).write_text('RAN')\n"
-        )
-        output = client.cwd / "result.json"
-        output.write_bytes(b"")
-        command = f"{PYTHON} {' '.join(PYTHON_FLAGS)} {entry} --output {output} --issue TEST-7"
-        server.script = [("Bash", {"command": command})]
+        entry = _deliver_entry(client, context, ".claude")
+        command = shlex.join([str(PYTHON), *PYTHON_FLAGS, str(entry), "--issue", "TEST-7"])
+        server.script = [("Bash", {"command": shape(command)})]
         argv = ["auto" if arg == "bypassPermissions" else arg for arg in client.argv]
         argv[argv.index("--") : argv.index("--")] = ["--settings", str(access)]
-        run(replace(client, argv=argv))
+        run(replace(client, argv=argv, env={**client.env, "SLOPMEISTER_PROOF": str(proof)}))
     finally:
         server.shutdown()
         server.server_close()
-    assert "Claude requested permissions to use Bash" in json.dumps(
-        tool_results(server.requests[-1])
-    )
-    assert output.read_bytes() == b""
+    return proof, json.dumps(tool_results(server.requests[-1]))
+
+
+@pytest.mark.xdist_group("native-standin")
+@pytest.mark.parametrize("namespaced", [False, True])
+def test_real_claude_runs_the_exact_read_with_no_ask(tmp_path, namespaced):
+    """Bug: a selected read stops at an ask or the auto mode classifier."""
+    proof, results = _claude_read(tmp_path, namespaced, lambda command: command)
+    assert proof.read_text() == "RAN" and "requested permissions" not in results
+
+
+@pytest.mark.xdist_group("native-standin")
+def test_real_claude_runs_a_read_from_a_workspace_with_a_space(tmp_path):
+    """Bug: the delivered command quotes the entry and the unquoted allow entry misses it."""
+    root = tmp_path / "with space"
+    root.mkdir()
+    proof, results = _claude_read(root, False, lambda command: command)
+    assert proof.read_text() == "RAN" and "requested permissions" not in results
+
+
+@pytest.mark.xdist_group("native-standin")
+def test_real_claude_keeps_a_piped_read_out_of_the_allow_rule(tmp_path):
+    """Bug: the allow rule carries an added command past the auto mode classifier."""
+    proof, _ = _claude_read(tmp_path, False, lambda command: f"{command} | /usr/bin/tee /tmp/x")
+    assert not proof.exists()
 
 
 def _declaration(tmp_path, enabled):

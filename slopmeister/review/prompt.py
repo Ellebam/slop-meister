@@ -38,6 +38,8 @@ class ReviewTarget:
     read_dirs: tuple[str, ...] = ()
     subject_manifest: str | None = None
     subject_scope: tuple[str, ...] = ()
+    check_root: str | None = None
+    scenarios: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "read_dirs", normalize_read_dirs(self.read_dirs))
@@ -65,11 +67,37 @@ def build_review_prompt(target: ReviewTarget) -> str:
         "Additional checks may be named. Report it in security_lens: finding is the 1-based index "
         "of the finding that is a security defect, or null when the target is verified clean, "
         "checks names every check that ran, evidence is one line of evidence.",
+        *(_check_lines(target) if target.check_root else ()),
         "Return only JSON matching this schema:",
-        review_json_schema(),
+        review_json_schema(check=bool(target.check_root)),
         "",
         target.prompt,
     ]
     if target.subject_scope:
         lines.extend(("", "The immutable directory subject contains only:", *target.subject_scope))
     return "\n".join(lines)
+
+
+def _check_lines(target: ReviewTarget) -> tuple[str, ...]:
+    root = Path(target.check_root)
+    return (
+        f"This review is also the independent test of the change. The test guide is "
+        f"{root / 'guide.md'}. Your working directory is a fresh copy of the change without "
+        "development tools, so run the setup that the guide, README or CONTRIBUTING names "
+        "before you call a scenario not runnable. Run every guide scenario, including its "
+        "falsification cases, and decide each by its written steps and expected results. Then "
+        "make your own attempts to break the change and report each one that holds as a finding.",
+        f"Save the stdout and stderr of every scenario command directly to files under "
+        f"{root / 'evidence'}, and copy any checkout file you quote there, because the copy is "
+        "deleted after the run. Cite each file by its path relative to "
+        f"{root}, such as evidence/basic.out. Each quote must be an exact, nonempty substring of "
+        "its saved file, never reconstructed or paraphrased. When success means empty output, "
+        "check that the command succeeded and save a nonempty marker that says so. A pass or "
+        "fail without a verified quote counts as could_not_run.",
+        "Report every scenario ID exactly once as pass, fail or could_not_run, with the reason "
+        "for fail and could_not_run. A failed or unavailable scenario is never pass. When a "
+        "guide step is wrong or impossible, add a guide finding that names the scenario and the "
+        "step, then continue with the remaining scenarios. Stop every process you start before "
+        "you finish, because a process left running fails the check. Do not launch reviews or "
+        "other agents. Scenario IDs: " + ", ".join(target.scenarios) + ".",
+    )

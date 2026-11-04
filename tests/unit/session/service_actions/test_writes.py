@@ -236,6 +236,6 @@ def test_provider_exits_zero_on_incomplete_so_its_lines_survive(monkeypatch, cap
 
 def test_supervisor_prints_incomplete_writes_and_fails(monkeypatch, capsys):
     incomplete = {"result": "WRITE_INCOMPLETE", "written": [{"target": "SBX-1"}]}
-    monkeypatch.setattr(supervisor, "fetch", lambda: json.dumps(incomplete).encode())
+    monkeypatch.setattr(supervisor, "fetch", lambda args: json.dumps(incomplete).encode())
     assert supervisor.main([]) == 1
     assert json.loads(capsys.readouterr().out) == incomplete

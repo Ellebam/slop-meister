@@ -17,7 +17,6 @@ Test paths name their layer and subsystem. Names describe stable behavior and th
 | Optional Linux host layer | `task host:lint`, `task host:syntax`, `task host:test`, `task host:ha:check` | Ansible lint/syntax, synthetic role tests, Chromium panel tests and pinned-image HA configuration validation |
 | The command inventory | `bin/slopmeister check --list` | every check with its layer, kind and phase, no execution |
 | The real-session smoke | `task test:live` | one `sow` session per tool, only with the operator's consent, see [session testing](testing-sessions.md#run-real-session-qa) |
-| Real Jira and Confluence acceptance | `task sandbox:up`, then `task sandbox:live` | the delivered Atlassian reads and writes against local Data Center servers, opt-in and never in a gate, see [Atlassian sandbox](atlassian-sandbox.md) |
 
 `--jobs` controls process concurrency. `task check -- --jobs 2` reduces machine load, `--jobs 1` serialises for diagnosis. `task check -- --report <report-path>` in the Git-ignored scratch directory in the task worktree keeps the JSON report and logs as evidence.
 
@@ -45,9 +44,9 @@ Host checks stay outside the core catalogue and run in their own CI job. Install
 
 The [environment guide](testing-environments.md) names CI, workstation and real-session prerequisites, installed drift behavior and temporary-fixture boundaries.
 
-## The independent tester and readable handoff
+## The independent check and readable handoff
 
-See [session testing](testing-sessions.md#the-independent-tester-and-readable-handoff).
+See [session testing](testing-sessions.md#the-independent-check-and-readable-handoff).
 
 ## Test files and cleanup
 
@@ -75,10 +74,10 @@ See [the working agreement](../AGENTS.md) for proof and review gates, and [the s
 
 ## Automatic post-plan workflow checks
 
-Run focused regressions for candidate freezing, the four commit/shipping permission combinations, native-prompted denied delivery, repeatable tester runs, final review replay and stateless reassessment before the complete gate:
+Run focused regressions for candidate freezing, the four commit/shipping permission combinations, native-prompted denied delivery, independent check scenarios, protected review replay and stateless reassessment before the complete gate:
 
 ```bash
-.venv/bin/python -m pytest tests/unit/plots tests/unit/review tests/integration/review tests/unit/spine tests/integration/spine tests/integration/session -q
+.venv/bin/python -m pytest tests/unit/plots tests/unit/review tests/integration/review tests/integration/spine tests/integration/session -q
 .venv/bin/python -m pytest tests/integration/render -q
 task check -- --report tmp/task-check-01.json
 ```

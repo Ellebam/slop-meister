@@ -1,10 +1,12 @@
 """Run the delivered supervisor with literal, reviewed read arguments."""
 
 from contextlib import redirect_stdout
+import json
 import os
 from pathlib import Path
 import stat
 import sys
+import tempfile
 
 from service_actions.supervisor import main
 
@@ -35,14 +37,31 @@ def _result_file(value: str):
     return os.fdopen(fd, "w", encoding="utf-8")
 
 
-if __name__ == "__main__":
-    if len(sys.argv) < 4 or sys.argv[1] != "--output":
+def _read(args: list[str]) -> int:
+    """A read owns its result file, so one allowed command is the whole action."""
+    fd, path = tempfile.mkstemp(prefix="slopmeister-read.", suffix=".json")
+    with os.fdopen(fd, "w+", encoding="utf-8") as stream:
+        with redirect_stdout(stream):
+            status = main(args)
+        stream.seek(0)
+        result = json.load(stream)["result"]
+    print(json.dumps({"result": result, "result_file": path}))
+    return status
+
+
+def _write(argv: list[str]) -> int:
+    if len(argv) < 3 or argv[0] != "--output":
         print('{"result":"ARGUMENTS_NOT_SUPPORTED"}')
-        raise SystemExit(1)
+        return 1
     try:
-        stream = _result_file(sys.argv[2])
+        stream = _result_file(argv[1])
     except OSError, ValueError:
         print('{"result":"OUTPUT_FILE_UNSAFE"}')
-        raise SystemExit(1) from None
+        return 1
     with stream, redirect_stdout(stream):
-        raise SystemExit(main(sys.argv[3:], direct=True))
+        return main(argv[2:])
+
+
+if __name__ == "__main__":
+    action = _write if Path(__file__).parent.name.endswith("-write") else _read
+    raise SystemExit(action(sys.argv[1:]))

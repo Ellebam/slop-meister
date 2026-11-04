@@ -43,12 +43,13 @@ def test_noncanonical_write_refuses_before_credentials(monkeypatch, writer, dire
 
 
 @pytest.mark.parametrize("direct", [False, True])
-def test_canonical_write_keeps_direct_and_structured_sandbox_paths(monkeypatch, writer, direct):
+def test_only_canonical_entry_reaches_write_credentials(monkeypatch, writer, direct):
     """Bug: the invocation guard also blocks the approved entry or local sandbox transport."""
     entry = [str(writer / "entry.py")] if direct else ["-m", "service_actions.supervisor"]
     monkeypatch.setattr(sys, "orig_argv", [str(PYTHON), *PYTHON_FLAGS, *entry])
-    with pytest.raises(ValueError, match="^REACHED_CREDENTIAL_BOUNDARY$"):
-        supervisor.fetch([] if direct else None)
+    reason = "REACHED_CREDENTIAL_BOUNDARY" if direct else "ARGUMENTS_NOT_SUPPORTED"
+    with pytest.raises(ValueError, match="^" + reason + "$"):
+        supervisor.fetch([])
 
 
 def test_read_invocation_does_not_gain_the_write_guard(monkeypatch, writer):

@@ -1,5 +1,4 @@
-# Reviewer and tester defaults. A single review run may override model and effort.
-# The tester verifies its values from native session records.
+# Reviewer defaults. A single review run may override model and effort.
 
 [codex]
 model = "gpt-6.1-sol"

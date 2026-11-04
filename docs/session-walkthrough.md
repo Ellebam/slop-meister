@@ -91,22 +91,22 @@ flowchart LR
 | 1-2 | [sow](../src/skills/sow/SKILL.md) | Names the user result, checks existing tools and consumers, scopes the smallest useful change and sends one message with real forks, paid checks and explicit remote consent. | Answer once. |
 | 3 | [plan review](../src/skills/cross-tool-review/SKILL.md) | Has the other tool review the plan, checks each finding, runs `prune` and applies what survives. | |
 | 4 | [implement](../src/skills/implement/SKILL.md) | Builds test-first inside the scope. | |
-| 5 | [prove](../src/skills/local-qa/SKILL.md), then the automatic path | Uses the change, proves distinct behaviors and boundaries, tries counterexamples and runs `task check`. Then makes the snapshot where allowed, writes the guide, freezes a candidate when commits are denied, runs the independent tester, handles regressions and ships where allowed. | |
-| 6 | [diff review](../src/skills/cross-tool-review/SKILL.md) | Has the other tool review the proved and independently tested diff. | |
+| 5 | [prove](../src/skills/local-qa/SKILL.md), then the automatic path | Uses the change, proves distinct behaviors and boundaries, tries counterexamples and runs `task check`. Then makes the snapshot where allowed, writes the guide, freezes a candidate when commits are denied, prepares the independent check and ships where allowed. | |
+| 6 | [diff review](../src/skills/cross-tool-review/SKILL.md) | Has the other tool review the diff and run the guide against a clean copy. | |
 | 7 | [fix pass](../src/skills/implement/SKILL.md) | Makes only the fixes that survived `prune` and proves them again. | |
 | 8 | [hand off](../src/skills/execute-plan/SKILL.md) | Ships the fixed branch where allowed and reports with the existing guide. | |
-| 9 | testing | | Accept the tester's verdict and run any checks the guide leaves to you. |
+| 9 | testing | | Accept the diff check’s scenario results and run any checks the guide leaves to you. |
 | 10 | [harvest](../src/skills/harvest/SKILL.md) | | Order the end in any words, or type `/harvest` or `$harvest`. |
 
-After your one answer, the worker goes straight through to the report on its own, following [execute-plan](../src/skills/execute-plan/SKILL.md). The report lists every review and tester finding in one line, applied or dropped with the reason, and you can reopen any of them. The worker halts earlier only for a security must-fix, a wrong approach, drift from the ticket, a fix outside the scope, a second tester failure or an error it cannot diagnose. The tester runs against the exact commit and returns pass, fail or blocked with quoted evidence, and the worker never regrades it.
+After your one answer, the worker goes straight through to the report on its own, following [execute-plan](../src/skills/execute-plan/SKILL.md). The report lists every review finding and scenario result in one line, applied or dropped with the reason, and you can reopen any of them. The worker halts earlier only for a security must-fix, a wrong approach, drift from the ticket, a fix outside the scope or an error it cannot diagnose. The diff check tests the exact committed or frozen candidate. It reports pass, fail or could not run for each required scenario with saved evidence. The worker never regrades those results.
 
-Permanent tests follow the shared [test-purpose rule](../src/skills/implement/SKILL.md#test-purpose). Before another round, the worker separates required product failures, broken setup or guides, real additional defects and unsupported probes. The tester executes required scenarios independently. Added candidates do not change its verdict. Promoted tests after a pass need affected proof, not another confirmation tester.
+Permanent tests follow the shared [test-purpose rule](../src/skills/implement/SKILL.md#test-purpose). Before another round, the worker separates required product failures, broken setup or guides, real additional defects and unsupported probes. The diff check executes required scenarios independently. Additional defects are findings. Scoped fixes need affected proof, not another completed review.
 
 **Reviews run once.** Each review keeps one result per task and mode, and asking again replays it. A fresh result needs your explicit word, then the worker runs `review replace --mode <plan|diff>`. A finding that says the approach is wrong comes to you, and you either ship with a follow-up issue or abandon and re-ticket.
 
 Plots that require [groom](../src/skills/groom/SKILL.md) use it for affected repository docs and vault notes. Plans name the documents and actions. Maintenance finishes before proof, and both reviews check it. Freeform records the list in session notes.
 
-**Harvest is yours.** Green CI or an open PR cannot authorize it. Order harvest in any words to select the ending from saved state. Finished spine work retains testing acceptance and merge/integration gates. Unfinished work can ship an open PR and hand back its issue after guarded shutdown. Unsaved or unpushed work keeps the workspace. Harvest finishes authorized routine document maintenance through groom, then reports once before cleanup.
+**Harvest is yours.** Green CI or an open PR cannot authorize it. Order harvest in any words to select the ending from saved state. Finished spine work retains testing acceptance and merge/integration gates. Unfinished work keeps its worktree, slot, notes and claim. Unsaved or unpushed work keeps the workspace. Harvest finishes authorized routine document maintenance through groom, then reports once before cleanup.
 
 ## Pause and resume
 
@@ -118,7 +118,7 @@ When a worker must be replaced, first have it confirm its state is saved, then r
 task plot-session -- <slopmeister root> slopmeister slopmeister-120-session-names --redispatch --tool claude < kickoff.md
 ```
 
-The launcher verifies the saved workspace and required native-tool startup before it stops the old worker and starts a fresh conversation in the same workspace, with the same fixed configuration. The new worker reads Git, the notes file and the tester and review paths recorded there, then resumes at the first unfinished step without rerunning proof or reviews. After a crash, only what's on disk survives.
+The launcher verifies the saved workspace and required native-tool startup before it stops the old worker and starts a fresh conversation in the same workspace, with the same fixed configuration. The new worker reads Git, the notes file and the review and evidence paths recorded there, then resumes at the first unfinished step without rerunning proof or reviews. After a crash, only what's on disk survives.
 
 ## What remains afterwards
 

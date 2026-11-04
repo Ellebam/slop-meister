@@ -43,7 +43,7 @@ def test_claude_launch_line_golden(tmp_path, monkeypatch):
         f"--session-id sid --strict-mcp-config --append-system-prompt-file '{WT}/CLAUDE.md' "
         f"--setting-sources user,project --settings '{WT}/.claude/access-settings.json' "
         "--model 'o'\\''k' '--allowedTools' 'Bash(git *)' --permission-mode auto "
-        f'-- "$(cat {kickoff})"'
+        f'-- "$(cat {kickoff})${{inbox_notice}}"'
     )
 
 
@@ -69,7 +69,7 @@ def test_codex_launch_line_golden(tmp_path, monkeypatch, platform, sandbox):
         "--model 'o'\\''k' '--allowedTools' "
         "'Bash(git *)' -c 'project_root_markers=[\"AGENTS.md\"]' "
         f"-c 'project_doc_fallback_filenames=[]' -C '{WT}' "
-        f"-- \"$(cat '{tmp_path}/example-client-wt1.md')\""
+        f"-- \"$(cat '{tmp_path}/example-client-wt1.md')${{inbox_notice}}\""
     )
 
 

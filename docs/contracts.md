@@ -65,7 +65,7 @@ The [checker](../slopmeister/workstation/kickoff.py), `bin/slopmeister kickoff`,
 |---|---|
 | Operator orders [harvest](../src/skills/harvest/SKILL.md) in any words | Current-state document maintenance, authorized closure or hand-back, one report and guarded cleanup. Finished spine work retains testing acceptance. |
 | Session stops at a gate, on request or out of context | A handoff and notes ready to resume. The claim stays. |
-| Operator harvests unfinished work | The issue stays open. A guarded hand-back may release its claim after the worker stops. Unsaved or unpushed work keeps the workspace. |
+| Operator harvests unfinished work | The issue stays open. The worktree, notes, slot and claim remain. Abandonment is a separate operator-ordered launcher action. |
 
 Harvest runs only on the operator’s order and keeps every action-specific guard. Sessions create no automatic retro record. See [pause and resume](session-walkthrough.md#pause-and-resume).
 

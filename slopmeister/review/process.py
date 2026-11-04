@@ -43,17 +43,6 @@ def _text(value: str | bytes | None) -> str:
     return value.decode(errors="replace") if isinstance(value, bytes) else value
 
 
-def _finish_output(process: subprocess.Popen, partial: tuple) -> tuple[str, str]:
-    try:
-        streams = process.communicate(timeout=jobs.GROUP_STOP_TIMEOUT)
-    except subprocess.TimeoutExpired as error:
-        streams = (error.stdout, error.stderr)
-    stdout, stderr = (
-        _text(now) or _text(before) for now, before in zip(streams, partial, strict=True)
-    )
-    return stdout, stderr
-
-
 def stderr_tail(text: str) -> tuple[str, ...]:
     """Redact the whole text before the cut, so a secret the cut splits cannot survive."""
     lines = [line for line in redact(text).splitlines() if line.strip()]

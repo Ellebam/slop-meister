@@ -135,9 +135,8 @@ def slot_rows(data: dict) -> list[str]:
     rows = [f"port\t{name}\t{port}" for name, port in slots.get("ports", {}).items()]
     if "compose" in slots:
         rows.append(f"compose\t-\t{slots['compose']}")
-    for key in ("setup", "setup_files", "disposable"):
-        if key in slots:
-            rows.append(f"{key}\t-\t{json.dumps(slots[key])}")
+    if "setup" in slots:
+        rows.append(f"setup\t-\t{json.dumps(slots['setup'])}")
     if "testers" in slots:
         rows.append(f"slots\ttesters\t{slots['testers']}")
     rows.append(f"slots\tmax\t{slots.get('max', DEFAULT_MAX)}")

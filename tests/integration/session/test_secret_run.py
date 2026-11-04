@@ -14,7 +14,7 @@ import threading
 
 import pytest
 
-from slopmeister.session import secret_approval, secret_tier
+from slopmeister.session import launch_identity, secret_approval, secret_tier
 from slopmeister.workstation import manifest
 from tests.support.fakes import fake_binary
 
@@ -100,7 +100,7 @@ def machine_files(home: Path, port: int) -> None:
 
 
 @pytest.fixture
-def machine(tmp_path):
+def machine(tmp_path, monkeypatch):
     """The installed op on a machine with its files, and Home Assistant answering as told."""
     server = ThreadingHTTPServer(("127.0.0.1", 0), HomeAssistant)
     server.asked, server.decisions, server.verdict = [], {}, "approved"
@@ -110,7 +110,19 @@ def machine(tmp_path):
     thread.start()
     server.home, server.path = installed(tmp_path)
     machine_files(server.home, server.server_port)
-    server.extra_env = {}
+    workspace = tmp_path / "example-task"
+    workspace.mkdir()
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "home", classmethod(lambda cls: server.home))
+        launch_identity.write(
+            workspace, (workspace.name, "claude", "00000000-0000-0000-0000-000000000001")
+        )
+    runtime = tmp_path / "runtime"
+    runtime.mkdir(mode=0o700)
+    server.extra_env = {
+        "SLOPMEISTER_SESSION_WORKSPACE": str(workspace),
+        "XDG_RUNTIME_DIR": str(runtime),
+    }
     yield server
     server.shutdown()
     thread.join()
@@ -137,7 +149,7 @@ def test_tier_one_reaches_the_command_without_a_question_or_the_token(machine):
     assert done.returncode == 0, done.stderr
     assert done.stdout == "CHILD token=absent demo=op://Everyday/Item/credential\n"
     (call,) = real_calls(machine)
-    assert call.startswith("run -- /usr/bin/env -u OP_SERVICE_ACCOUNT_TOKEN sh -c")
+    assert call.startswith("run -- /usr/bin/env -u OP_SERVICE_ACCOUNT_TOKEN ")
     assert call.endswith(f"token={ONE}")
     assert machine.asked == []
 
@@ -214,7 +226,9 @@ def test_desktop_route_uses_no_token_and_no_home_assistant(machine):
         (machine.home / secret_tier.DIRECTORY / name).unlink()
     done = op(machine, "desktop", "--", "op", "run", "--env-file=two.env", "--", *CHILD)
     assert done.returncode == 0, done.stderr
-    assert real_calls(machine) == [f"run --env-file=two.env -- {' '.join(CHILD)} token=none"]
+    (call,) = real_calls(machine)
+    assert call.startswith("run --env-file=two.env -- /usr/bin/env -u OP_SERVICE_ACCOUNT_TOKEN ")
+    assert call.endswith("token=none")
     assert machine.asked == []
 
 
@@ -226,6 +240,33 @@ def test_token_file_others_can_read_is_refused(machine):
         done.returncode == 1 and "must be a regular file of this user with mode 600" in done.stderr
     )
     assert real_calls(machine) == []
+
+
+@pytest.mark.parametrize("name", ["BASH_ENV", "NODE_OPTIONS", "HTTPS_PROXY"])
+def test_execution_override_refuses_before_secret_resolution(machine, name):
+    private(machine.home / "override.env", f"{name}=unused\nDEMO=op://Everyday/Item/credential\n")
+    done = op(machine, "run", "--env-file=override.env", "--", *CHILD)
+    assert done.returncode == 1 and "can alter execution" in done.stderr
+    assert real_calls(machine) == [] and machine.asked == []
+
+
+def test_cli_uses_private_runtime_and_consumer_recovers_its_temporary_root(machine, tmp_path):
+    scratch = Path(machine.extra_env[secret_approval.WORKSPACE]) / "scratch"
+    scratch.mkdir(mode=0o700)
+    machine.extra_env["TMPDIR"] = str(scratch)
+    record = 'printf "%s" "$TMPDIR" > "$HOME/cli-tmp"\n'
+    fake_binary(tmp_path / "real", "op", record + REAL_OP)
+    consumer = (
+        "import os; print(os.environ['TMPDIR']); "
+        "assert 'OP_SERVICE_ACCOUNT_TOKEN' not in os.environ"
+    )
+    done = op(machine, "run", "--env-file=one.env", "--", sys.executable, "-c", consumer)
+    assert done.returncode == 0, done.stderr
+    cli_root = Path((machine.home / "cli-tmp").read_text())
+    assert cli_root == Path(machine.extra_env["XDG_RUNTIME_DIR"])
+    assert not cli_root.is_relative_to(scratch.parent)
+    assert done.stdout.strip() == str(scratch)
+    assert real_calls(machine) and machine.asked == []
 
 
 @pytest.mark.parametrize("surface", ["run", "metadata"])

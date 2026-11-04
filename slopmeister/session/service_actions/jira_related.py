@@ -80,7 +80,7 @@ def read_related(client, expected: str, operation: dict) -> dict:
     related = bodies(client, sorted(near.found)) if near.found else {"issues": []}
     related.setdefault("not_returned", [])
     for body in related["issues"]:
-        body["relationships"] = near.found[body["key"]]
+        body["relationships"] = near.found.get(body["key"], [])
     result.update(operation="related", related=related)
     result["coverage"]["related"] = {"relations_searched": near.searched, "visibility": VISIBILITY}
     return bounded(result)

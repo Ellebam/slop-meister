@@ -137,3 +137,38 @@ def test_recipient_discovery_refuses_untrusted_or_partial_responses(tmp_path, ca
     reply = invoke(tmp_path, envelope, peer=True)
     assert reply.returncode != 0 and reply.stdout == ""
     assert "PRIVATE_PREVIEW" not in reply.stderr
+
+
+@pytest.mark.parametrize("malformed", [False, True])
+def test_run_discovery_skips_unbound_inboxes_without_exposing_payloads(tmp_path, malformed):
+    source = (ROOT / "src/skills/plot-session/communicate.md").read_text()
+    script = (
+        '"$orca_cli" orchestration run-list'
+        + source.split('"$orca_cli" orchestration run-list', 1)[1].split("\n```", 1)[0]
+    )
+    runs = [
+        {"id": "run-unbound", "coordinator_handle": None, "legacy": 0},
+        {"id": "run-peer", "coordinator_handle": "term-peer", "legacy": 0},
+    ]
+    if malformed:
+        runs[1]["coordinator_handle"] = {"preview": "PRIVATE_PAYLOAD"}
+    cli = tmp_path / "orca"
+    cli.write_text('#!/bin/sh\nprintf "%s\\n" "$RUNS"\n')
+    cli.chmod(0o700)
+    envelope = {"ok": True, "result": {"runs": runs, "nextCursor": None}}
+    result = subprocess.run(
+        ["bash", "-c", script],
+        capture_output=True,
+        text=True,
+        timeout=5,
+        env={**os.environ, "orca_cli": str(cli), "RUNS": json.dumps(envelope)},
+    )
+    assert "PRIVATE_PAYLOAD" not in result.stdout + result.stderr
+    if malformed:
+        assert result.returncode != 0 and not result.stdout
+    else:
+        assert result.returncode == 0, result.stderr
+        assert json.loads(result.stdout) == {
+            "nextCursor": None,
+            "runs": [{"id": "run-peer", "coordinator_handle": "term-peer"}],
+        }

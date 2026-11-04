@@ -1,5 +1,17 @@
 # Releases
 
+## Unreleased
+
+Start fresh workers for the changed fixed instructions. The independent diff check now runs the test guide in a clean copy. It replaces the separate tester command. Rinse replaces leak-check for outward drafts. Night mode requires an explicit bounded operator grant.
+
+Selected Jira and Confluence reads run as one allowed command and return a private result-file path. Writes retain their exact-command native approval. The local Atlassian sandbox is removed. Before upgrading an existing sandbox installation, use its previous reviewed version to stop or remove its resources under an explicit operator order. The update does not delete containers, credentials or retained data.
+
+Browser login now uses the operator’s Chrome through the Playwright Extension. Follow [browser setup and migration](browser-login.md). Existing task profiles are not adopted or deleted. The optional Linux certificate-import command is operator-only.
+
+The retired slot `setup_files` and `disposable` declarations must be removed from local plot definitions. Setup commands remain supported. Public cleanup continues to protect unknown ignored work and uncommitted changes. Unfinished harvest keeps the workspace and claim. Vault notes are checked before editing and committed by name immediately after each edit.
+
+The optional host layer pins Home Assistant 2026.10.2. Deployment remains separate. This change leaves the project version unchanged, so it does not select a new release.
+
 ## Upgrading to 0.4.0
 
 Start fresh workers to receive the updated fixed configuration. Harvest replaces the finalize and close-out procedures and accepts an operator order in ordinary words. Sessions no longer create automatic retro records. Existing notes and explicit legacy-log commands remain available. Follow-up pull requests retain their predecessor link and retry safely. Managers can relay only the exact operator-ordered worker approval. Terminal sends require operator intent.
@@ -14,7 +26,7 @@ The [host boundaries](../host/README.md#public-host-boundaries) describe the min
 
 Update the Home Assistant approval route before upgrading workstation requesters. The requester now requires an explicit receipt from the server. Follow the [approval protocol and setup](1password-access.md) for the update order.
 
-Existing workers retain their fixed configuration. Start a fresh workspace to receive the updated instructions, as described in [Updates](../README.md#updates-and-limits). [Persistent browser authentication](browser-login.md#optional-persistent-authentication) remains optional and requires explicit operator authorization. New [session retros](vault-version-control.md#session-retros-and-legacy-logs) use separate notes, while explicit legacy-log commands and public path overrides remain available. Existing logs are not migrated automatically.
+Existing workers retain their fixed configuration. Start a fresh workspace to receive the updated instructions, as described in [Updates](../README.md#updates-and-limits). Persistent browser authentication was optional in this version. See the current [browser migration](browser-login.md#upgrade-from-task-owned-profiles) before upgrading further. New [session retros](vault-version-control.md#session-retros-and-legacy-logs) use separate notes, while explicit legacy-log commands and public path overrides remain available. Existing logs are not migrated automatically.
 
 ## Publishing
 

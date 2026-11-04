@@ -10,7 +10,7 @@ Codex's automatic approval reviewer can stop a command before Slopmeister's revi
 
 For the operator's policy to take effect, the effective `approvals_reviewer` must be `auto_review`. The operator sets this in `~/.codex/config.toml`. A launch override can select `user` instead, so check the caller's effective setting.
 
-The example policy records approval for requested Slopmeister and vault reviews through OpenAI Codex and Anthropic Claude Code. It preserves every other approval requirement and reviewer safeguard. It grants no permission for autonomous testers, implementation, unrelated sends or additional destinations.
+The example policy records approval for requested Slopmeister and vault reviews through OpenAI Codex and Anthropic Claude Code. It preserves every other approval requirement and reviewer safeguard. The requested diff check includes execution of its guide in the isolated checkout. This grants no implementation, unrelated send or additional destination authority.
 
 This is a Codex approval setting. Claude's existing launch permissions remain in its [settings template](../plots/home/claude/settings.json.tmpl). A Codex rejection does not establish the same defect in Claude's approval system.
 
@@ -46,7 +46,7 @@ For required documents outside that worktree, `review --read-dir /absolute/direc
 
 Claude receives these directories through native `--add-dir` while retaining `--restricted`, auto mode and only `Bash,Read,Grep,Glob`. Additional directories use the same permission rules as the original directory. See [Claude working directories](https://code.claude.com/docs/en/permissions#working-directories).
 
-Codex runs without its sandbox, as the tester does, and receives no `--add-dir`. Both directions may run commands and tests, are told never to change the reviewed files, and gain no edit tools. The runner compares the tree of every file Git sees before and after the review and refuses a verdict when it differs. Ignored files are not compared.
+Codex runs without its sandbox and receives no `--add-dir`. Both directions may run commands and tests, are told never to change the reviewed files, and gain no edit tools. The runner compares the tree of every file Git sees before and after the review and refuses a verdict when it differs. Ignored files are not compared.
 
 If a review fails, the runner prints the blocked gate and writes no final result. Invalid reviewer JSON also produces redacted diagnostic output on stderr, capped at 16,384 characters. Nested JSON credentials and terminal control characters are removed before display. A decoding-limit failure omits the output. These diagnostics are not a review result and do not change the review gate. Inspect uncertain process and mutation state and stop; never reinvoke while the original call may still be live.
 

@@ -10,6 +10,6 @@ Did we fix what we meant to fix or build what we meant to build? Check each acce
 
 Are we overdoing it? After plan approval with nothing shipped, an operator status request or statement that the session is the problem means "stuck". Write a handoff in the task notes, recommend redispatch or a split and stop. Otherwise, stop if the next step does not help finish the task or clear a required gate.
 
-In a few plain sentences, say where we stand, how we know, and what to do next. Say done only when the intended result works and required gates are complete. Never skip a required gate or operator decision.
+Keep this check internal unless a report is due. Then state the result, evidence and next action once. Say done only when the outcome works and required gates are complete. Never skip a gate or operator decision.
 
 Read-only except for the stuck handoff in task notes. Do not edit product files, repeat a test or review, or create another report or checklist. Simple read-only checks are allowed.

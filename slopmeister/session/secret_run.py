@@ -2,11 +2,17 @@
 
 import os
 from pathlib import Path
-import socket
 import sys
 
 from slopmeister.session import secret_approval, secret_metadata, secret_tier
-from slopmeister.session.secret_env import NO_MASKING, environment, parse
+from slopmeister.session.secret_env import (
+    NO_MASKING,
+    cli_environment,
+    command_environment,
+    environment,
+    parse,
+    validate_names,
+)
 
 MARK = "SLOPMEISTER_SECRET_BROKER"
 # The operator's word for this process tree, set by `op tier-two --` or `op desktop --`.
@@ -18,8 +24,7 @@ TOKEN = "OP_SERVICE_ACCOUNT_TOKEN"
 # The real op obeys these: one prints values, two replace the chosen token's account.
 OVERRIDES = ("OP_RUN_NO_MASKING", "OP_CONNECT_HOST", "OP_CONNECT_TOKEN")
 # What this program decides. A request cannot bring its own.
-RESERVED = (TOKEN, *OVERRIDES, ROUTE, INSIDE)
-ENV = "/usr/bin/env"
+RESERVED = (TOKEN, *OVERRIDES, ROUTE, INSIDE, secret_approval.WORKSPACE, secret_approval.PHONE)
 # Disclosure commands, matched on the words of the line so flags cannot hide them.
 REFUSED_WORDS = {"read", "inject"}
 REFUSED_PAIRS = (("item", "get"), ("item", "share"), ("document", "get"))
@@ -32,22 +37,6 @@ MISSING = "op: the 1Password CLI is not installed on this machine"
 
 class Refusal(Exception):
     """This request releases nothing, the message says why and what the operator can order."""
-
-
-def session_name(cwd: Path) -> str:
-    """The containing repository's directory name, which is the session's workspace name."""
-    return next((p.name for p in (cwd, *cwd.parents) if (p / ".git").exists()), cwd.name)
-
-
-def request(references: dict[str, str], command: list[str]) -> dict:
-    return {
-        "env": references,
-        "argv": command,
-        "cwd": os.getcwd(),
-        "reason": os.environ.get("SECRET_ASK_REASON", ""),
-        "session": session_name(Path.cwd()),
-        "host": socket.gethostname().partition(".")[0],
-    }
 
 
 def real_op() -> Path | None:
@@ -67,7 +56,11 @@ def execute(argv: list[str], env: dict[str, str] | None = None) -> int:
         print(MISSING, file=sys.stderr)
         return 127
     try:
-        os.execve(binary, [str(binary), *argv], os.environ if env is None else env)
+        env = dict(os.environ if env is None else env)
+        if os.environ.get(MARK) == "1":
+            argv = command_environment(argv, env, TOKEN)
+            env = cli_environment(env)
+        os.execve(binary, [str(binary), *argv], env)
     except ValueError as error:
         print(f"op: {error}", file=sys.stderr)
         return 2
@@ -81,37 +74,40 @@ def normalized(token: str = "") -> dict[str, str]:
     return env
 
 
-def approved(references: dict[str, str], command: list[str]) -> None:
+def approved(asked: dict) -> None:
     """Return once the operator approved this request in Home Assistant, else raise Refusal."""
     if os.environ.get(ROUTE) != TIER_TWO:
         raise Refusal(
             "a tier-two secret needs the operator's word. Once the operator ordered this "
             "command, run it as op tier-two -- <command>."
         )
-    asked = request(references, command)
-    if not asked["reason"].strip():
-        raise Refusal(secret_approval.NO_REASON)
-    body = secret_approval.question(asked)
-    settings = secret_approval.route()
+    try:
+        body = secret_approval.question(asked | secret_approval.origin())
+        settings = secret_approval.route()
+    except ValueError as error:
+        raise Refusal(str(error)) from None
     try:
         secret_approval.ask(settings, body)
+        print(
+            f"op: request {body['id']} waits for Home Assistant approval",
+            file=sys.stderr,
+            flush=True,
+        )
+        state = secret_approval.decision(settings, body["id"])
     except secret_approval.Unreachable as error:
         raise Refusal(
             f"Home Assistant did not take the question, {error}. {ORDER_DESKTOP}"
         ) from None
-    waits = f"op: request {body['id']} waits for Home Assistant approval"
-    print(waits, file=sys.stderr, flush=True)
-    state = secret_approval.decision(settings, body["id"])
     if state != "approved":
         raise Refusal(f"request {body['id']} {state}")
 
 
-def token_for(references: dict[str, str], command: list[str]) -> str:
+def token_for(asked: dict) -> str:
     """The token of the request's tier, after the approval a tier-two request needs."""
     try:
-        tier = secret_tier.tier(references)
+        tier = secret_tier.tier(asked["env"])
         if tier == secret_tier.TIER_TWO:
-            approved(references, command)
+            approved(asked)
         return secret_tier.token(tier)
     except ValueError as error:
         raise Refusal(f"{error}. {ORDER_DESKTOP}") from None
@@ -130,13 +126,14 @@ def resolved(args: list[str]) -> tuple[list[str], dict[str, str]]:
     """The command and its environment for the real `op`, the tier's token included."""
     try:
         files, command = parse(args)
+        if any(not path.isprintable() for path in files):
+            raise ValueError("each env-file path must contain only printable characters")
         literals, references = environment(files)
+        validate_names((*literals, *references), RESERVED)
     except ValueError as error:
         raise Refusal(str(error)) from None
-    owned = next((name for name in (*literals, *references) if name in RESERVED), None)
-    if owned:
-        raise Refusal(f"{owned} is set by the session's op and cannot come from an env file")
-    token = token_for(references, command) if references else ""
+    asked = {"env": references, "argv": command, "files": files, "literals": list(literals)}
+    token = token_for(asked) if references else ""
     return command, {**normalized(token), **literals, **references, INSIDE: "1"}
 
 
@@ -151,7 +148,7 @@ def run(args: list[str]) -> int:
         return 1
     if TOKEN not in env:
         return direct(command, env)
-    return execute(["run", "--", ENV, "-u", TOKEN, *command], env)
+    return execute(["run", "--", *command], env)
 
 
 def direct(command: list[str], env: dict[str, str]) -> int:
@@ -209,9 +206,9 @@ def metadata(args: list[str]) -> int:
             raise Refusal(MISSING)
         scope = {"VAULT_METADATA": f"op://{vault}"}
         tier = secret_tier.tier(scope)
-        approved(scope, ["op", "metadata", *args])
+        approved({"env": scope, "argv": ["op", "metadata", *args], "files": [], "literals": []})
         token = secret_tier.token(tier)
-        env = normalized(token) | {"OP_BIOMETRIC_UNLOCK_ENABLED": "false"}
+        env = cli_environment(normalized(token)) | {"OP_BIOMETRIC_UNLOCK_ENABLED": "false"}
         secret_metadata.output((vault, search), binary, env)
     except (ValueError, Refusal) as error:
         message = str(error).removesuffix(f". {ORDER_DESKTOP}")
@@ -222,13 +219,19 @@ def metadata(args: list[str]) -> int:
 
 def main(argv: list[str]) -> int:
     if os.environ.get(MARK) != "1":
+        if argv[:1] == [TIER_TWO]:
+            print(
+                "op tier-two: this unmarked shell cannot use launcher identity; resolve in "
+                "the launched session and pipe through SSH standard input; see "
+                "docs/1password-access.md#remote-commands",
+                file=sys.stderr,
+            )
+            return 1
         return execute(argv)
     if argv[:1] in (["run"], ["metadata"]):
         handler = run if argv[0] == "run" else metadata
         return handler(argv[1:])
-    if argv[:1] in ([TIER_TWO], [DESKTOP]):
-        return choose(argv)
-    return pass_through(argv)
+    return choose(argv) if argv[:1] in ([TIER_TWO], [DESKTOP]) else pass_through(argv)
 
 
 if __name__ == "__main__":

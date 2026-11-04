@@ -15,9 +15,9 @@ For a remote worker, inspect and reconcile claims in its owning host's repositor
 
 ## Non-GitHub backlog reports
 
-For a vault/manual plot declaring `jira-read`, a fresh dispatcher uses that plot's approved reader and fixed machine-local profile query. Report available, blocked and unknown tickets with summary/status and named blocking tickets. An open blocked-by relationship blocks a ticket, an outward blocks relationship does not block that ticket, and a done blocker is resolved. Missing or ambiguous relationship/status evidence is unknown. Dependencies outside the query still count, and an unreadable profile or failed provider read never becomes an empty or available backlog. Report incomplete windows and account visibility limits.
+For a vault/manual plot declaring `jira-read`, a fresh dispatcher uses that plot's selected reader and fixed machine-local profile query. Report available, blocked and unknown tickets with summary/status and named blocking tickets. An open blocked-by relationship blocks a ticket, an outward blocks relationship does not block that ticket, and a done blocker is resolved. Missing or ambiguous relationship/status evidence is unknown. Dependencies outside the query still count, and an unreadable profile or failed provider read never becomes an empty or available backlog. Report incomplete windows and account visibility limits.
 
-Vault notes supply context, not a fallback live backlog. The reader also handles a named Jira ticket and its links through the same approved path. This adds no Jira claim, status transition or other tracker write. GitHub ownership below keeps its existing route and permissions. See [service actions](service-actions.md#dispatcher-jira-reads) for delivery, profile provisioning and native approval.
+Vault notes supply context, not a fallback live backlog. The reader also handles a named Jira ticket and its links through the same selected path. This adds no Jira claim, status transition or other tracker write. GitHub ownership below keeps its existing route and permissions. See [service actions](service-actions.md#dispatcher-jira-reads) for delivery, profile provisioning and the write approval boundary.
 
 ## Operator flow
 
@@ -29,7 +29,7 @@ Run these templates from the invoking Slopmeister checkout, replacing the paths,
 4. To abandon explicitly, first save a nonempty handoff with recovery commands inside the worker workspace. Run `task plot-session -- <project-root> <plot> <name> --abandon --handoff <absolute-task-notes> --tool <tool>`. Exact worker inspection precedes closure. The issue stays open, its claim is released, and the workspace and handoff remain. Retry interrupted abandonment with the same unchanged handoff. An already released claim makes abandonment a no-op, even if a later session occupies that workspace.
 5. After accepted testing, order `harvest`. After the merge is verified, its owned-tracker path closes the saved issue, verifies closure and removes the claim. A refused merge leaves the issue open and claimed. It uses `<saved-absolute-slopmeister-root>/bin/slopmeister claims close --workspace <worker-root>`, so the project needs no Slopmeister Taskfile. The close reason is `completed`, and `--reason not-planned` records a dropped task. A failed close preserves recovery evidence and can be retried. The verified finishing worker does not block unrelated dispatch while session closure completes.
 
-To harvest unfinished work, preserve a nonempty handoff inside the workspace's recorded scratch directory. Harvest records `abandon-prepare`; self-cleanup stops the sole worker before `abandon-complete` releases its claim. A changed, outside, linked or nonregular handoff refuses release. A retained workspace keeps its notes and active claim. No new issue is selected.
+Harvest of unfinished work preserves the worktree, notes, slot and active claim. It reports the next step and leaves the issue open. It does not ship unfinished changes or perform claim abandonment. A later operator-ordered abandonment uses the launcher route above. No new issue is selected.
 
 ## Permission and authorization
 

@@ -81,10 +81,14 @@ def test_timeout_partial_output_survives_stop_retries_that_miss_their_window(mon
         pid = 4321
 
         def communicate(self, *_args, **_kwargs):
-            raise subprocess.TimeoutExpired("claude", 1, output=b"partial evidence\n")
+            raise subprocess.TimeoutExpired("claude", 1)
+
+    def start(argv, options, outputs):
+        outputs[0].write("partial evidence\n")
+        return TimedOutReviewer()
 
     monkeypatch.setenv("CROSS_TOOL_REVIEW_TIMEOUT_SECONDS", "1")
-    monkeypatch.setattr(review_run, "_start_reviewer", lambda *_: TimedOutReviewer())
+    monkeypatch.setattr(review_run, "_start_reviewer", start)
     monkeypatch.setattr(review_run, "stop_owned_group", lambda _: None)
     monkeypatch.setattr(review_run, "group_members", lambda _: [])
     with pytest.raises(CrossToolReviewError) as error:

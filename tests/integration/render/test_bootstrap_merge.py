@@ -11,10 +11,10 @@ def test_bootstrap_merge_keeps_zero_checks_outside_the_normal_gate():
         "Zero checks reported, refuse unless",
         "operator's own message",
         "no external CI is expected",
-        "accepted tester verdict and review disposition",
+        "accepted diff check verdict and review disposition",
         "git diff <proved-commit>..<headRefOid>",
         "local gate on that head",
-        "without renewed tester and review proof",
+        "without renewed check proof",
         "Never create a status",
     ):
         assert token in gate

@@ -1,6 +1,5 @@
-"""Lease the existing slot owner's ports to one external tester checkout."""
+"""Lease the existing slot owner's tester-only or worker ports to one diff check's checkout."""
 
-from contextlib import contextmanager
 from dataclasses import replace
 import fcntl
 from functools import partial
@@ -41,7 +40,7 @@ def _record(data: Path) -> dict:
 def _claim(root: Path, run: dict, target: str) -> allocation.Claim:
     allocation.validate_name(target, "target")
     if run.get("subject_manifest"):
-        raise SlopmeisterError("tester slots require a repository checkout")
+        raise SlopmeisterError("check slots require a repository checkout")
     slots = allocation.definition(target)
     if allocation.is_none(slots):
         raise SlopmeisterError(f"target '{target}' declares no slot resources")
@@ -86,45 +85,33 @@ def _initialize(claim: allocation.Claim, context: dict) -> allocation.Claim:
     return replace(claim, lease=fd)
 
 
-def _deliver(root: Path, run: dict) -> None:
-    slot = run["slot"]
-    record = _record(Path(slot["state"]))
+def _deliver(run: dict) -> None:
+    record = _record(Path(run["slot"]["state"]))
     checkout = Path(run["checkout"])
     with (checkout / allocation.ALLOCATION).open("x") as stream:
         stream.write(record["environment"])
     exclude = checkout / ".git/info/exclude"
     with exclude.open("a") as stream:
         stream.write("\n/.slot.env\n")
-    (root / "run.json").write_text(json.dumps(run, indent=2) + "\n")
 
 
-@contextmanager
-def prepared(root: Path, run: dict, target: str | None):
-    if not target:
-        yield
-        return
+def prepare(root: Path, run: dict, target: str) -> None:
+    """Claim, deliver and start the stack. A failure releases the claim before it raises."""
     claim = _claim(root, run, target)
     run["slot"] = {"state": str(claim.data), "fd": claim.lease, "compose": bool(claim.compose)}
     try:
-        _deliver(root, run)
+        _deliver(run)
         compose._compose_up(claim, root / "evidence")
-        yield
     except BaseException:
         if error := cleanup(root, run, preparation=True):
             run["slot_cleanup_error"] = error
         raise
-    finally:
-        os.close(run["slot"]["fd"])
-
-
-def descriptors(run: dict) -> tuple[int, ...]:
-    return (run["slot"]["fd"],) if "slot" in run else ()
 
 
 def _idle(data: Path, record: dict) -> None:
     checkout = Path(record["run"]) / "checkout"
     if any(process.inside for process in occupants.census(str(checkout))):
-        raise SlopmeisterError(f"a tester still occupies {checkout}; allocation retained")
+        raise SlopmeisterError(f"a checker still occupies {checkout}; allocation retained")
     if record.get("compose"):
         allocation.remove_project(f"{record['target']}-slot{record['slot']}")
     if any(listener.port in record["ports"] for listener in allocation.bound_ports()):
@@ -157,14 +144,18 @@ def _release(root: Path, slot: dict, preparation: bool = False) -> None:
 
 
 def cleanup(root: Path, run: dict, preparation: bool = False) -> str | None:
+    """Release the slot once the checker stopped. The lease closes either way."""
     if "slot" not in run:
         return None
-    if run.get("process_stopped") is False:
-        return "tester process stop unverified; slot allocation retained"
+    slot = run.pop("slot")
     try:
-        _release(root, run["slot"], preparation)
+        if run.get("process_stopped") is False:
+            return "checker stop unverified; slot allocation retained"
+        _release(root, slot, preparation)
     except (OSError, ValueError, KeyError, SlopmeisterError) as error:
         return str(error)
+    finally:
+        os.close(slot["fd"])
     return None
 
 
@@ -207,7 +198,7 @@ def recover(data: Path, repository: Path, wanted: str) -> None:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             raise SlopmeisterError(
-                f"tester allocation is active; collect {_record(data)['run']}"
+                f"a diff check still holds this allocation, run {_record(data)['run']}"
             ) from None
         record = _record(data)
         if repository != Path(record["repository"]) or wanted != str(record["slot"]):

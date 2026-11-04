@@ -7,11 +7,11 @@ skill	execute-plan	shared
 skill	groom	shared
 skill	harvest	shared
 skill	implement	shared
-skill	leak-check	shared
 skill	local-qa	shared
 skill	merge	shared
 skill	plot-session	shared
 skill	prune	shared
+skill	rinse	shared
 skill	ripe	shared
 skill	ship	shared
 skill	slot	shared

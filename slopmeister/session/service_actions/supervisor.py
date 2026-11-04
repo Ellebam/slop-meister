@@ -166,7 +166,7 @@ def _provider(data: dict, selected, execution: tuple[dict, float]) -> bytes:
     )
 
 
-def fetch(direct_args: list[str] | None = None) -> bytes:
+def fetch(args: list[str]) -> bytes:
     data = json.loads((ROOT / "config.json").read_bytes())
     runtime.require(check_current=True, module_root=ROOT, cert="certificate_document" in data)
     deadline = time.monotonic() + 300
@@ -180,15 +180,10 @@ def fetch(direct_args: list[str] | None = None) -> bytes:
 
         require_consumer(ROOT, native)
         # Effective flags alone would admit spellings that miss the native command rule.
-        entry = (
-            [str(ROOT / "entry.py")]
-            if direct_args is not None
-            else ["-m", "service_actions.supervisor"]
-        )
-        prefix = [*PYTHON_FLAGS, *entry]
+        prefix = [*PYTHON_FLAGS, str(ROOT / "entry.py")]
         if sys.executable != str(PYTHON) or sys.orig_argv[1 : len(prefix) + 1] != prefix:
             raise ValueError("ARGUMENTS_NOT_SUPPORTED")
-    selected = operation(data, direct_args)
+    selected = operation(data, args)
     env = _environment(data)
     _identity(data, env, deadline)
     _vault(data, env, deadline)
@@ -202,13 +197,11 @@ def _terminate(signum, _frame) -> None:
     raise SystemExit(128 + signum)
 
 
-def main(argv: list[str] | None = None, *, direct: bool = False) -> int:
+def main(argv: list[str]) -> int:
     signal.signal(signal.SIGTERM, _terminate)
     signal.signal(signal.SIGHUP, _terminate)
     try:
-        if argv and not direct:
-            raise ValueError("ARGUMENTS_NOT_SUPPORTED")
-        result = json.loads(fetch(argv) if direct else fetch())
+        result = json.loads(fetch(argv))
         sys.stdout.buffer.write(encode(result))
         return 1 if result.get("result") == INCOMPLETE else 0
     except Exception as error:
@@ -223,7 +216,3 @@ def main(argv: list[str] | None = None, *, direct: bool = False) -> int:
             result["detail"] = error.detail
         print(json.dumps(result))
         return 1
-
-
-if __name__ == "__main__":
-    raise SystemExit(main(sys.argv[1:]))

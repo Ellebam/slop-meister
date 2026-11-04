@@ -3,7 +3,11 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
-GUIDANCE = ("src/skills/plot-session/SKILL.md", "src/skills/plot-session/dispatcher.md")
+GUIDANCE = (
+    "src/skills/plot-session/SKILL.md",
+    "src/skills/plot-session/dispatcher.md",
+    "src/skills/plot-session/manage.md",
+)
 REQUIRED = (
     "only when the operator says dispatch",
     "Mode: spine",

@@ -56,13 +56,14 @@ Append under `## Implementation`, the files changed with one line each, the test
 
 Then report the branch, files changed and gate results, with step 5 next because green tests are not proof. In the automatic post-plan path, retain this evidence in the task notes and continue directly to `local-qa` and `ripe`.
 
-In scoped fix-pass mode, prove the edited lines with every affected suite and acceptance claim. Use the full suite when impact cannot be bounded. Apply the [behavior proof](../local-qa/SKILL.md#3-the-break-it-pass) to each distinct changed behavior or trust boundary, restore controls exactly and run `ripe`. Continue as `execute-plan` directs to final shipping and the operator handoff at step 8 only when everything passes and is proven, otherwise halt and report to the operator. The guide and independent tester run before the diff review.
+In scoped fix-pass mode, prove the edited lines with every affected suite and acceptance claim. Use the full suite when impact cannot be bounded. Apply the [behavior proof](../local-qa/SKILL.md#3-the-break-it-pass) to each distinct changed behavior or trust boundary, restore controls exactly and run `ripe`. Continue as `execute-plan` directs to final shipping and the operator handoff at step 8 only when everything passes and is proven, otherwise halt and report to the operator. The guide is written before the diff check, which runs it.
 
 ## Rules
 
 - Don't be sloppy. Read the whole error, check the whole diff, run every check the change affects, and put real output behind every claim you record.
 - The plan is the spec. If you disagree with it, raise it, do not silently diverge.
 - Read before you write. No exceptions.
+- If a required edit touches a file within 5 percent of its applicable cap or above it, split the file or ask the operator. Never compress or delete unrelated text to make room.
 - After changing a name, rule, value or behaviour, search the repository for its second copy. Update or report each hit, keeping the existing scope and halt rules.
 - Tests are part of the work. If the plan forgot a test the change obviously needs, write it and say so.
 - Fail loudly. If a gate fails and the fix is not obvious, report it rather than making speculative changes.

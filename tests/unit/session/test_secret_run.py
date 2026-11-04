@@ -4,7 +4,7 @@ import os
 
 import pytest
 
-from slopmeister.session import secret_run
+from slopmeister.session import secret_approval, secret_run
 from tests.support.op_session import env_file
 
 EXECVE, EXECVPE = os.execve, os.execvpe
@@ -122,14 +122,16 @@ def test_missing_real_op_is_named(tmp_path, monkeypatch, capsys):
     assert "not installed" in capsys.readouterr().err
 
 
-def test_session_is_the_containing_repository(tmp_path):
-    """Bug: the operator sees a subdirectory name instead of the session's workspace name."""
-    repo = tmp_path / "example-app-123-example"
-    (repo / ".git").mkdir(parents=True)
-    nested = repo / "services" / "web"
-    nested.mkdir(parents=True)
-    assert secret_run.session_name(nested) == "example-app-123-example"
-    assert secret_run.session_name(tmp_path / "loose") == "loose"
+def test_request_identity_does_not_follow_the_command_directory(tmp_path, monkeypatch):
+    nested = tmp_path / "some-command-directory"
+    nested.mkdir()
+    monkeypatch.chdir(nested)
+    assert secret_approval.origin()["session"] == "example-task"
+    monkeypatch.delenv(secret_approval.WORKSPACE)
+    with pytest.raises(ValueError, match="launcher identity is unavailable"):
+        secret_approval.origin()
+    monkeypatch.setenv(secret_approval.PHONE, "1")
+    assert secret_approval.origin()["session"] == "Phone session"
 
 
 def test_value_the_system_cannot_pass_is_reported_not_raised(tmp_path, monkeypatch, capsys):

@@ -9,7 +9,6 @@ from pathlib import Path
 import socket
 import sys
 
-from slopmeister.spine.tester.launch import evidence_home
 from slopmeister.threads.timing import claude, codex
 from slopmeister.threads.timing.events import Command, Session, epoch
 from slopmeister.threads.timing.report import row, summary, table
@@ -120,14 +119,21 @@ def _arguments(argv: Sequence[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def _tester_runs_home() -> Path:
+    """Where the retired separate tester saved its runs, read for sessions before the diff check."""
+    state = Path(os.environ.get("XDG_STATE_HOME", ""))
+    if not state.is_absolute():
+        state = Path.home() / ".local/state"
+    return (state / "slopmeister/spine-tests").resolve()
+
+
 def main(argv: Sequence[str]) -> int:
     arguments = _arguments(argv)
     if arguments.table:
         rows = [json.loads(line) for line in sys.stdin if line.strip()]
         sys.stdout.write(table(rows, set(arguments.show)) + "\n" + summary(rows))
         return 0
-    # The launcher owns where tester runs are saved. Its checkout guard has nothing to guard here.
-    runs = evidence_home(Path(os.devnull), create=False)
+    runs = _tester_runs_home()
     for session in scan(Path.home(), epoch(arguments.since), runs):
         print(json.dumps(row(session, arguments.host), sort_keys=True))
     return 0

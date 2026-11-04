@@ -39,15 +39,12 @@ def test_direct_read_selector_does_not_evaluate_shell_text(monkeypatch, tmp_path
     assert templated["text"] == '{{env "RV340_SECRET"}}'
 
 
-def test_direct_read_refuses_competing_input_channels(monkeypatch):
-    """Bug: an ambient JSON selector silently replaces reviewed argv."""
+def test_direct_read_ignores_ambient_input(monkeypatch):
     monkeypatch.setenv("SLOPMEISTER_SERVICE_ACTION_INPUT", json.dumps(["--issue", "TEST-8"]))
-
-    with pytest.raises(ValueError, match="ARGUMENTS_NOT_SUPPORTED"):
-        arguments.operation(
-            {"action": "jira-read", "origin": "https://jira.invalid"},
-            ["--issue", "TEST-7"],
-        )
+    selected = arguments.operation(
+        {"action": "jira-read", "origin": "https://jira.invalid"}, ["--issue", "TEST-7"]
+    )
+    assert selected["key"] == "TEST-7"
 
 
 def test_direct_read_refuses_control_characters(monkeypatch):
@@ -56,14 +53,6 @@ def test_direct_read_refuses_control_characters(monkeypatch):
 
     with pytest.raises(ValueError, match="ARGUMENTS_NOT_SUPPORTED"):
         arguments._arguments("jira-read", ["--find", "--text", "line\nline"])
-
-
-def test_write_sandbox_keeps_structured_multiline_input(monkeypatch):
-    """Bug: read-only direct parsing corrupts the existing disabled-write sandbox input."""
-    body = "line one\nline two"
-    monkeypatch.setenv("SLOPMEISTER_SERVICE_ACTION_INPUT", json.dumps(["--body", body]))
-
-    assert arguments._arguments("jira-write") == ["--body", body]
 
 
 @pytest.mark.parametrize("action", ["jira-write", "confluence-write"])
@@ -78,9 +67,6 @@ def test_direct_write_preserves_existing_multiline_payload_limit(monkeypatch, ac
 
 
 @pytest.mark.parametrize("action", ["jira-write", "confluence-write"])
-def test_direct_write_refuses_an_ambient_replacement_payload(monkeypatch, action):
-    """Bug: an environment payload replaces the exact write arguments the operator approved."""
+def test_direct_write_ignores_an_ambient_replacement_payload(monkeypatch, action):
     monkeypatch.setenv("SLOPMEISTER_SERVICE_ACTION_INPUT", json.dumps(["--permissions", "OTHER"]))
-
-    with pytest.raises(ValueError, match="ARGUMENTS_NOT_SUPPORTED"):
-        arguments._arguments(action, ["--permissions", "TEST"])
+    assert arguments._arguments(action, ["--permissions", "TEST"]) == ["--permissions", "TEST"]

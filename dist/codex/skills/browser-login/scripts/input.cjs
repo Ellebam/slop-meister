@@ -1,79 +1,33 @@
 'use strict';
 const fs = require('node:fs');
 const LIMIT = 262144;
-const FRAME_LIMIT = 16 * 1024 * 1024;
-const DEADLINE = 25000;
+const DEADLINE = 55000;
 const CLEAR_DELAY = 2000;
-
-// One private connection. Values are protocol arguments, never executable source.
-async function connect(endpoint) {
-  const url = new URL(endpoint);
-  if (url.protocol !== 'ws:' || url.hostname !== '127.0.0.1' || url.username || url.password)
-    throw new Error('ENDPOINT_REFUSED');
-  const socket = new WebSocket(endpoint);
-  const pending = new Map();
-  let sequence = 0;
-  const fail = () => {
-    for (const request of pending.values()) request.reject(new Error('CONNECTION_FAILED'));
-    pending.clear();
-  };
-  socket.addEventListener('close', fail);
-  socket.addEventListener('error', fail);
-  socket.addEventListener('message', event => {
-    try {
-      if (typeof event.data !== 'string' || Buffer.byteLength(event.data, 'utf8') > FRAME_LIMIT) return fail();
-      const message = JSON.parse(event.data);
-      const request = pending.get(message.id);
-      if (!request) return;
-      pending.delete(message.id);
-      if (message.error) request.reject(new Error('OPERATION_FAILED'));
-      else request.resolve(message.result);
-    } catch { fail(); }
-  });
-  await new Promise((resolve, reject) => {
-    socket.addEventListener('open', resolve, {once: true});
-    socket.addEventListener('error', () => reject(new Error('CONNECTION_FAILED')), {once: true});
-  });
-  return {
-    send(method, params = {}) {
-      return new Promise((resolve, reject) => {
-        const id = ++sequence;
-        pending.set(id, {resolve, reject});
-        socket.send(JSON.stringify({id, method, params}));
-      });
-    },
-    close() { socket.close(); }
-  };
-}
+// How long a later step waits for its page after the previous step was submitted.
+const STEP_WAIT = 15000;
+const POLL = 250;
+// A page chooses its address, and the owner-only state that keeps it has a size limit.
+const ADDRESS_LIMIT = 1024;
 
 // This function runs in the inspected page. It never focuses or types into a control.
-function pageStep(step) {
+function pageStep(_document, step) {
   try {
     const roots = [document];
     for (let i = 0; i < roots.length; i++)
       for (const e of roots[i].querySelectorAll('*')) if (e.shadowRoot) roots.push(e.shadowRoot);
     const find = selector => roots.flatMap(root => [...root.querySelectorAll(selector)]);
-    if (step.mode === 'filled') {
-      if (find('iframe,frame').length) return 'UNINSPECTED_FRAME';
-      return step.selectors.some(s => find(s).some(e => e.value)) ? 'FILLED' : 'EMPTY';
-    }
-    if (location.origin !== step.origin || location.pathname !== step.path) return 'WRONG_DESTINATION';
     const visible = e => e.checkVisibility({visibilityProperty: true, opacityProperty: true});
+    if (step.mode === 'filled') return step.selectors.some(s => find(s).some(e => e.value)) ? 'FILLED' : 'EMPTY';
+    if (location.origin !== step.origin || location.pathname !== step.path) return 'WRONG_DESTINATION';
     const exposed = e => {
       const r = e.getBoundingClientRect(), x = r.x + r.width / 2, y = r.y + r.height / 2;
       let hit = document.elementFromPoint(x, y);
       while (hit?.shadowRoot) { const next = hit.shadowRoot.elementFromPoint(x, y); if (!next || next === hit) break; hit = next; }
-      return !!hit && (hit === e || e.contains(hit));
+      return !!hit && (hit === e || e.contains(hit) || hit.closest?.('label')?.control === e);
     };
-    if (step.mode === 'click' || step.mode === 'click-text') {
-      const candidates = step.mode === 'click' ? find(step.selector) : find('button, a, [role=button]').filter(e => e.textContent.trim() === step.text);
-      const found = candidates.filter(visible);
-      if (found.length !== 1 || found[0].disabled || !exposed(found[0])) return 'CONTROL_UNAVAILABLE';
-      found[0].click();
-      return 'CLICKED';
-    }
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
     if (step.mode === 'clear') {
+      // Events let a framework drop its copy too, so a later render cannot restore the value.
       for (const field of step.fields)
         for (const node of find(field.selector)) {
           if (!node.value?.includes(field.value)) continue;
@@ -104,135 +58,105 @@ function pageStep(step) {
   } catch { return 'PAGE_OPERATION_FAILED'; }
 }
 
-async function call(client, objectId, step) {
-  const reply = await client.send('Runtime.callFunctionOn', {
-    objectId, functionDeclaration: pageStep.toString(), arguments: [{value: step}], returnByValue: true
-  });
-  if (reply.exceptionDetails || typeof reply.result?.value !== 'string') throw new Error('PAGE_OPERATION_FAILED');
-  return reply.result.value;
+// A handle runs only in the document it came from, so a value never reaches a replacement page.
+async function call(context, step) {
+  const value = await context.evaluate(pageStep, step);
+  if (typeof value !== 'string') throw new Error('PAGE_OPERATION_FAILED');
+  return value;
 }
 
-async function operate(client, request) {
-  if (request.action === 'pages') {
-    const {targetInfos} = await client.send('Target.getTargets');
-    return {pages: targetInfos.filter(t => t.type === 'page').map(t => t.targetId),
-      frames: targetInfos.some(t => t.type === 'iframe')};
-  }
-  if (request.action === 'create') {
-    if (request.fresh) {
-      const {targetInfos} = await client.send('Target.getTargets');
-      if (targetInfos.some(target => target.type === 'page'))
-        return {result: 'BROWSER_BLOCKED', reason: 'BROWSER_PROFILE_RESTORED_TABS'};
-    }
-    const target = await client.send('Target.createTarget', {url: 'about:blank', newWindow: true, background: true});
-    const window = await client.send('Browser.getWindowForTarget', {targetId: target.targetId});
-    await client.send('Browser.setWindowBounds', {windowId: window.windowId, bounds: {width: 1280, height: 900, windowState: 'normal'}});
-    return target;
-  }
-  if (request.action === 'viewport') {
-    // The window frame differs by machine, so it is measured and added to the page size.
-    const read = async () => (await client.send('Runtime.evaluate', {
-      expression: '[innerWidth, innerHeight, outerWidth - innerWidth, outerHeight - innerHeight]', returnByValue: true
-    })).result.value;
-    const [, , frameWidth, frameHeight] = await read();
-    const {windowId} = await client.send('Browser.getWindowForTarget');
-    await client.send('Browser.setWindowBounds', {windowId, bounds: {
-      width: request.width + frameWidth, height: request.height + frameHeight, windowState: 'normal'}});
-    const deadline = Date.now() + 2000;
-    let size = await read();
-    while ((size[0] < request.width || size[1] < request.height) && Date.now() < deadline) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-      size = await read();
-    }
-    return {result: 'BROWSER_VIEWPORT', width: size[0], height: size[1]};
-  }
-  if (request.action === 'close') {
-    await client.send('Browser.close');
-    return {result: 'BROWSER_CLOSED'};
-  }
-  if (request.action === 'open') {
-    const previous = await client.send('Page.getFrameTree');
-    const navigation = await client.send('Page.navigate', {url: request.url});
-    if (navigation.errorText) throw new Error('NAVIGATION_FAILED');
-    const deadline = Date.now() + 20000;
-    while (Date.now() < deadline) {
-      try {
-        const current = await client.send('Page.getFrameTree');
-        const state = await client.send('Runtime.evaluate', {
-          expression: 'location.protocol === "https:" && document.readyState !== "loading" && innerWidth > 0 && innerHeight > 0', returnByValue: true
-        });
-        const committed = !navigation.loaderId || current.frameTree.frame.loaderId !== previous.frameTree.frame.loaderId;
-        if (committed && state.result?.value === true) return {result: 'BROWSER_OPENED'};
-      } catch { /* A navigation can replace the read context. No input is repeated. */ }
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-    throw new Error('NAVIGATION_TIMEOUT');
-  }
-  if (request.action === 'snapshot') {
-    const tree = await client.send('Accessibility.getFullAXTree');
-    return {snapshot: tree.nodes.filter(node => !node.ignored && node.name?.value && node.role?.value !== 'InlineTextBox')
-      .map(node => `${node.role?.value}: ${node.name.value}`).join('\n')};
-  }
-  if (request.action === 'eval') {
-    const response = await client.send('Runtime.evaluate', {
-      expression: request.expression, returnByValue: true, awaitPromise: true
-    });
-    if (response.exceptionDetails) throw new Error('PAGE_OPERATION_FAILED');
-    return {result: response.result?.value ?? null};
-  }
-  const context = await client.send('Runtime.evaluate', {expression: 'globalThis', returnByValue: false});
-  const objectId = context.result?.objectId;
-  if (!objectId) throw new Error('PAGE_CONTEXT_UNAVAILABLE');
-  if (request.action === 'filled')
-    return {result: await call(client, objectId, {mode: 'filled', selectors: request.selectors})};
-  const step = request.step;
-  if (request.action === 'click' || request.action === 'click-text') {
-    const result = await call(client, objectId, {...step, mode: request.action});
-    if (result !== 'CLICKED') throw new Error(result);
-    return {result: 'BROWSER_CLICKED'};
-  }
-  const metadata = {...step, mode: 'check', fields: step.fields.map(({value, ...field}) => field)};
-  const ready = await call(client, objectId, metadata);
-  if (ready !== 'READY') {
-    const known = ['WRONG_DESTINATION', 'FIELD_UNAVAILABLE', 'SUBMIT_UNAVAILABLE', 'PAGE_OPERATION_FAILED'];
-    if (!known.includes(ready)) throw new Error('PAGE_OPERATION_FAILED');
-    return {result: 'BROWSER_BLOCKED', phase: 'preflight', reason: ready,
-      credential_input: false, submission_attempted: false};
-  }
+const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
+
+const onDestination = (page, step) => {
   try {
-    const filled = await call(client, objectId, {...step, mode: 'fill'});
+    const url = new URL(page.url());
+    return url.origin === step.origin && url.pathname === step.path;
+  } catch { return false; }
+};
+
+// The page's own navigation replaces the read context, so a failed check means not yet ready.
+async function ready(page, step, wait) {
+  const metadata = {...step, mode: 'check', fields: step.fields.map(({value, ...field}) => field)};
+  const deadline = Date.now() + wait;
+  for (;;) {
+    const document = await page.evaluateHandle(() => document).catch(() => null);
+    const outcome = document ? await call(document, metadata).catch(() => 'PAGE_OPERATION_FAILED') : 'PAGE_OPERATION_FAILED';
+    if (outcome === 'READY' || Date.now() >= deadline) return {outcome, document};
+    await sleep(POLL);
+  }
+}
+
+function refused(index, reason) {
+  const entered = index > 0;
+  return {result: 'BROWSER_BLOCKED', phase: 'preflight', step: index, reason,
+    credential_input: entered, submission_attempted: entered};
+}
+
+async function submit(document, step) {
+  try {
+    const filled = await call(document, {...step, mode: 'fill'});
     if (filled !== 'FIELDS_VERIFIED') throw new Error(filled);
-    const submitted = await call(client, objectId, {...step, mode: 'submit'});
+    const submitted = await call(document, {...step, mode: 'submit'});
     if (submitted !== 'SUBMITTED') throw new Error(submitted);
-    await new Promise(resolve => setTimeout(resolve, CLEAR_DELAY));
-  } finally { await clear(client, step); }
+    await sleep(CLEAR_DELAY);
+  } finally { await clear(document, step); }
+}
+
+async function operate(pages, request) {
+  if (request.action === 'filled') {
+    // Navigation is HTTPS only, so a blank tab is what the page tool opens after it lost the real one.
+    const live = pages.filter(page => page.url() && page.url() !== 'about:blank');
+    if (!live.length) return {result: 'PAGE_LOST'};
+    const step = {mode: 'filled', selectors: request.selectors};
+    // A snapshot includes embedded frames, and a frame in navigation has no read context for a moment.
+    const check = async frame => call(await frame.evaluateHandle(() => document), step);
+    const read = frame => check(frame).catch(() => sleep(POLL).then(() => check(frame)));
+    const seen = await Promise.all(pages.flatMap(page => page.frames()).map(read));
+    const {origin, pathname} = new URL(live[0].url());
+    return {result: seen.includes('FILLED') ? 'FILLED' : 'EMPTY', pages: live.length, address: (origin + pathname).slice(0, ADDRESS_LIMIT)};
+  }
+  const page = pages.find(candidate => onDestination(candidate, request.steps[0]));
+  if (!page) return refused(0, 'WRONG_DESTINATION');
+  if (request.action === 'check') {
+    const {outcome} = await ready(page, request.steps[0], 0);
+    return outcome === 'READY' ? {result: 'BROWSER_FILL_READY'} : refused(0, outcome);
+  }
+  for (const [index, step] of request.steps.entries()) {
+    const {outcome, document} = await ready(page, step, index ? STEP_WAIT : 0);
+    if (outcome !== 'READY') {
+      const known = ['WRONG_DESTINATION', 'FIELD_UNAVAILABLE', 'SUBMIT_UNAVAILABLE', 'PAGE_OPERATION_FAILED'];
+      if (!known.includes(outcome)) throw new Error('PAGE_OPERATION_FAILED');
+      return refused(index, outcome);
+    }
+    await submit(document, step);
+  }
   return {result: 'BROWSER_LOGIN_SUBMITTED'};
 }
 
-// Navigation may replace the context. A later page command independently checks for retained values.
-async function clear(client, step) {
-  try {
-    const context = await client.send('Runtime.evaluate', {expression: 'globalThis', returnByValue: false});
-    if (context.result?.objectId) await call(client, context.result.objectId, {...step, mode: 'clear'});
-  } catch { /* A replaced document no longer holds the step's controls. */ }
+// A credential the page still shows would reach the next snapshot, so it is removed on every path.
+async function clear(document, step) {
+  try { await call(document, {...step, mode: 'clear'}); }
+  catch { /* A replaced document no longer holds the step's fields. */ }
 }
 
 async function main() {
   const timer = setTimeout(() => { console.log('{"result":"BROWSER_BLOCKED","reason":"BROWSER_TIMEOUT: do not retry submission"}'); process.exit(1); }, DEADLINE);
-  let client;
   try {
     const raw = fs.readFileSync(0, 'utf8');
     if (raw.length > LIMIT) throw new Error('REQUEST_REFUSED');
     const request = JSON.parse(raw);
-    client = await connect(request.endpoint);
-    const result = await operate(client, request);
+    const {chromium} = require(request.library);
+    const browser = await chromium.connect(request.socket);
+    const result = await operate(browser.contexts().flatMap(context => context.pages()), request);
     const output = JSON.stringify(result);
     if (output.length > LIMIT) throw new Error('RESPONSE_TOO_LARGE');
     console.log(output);
   } catch {
     console.log('{"result":"BROWSER_BLOCKED","reason":"BROWSER_OPERATION_FAILED: do not retry submission"}');
     process.exitCode = 1;
-  } finally { client?.close(); clearTimeout(timer); }
+  } finally { clearTimeout(timer); }
+  // Exiting ends this connection and leaves the session and the operator's browser open.
+  process.exit();
 }
 if (require.main === module) main();
 module.exports = {pageStep, operate};

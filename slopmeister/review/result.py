@@ -6,6 +6,7 @@ import re
 from slopmeister.review.command import normalize_review_stdout
 from slopmeister.review.process import CommandResult
 from slopmeister.review.redact import redact
+from slopmeister.review.scenarios import grade
 from slopmeister.review.schema import (
     CrossToolReviewError,
     ReviewDirection,
@@ -48,9 +49,12 @@ def control_denial(text: str) -> bool:
     return bool(re.search(pattern, text, re.I))
 
 
-def parse_result(direction: ReviewDirection, review: CommandResult) -> ReviewResult:
+def parse_result(direction: ReviewDirection, review: CommandResult, check=None) -> ReviewResult:
+    """A check's result also grades every guide scenario against the evidence it saved."""
     try:
-        return parse_review_json(normalize_review_stdout(direction, review.stdout))
+        raw = normalize_review_stdout(direction, review.stdout)
+        result = parse_review_json(raw, check is not None)
+        return grade(result, raw, check.scenarios, check.root) if check else result
     except CrossToolReviewError as error:
         error.raw_stdout = redact(review.stdout)
         if control_denial(review.stdout):

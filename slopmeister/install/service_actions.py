@@ -35,10 +35,6 @@ PROFILE_KEYS = set(
 )
 CERTIFICATE_KEYS = {"password_ref", "certificate_document"}
 PROFILE_ROOT = ".config/slopmeister/access"
-DIRECT_MODULES = tuple(
-    [executable, *PYTHON_FLAGS, "-m", "service_actions.supervisor"]
-    for executable in (str(PYTHON), "python3")
-)
 
 
 @dataclass(frozen=True)
@@ -164,15 +160,24 @@ def admit() -> None:
         )
 
 
+def _command_line(entry: Path, action: str, native: str, revision: str, namespaced: bool) -> str:
+    write = action.endswith("-write")
+    arguments = " --backlog" if namespaced else ARGUMENTS.get(action, "")
+    output = " --output <PRIVATE_RESULT_FILE>" if write else ""
+    command = f"`{PYTHON} {' '.join(PYTHON_FLAGS)} {shlex.quote(str(entry))}{output}{arguments}`"
+    label = f"mcp__{action.replace('-', '_')}__run: " if write else ""
+    return f"{label}{command} ({native}, revision {revision[:12]})"
+
+
 def _add_action(
     context: ActionContext, action: str, entries: dict
-) -> tuple[list[str], list[str], list[str]]:
+) -> tuple[list[str], list[str], list[str], list[str]]:
     content, revision = _consumer(context, action)
     source_action = action.replace("-write", "-read")
     root = Path.home() / PROFILE_ROOT if context.profile_root is None else context.profile_root
     path = root / context.plot / (source_action + ".json")
     data = read_profile(path, context.plot, source_action)
-    rules, asks, commands = [], [], []
+    rules, allows, asks, commands = [], [], [], []
     for native in (".codex", ".claude"):
         name = f"{context.plot}/{action}" if context.namespaced else action
         relative = native + "/service-actions/" + name
@@ -184,20 +189,17 @@ def _add_action(
         entries[relative + "/config.json"] = ((json.dumps(data, indent=2) + "\n").encode(), 0o400)
         entries[relative + "/revision"] = ((revision + "\n").encode(), 0o444)
         entry = context.workspace / relative / "entry.py"
-        patterns = [[str(PYTHON), *PYTHON_FLAGS, str(entry)]]
-        more_rules, more_asks = service_rules(patterns, context.root, action)
+        command = [str(PYTHON), *PYTHON_FLAGS, str(entry)]
+        more_rules, more_allows, more_asks = service_rules(command, context.root, action)
         rules.extend(more_rules)
+        allows.extend(more_allows)
         asks.extend(more_asks)
-        arguments = " --backlog" if context.namespaced else ARGUMENTS.get(action, "")
-        command = f"`{PYTHON} {' '.join(PYTHON_FLAGS)} {shlex.quote(str(entry))} "
-        command += f"--output <PRIVATE_RESULT_FILE>{arguments}`"
-        label = f"mcp__{action.replace('-', '_')}__run: " if action.endswith("-write") else ""
-        commands.append(f"{label}{command} ({native}, revision {revision[:12]})")
-    return rules, asks, commands
+        commands.append(_command_line(entry, action, native, revision, context.namespaced))
+    return rules, allows, asks, commands
 
 
-def _collect(contexts: list[ActionContext], entries: dict) -> tuple[list, list, list]:
-    asks, rules, commands = [], [], []
+def _collect(contexts: list[ActionContext], entries: dict) -> tuple[list, list, list, list]:
+    rules, allows, asks, commands = [], [], [], []
     pairs = [
         (item, action) for item in contexts for action in item.target.get("service_actions", [])
     ]
@@ -207,31 +209,29 @@ def _collect(contexts: list[ActionContext], entries: dict) -> tuple[list, list, 
         ):
             raise ValueError("dispatcher requires declared Jira readers")
         try:
-            more_rules, more_asks, more_commands = _add_action(context, action, entries)
+            more_rules, more_allows, more_asks, more_commands = _add_action(
+                context, action, entries
+            )
         except ValueError:
             if not context.namespaced:
                 raise
             commands.append(f"{context.plot}: Jira reader unavailable; report unknown")
             continue
         rules.extend(more_rules)
+        allows.extend(more_allows)
         asks.extend(more_asks)
         commands.extend(more_commands)
-    return asks, rules, commands
+    return rules, allows, asks, commands
 
 
 def action_payload(
     context: ActionContext, selected: list[ActionContext] | None = None
 ) -> tuple[dict, dict, str]:
     entries = {}
-    asks, rules, commands = _collect(selected if selected is not None else [context], entries)
+    rules, allows, asks, commands = _collect(selected or [context], entries)
     if not commands:
         return {}, {}, ""
     entries.update(service_registration(context))
-    rules.extend(
-        "prefix_rule(pattern=" + json.dumps(module) + ', decision="forbidden")'
-        for module in DIRECT_MODULES
-    )
-    direct_denies = ["Bash(" + " ".join(module) + " *)" for module in DIRECT_MODULES]
     entries[".codex/rules/service-actions.rules"] = (
         ("\n".join(dict.fromkeys(rules)) + "\n").encode(),
         0o644,
@@ -240,7 +240,11 @@ def action_payload(
         "Edit(/" + str(context.workspace / native / "service-actions") + "/**)"
         for native in (".claude", ".codex")
     ]
-    permissions = {"ask": list(dict.fromkeys(asks)), "deny": [*denies, *direct_denies]}
+    permissions = {
+        "allow": list(dict.fromkeys(allows)),
+        "ask": list(dict.fromkeys(asks)),
+        "deny": denies,
+    }
     instructions = (context.root / "src/service-actions/instructions.md").read_text().rstrip()
     instructions += (
         "\n\nSelected commands\n\n" + "\n".join("- " + command for command in commands) + "\n"

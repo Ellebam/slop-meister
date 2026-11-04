@@ -25,10 +25,9 @@ def test_bad_confluence_inputs_fail_before_reading_credentials(tmp_path, monkeyp
     module, data, _ = consumer(tmp_path, monkeypatch)
     data["action"] = "confluence-read"
     (tmp_path / "config.json").write_text(json.dumps(data))
-    monkeypatch.setenv("SLOPMEISTER_SERVICE_ACTION_INPUT", json.dumps(args))
     monkeypatch.setattr(module, "service_token", lambda *args: pytest.fail("no credential access"))
     with pytest.raises(ValueError, match="ARGUMENTS_NOT_SUPPORTED"):
-        module.fetch()
+        module.fetch(args)
 
 
 @pytest.mark.parametrize(
@@ -42,8 +41,7 @@ def test_bad_confluence_inputs_fail_before_reading_credentials(tmp_path, monkeyp
 def test_page_input_is_normalized_to_an_id_on_the_private_origin(tmp_path, monkeypatch, page):
     module, data, _ = consumer(tmp_path, monkeypatch)
     data["action"] = "confluence-read"
-    monkeypatch.setenv("SLOPMEISTER_SERVICE_ACTION_INPUT", json.dumps(["--page", page]))
-    assert module.operation(data) == {"mode": "page", "id": "123"}
+    assert module.operation(data, ["--page", page]) == {"mode": "page", "id": "123"}
 
 
 @pytest.mark.parametrize(
@@ -108,16 +106,12 @@ def test_confluence_prefixed_urls_stay_inside_the_configured_application(tmp_pat
     module, data, _ = consumer(tmp_path, monkeypatch)
     data.update(action="confluence-read", origin="https://jira.example.invalid/confluence")
     for suffix in ["/pages/viewpage.action?pageId=123", "/spaces/TEST/pages/123/Document"]:
-        monkeypatch.setenv(
-            "SLOPMEISTER_SERVICE_ACTION_INPUT", json.dumps(["--page", data["origin"] + suffix])
-        )
-        assert module.operation(data) == {"mode": "page", "id": "123"}
-        monkeypatch.setenv(
-            "SLOPMEISTER_SERVICE_ACTION_INPUT",
-            json.dumps(["--page", "https://jira.example.invalid" + suffix]),
-        )
+        assert module.operation(data, ["--page", data["origin"] + suffix]) == {
+            "mode": "page",
+            "id": "123",
+        }
         with pytest.raises(ValueError):
-            module.operation(data)
+            module.operation(data, ["--page", "https://jira.example.invalid" + suffix])
 
 
 def test_unselected_plot_never_opens_private_profiles(tmp_path):
@@ -157,11 +151,8 @@ def test_selected_actions_share_code_but_keep_separate_profiles_and_commands(tmp
         assert (
             json.loads(entries[jira + "config.json"][0])["origin"] == "https://jira.example.invalid"
         )
-    assert (
-        "confluence-read/entry.py --output <PRIVATE_RESULT_FILE> --page <PAGE_ID_OR_URL>"
-        in instructions
-    )
-    assert "jira-read/entry.py --output <PRIVATE_RESULT_FILE> --issue <KEY>" in instructions
+    assert "confluence-read/entry.py --page <PAGE_ID_OR_URL>" in instructions
+    assert "jira-read/entry.py --issue <KEY>" in instructions
 
 
 def test_profile_naming_its_plot_in_the_pre_rename_field_is_refused(tmp_path):

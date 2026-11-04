@@ -4,17 +4,17 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Sequence
-from contextlib import nullcontext
 import dataclasses
 from pathlib import Path
 import sys
 import time
 
+from slopmeister.review import check
 from slopmeister.review.config import ReviewerConfig, command_timeout_seconds, load_config
 from slopmeister.review.process import stderr_tail_log
 from slopmeister.review.prompt import ReviewTarget
 from slopmeister.review.redact import sanitize_text
-from slopmeister.review.render import render_hard_gate
+from slopmeister.review.render import BLOCKING, render_hard_gate, status
 from slopmeister.review.run import owned_reviewer_runner, run_review
 from slopmeister.review.schema import CrossToolReviewError, ReviewDirection, ReviewErrorCategory
 from slopmeister.review.state import (
@@ -58,7 +58,19 @@ def _config(args: argparse.Namespace, direction: ReviewDirection) -> ReviewerCon
     return dataclasses.replace(config, **updates)
 
 
+def _refuse(message: str) -> CrossToolReviewError:
+    return CrossToolReviewError(message, category=ReviewErrorCategory.START_PRECONDITION)
+
+
+def _arguments(args: argparse.Namespace) -> None:
+    if args.subject_manifest and args.read_dirs:
+        raise _refuse("--subject-manifest cannot be combined with --read-dir")
+    if args.mode == "plan" and (args.guide or args.slot_target):
+        raise _refuse("--guide and --slot-target apply to --mode diff only")
+
+
 def _review(args: argparse.Namespace) -> int:
+    _arguments(args)
     direction = ReviewDirection(args.direction)
     identity = launch_identity.read(Path.cwd(), direction.value.split("-to-")[0])
     path = result_path(args, identity["task"])
@@ -66,7 +78,15 @@ def _review(args: argparse.Namespace) -> int:
         raise CrossToolReviewError("candidate review requires repository diff mode")
     frozen = repository_candidate.load(Path(args.cwd), identity["task"]) if args.candidate else None
     existing = _existing(args, path, frozen)
-    return existing if existing is not None else _execute(args, direction, (path, frozen))
+    if existing is not None:
+        return existing
+    # After replay, so a session on an older procedure still replays its saved result.
+    if args.mode == "diff" and not args.guide:
+        raise _refuse(
+            "--mode diff needs --guide <absolute test guide>, the diff check runs its "
+            "scenarios in a clean checkout of the final candidate"
+        )
+    return _execute(args, direction, (path, frozen))
 
 
 def _existing(args, path: Path, frozen) -> int | None:
@@ -98,29 +118,52 @@ def _execute(args, direction: ReviewDirection, target_state) -> int:
     )
     started = _monotonic()
     _feedback("reviewer launch")
-    context = repository_candidate.isolated(frozen) if frozen else nullcontext(Path(args.cwd))
     prompt = _prompt(args) + (repository_candidate.reading_guide(frozen) if frozen else "")
-    with context as cwd:
-        target = ReviewTarget(prompt, str(cwd), args.read_dirs, args.subject_manifest)
-        try:
-            result = run_review(direction, target, runner=owned_reviewer_runner, config=config)
-        except CrossToolReviewError as error:
-            _feedback(
-                f"failed category={error.category.value} elapsed={_monotonic() - started:.3f}s"
+    if args.mode == "plan":
+        target = ReviewTarget(prompt, args.cwd, args.read_dirs, args.subject_manifest)
+        result = _run(direction, target, (config, started), {})
+        return _complete(result, (path, started, None), "")
+    prepared = None
+    try:
+        with check.prepared(args, frozen) as prepared:
+            target = ReviewTarget(
+                prompt,
+                str(prepared.checkout or args.cwd),
+                args.read_dirs,
+                args.subject_manifest,
+                check_root=str(prepared.root),
+                scenarios=prepared.scenarios,
             )
-            for line in stderr_tail_log(error.stderr_tail):
-                _feedback(line)
-            raise
-    return _complete(result, (path, started, frozen.tree if frozen else None))
+            options = {"runner": prepared.runner, "check": prepared}
+            result = _run(direction, target, (config, started), options)
+    finally:
+        if prepared is not None:
+            _feedback(f"check run: {prepared.root}")
+            if prepared.cleanup_error:
+                _feedback(f"check cleanup kept {prepared.root}: {prepared.cleanup_error}")
+    bound = frozen.tree if frozen else None
+    return _complete(result, (path, started, bound), "\n\n" + prepared.footer())
 
 
-def _complete(result, context: tuple[Path, float, str | None]) -> int:
+def _run(direction: ReviewDirection, target: ReviewTarget, context: tuple, options: dict):
+    config, started = context
+    options = {"runner": owned_reviewer_runner, "config": config} | options
+    try:
+        return run_review(direction, target, **options)
+    except CrossToolReviewError as error:
+        _feedback(f"failed category={error.category.value} elapsed={_monotonic() - started:.3f}s")
+        for line in stderr_tail_log(error.stderr_tail):
+            _feedback(line)
+        raise
+
+
+def _complete(result, context: tuple[Path, float, str | None], footer: str) -> int:
     path, started, candidate = context
     if candidate:
         # A materialized candidate always differs from its base; that is not a dirty worktree.
         result = dataclasses.replace(result, preexisting_dirty=False)
-    gate = render_hard_gate(result)
-    code = 1 if any(finding.severity == "MUST-FIX" for finding in result.findings) else 0
+    gate = render_hard_gate(result) + footer
+    code = 1 if status(result) in BLOCKING else 0
     _feedback(f"completed elapsed={_monotonic() - started:.3f}s")
     save_result(path, gate, (code, candidate))
     _feedback(f"result artifact: {path}")
@@ -163,6 +206,8 @@ def build_parser() -> argparse.ArgumentParser:
     review.add_argument("--model")
     review.add_argument("--effort")
     review.add_argument("--exempt-reason")
+    review.add_argument("--guide", help="Absolute test guide the diff check runs.")
+    review.add_argument("--slot-target", help="Reserve this plot's ports for the check.")
     _target(sub.add_parser("replace"))
     return parser
 

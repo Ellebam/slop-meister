@@ -55,3 +55,8 @@ tasks:
         cp slopmeister/session/playwright/package.json slopmeister/session/playwright/package-lock.json "$prefix/"
         npm ci --ignore-scripts --no-audit --no-fund --prefix "$prefix"
         INSTALL
+
+  browser:certificate:
+    desc: Install a client certificate into Chrome on Linux, operator only, in your own terminal
+    cmds:
+      - bash slopmeister/workstation/chrome_certificate.sh {{range .CLI_ARGS_LIST}}{{. | shellQuote}} {{end}}

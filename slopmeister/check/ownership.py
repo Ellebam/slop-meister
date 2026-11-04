@@ -54,7 +54,7 @@ def _process(pid: int) -> tuple[str | None, int | None]:
     try:
         fields = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
         return (None, None) if fields[0] == "Z" else (fields[19], int(fields[2]))
-    except FileNotFoundError:
+    except FileNotFoundError, ProcessLookupError:
         return None, None
 
 

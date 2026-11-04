@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+import shlex
 import shutil
 
 from slopmeister.render.permissions import NATIVE, permission_contract
@@ -26,29 +27,20 @@ def render_home(plots: Path, out: Path, manifest: list) -> None:
 
 
 def service_rules(
-    patterns: list[list[str]], root: Path, action: str
-) -> tuple[list[str], list[str]]:
-    rules, asks = [], []
-    why = (
-        "Native approval review required for the complete selected read action. "
-        "Verify operator authorization"
-    )
-    decision = "prompt"
+    command: list[str], root: Path, action: str
+) -> tuple[list[str], list[str], list[str]]:
+    """Return Codex rules, Claude allow entries and Claude ask entries for one action."""
+    contract = permission_contract(root / "src/permissions.toml")
     if action.endswith("-write"):
-        contract = permission_contract(root / "src/permissions.toml")
-        policy = next(
-            (e for e in contract.get("service_action", []) if e["action"] == action), None
-        )
-        if policy is None:
+        if not any(entry["action"] == action for entry in contract.get("service_action", [])):
             raise ValueError("selected write action has no central intent policy")
-        return [], ["mcp__" + action.replace("-", "_") + "__run"]
-    for command in patterns:
-        rules.append(
-            f"prefix_rule(pattern={json.dumps(command)}, decision={json.dumps(decision)}, "
-            f"justification={json.dumps(why)})"
-        )
-        asks.append("Bash(" + " ".join(command) + " *)")
-    return rules, asks
+        return [], [], ["mcp__" + action.replace("-", "_") + "__run"]
+    read = contract["service_read"]
+    if read.get("decision") != "allow" or not read.get("why"):
+        raise ValueError("service reads require allow and a justification")
+    decision, why = json.dumps(NATIVE[read["decision"]]), json.dumps(read["why"])
+    rule = f"prefix_rule(pattern={json.dumps(command)}, decision={decision}, justification={why})"
+    return [rule], ["Bash(" + shlex.join(command) + " *)"], []
 
 
 def service_binding(context, native: str, action: str) -> dict | bool:

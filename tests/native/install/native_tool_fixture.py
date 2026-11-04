@@ -5,7 +5,7 @@ import io
 import json
 from pathlib import Path
 
-from tests.native.install.intent_fixture import IntentModel, prepared_action, text
+from tests.native.install.intent_fixture import IntentModel, is_review, prepared_action, text
 
 
 def assessment(body):
@@ -37,7 +37,7 @@ class NativeModel(IntentModel):
     def do_POST(self):
         raw = self.rfile.read(int(self.headers.get("Content-Length", "0")))
         body = json.loads(raw)
-        if body.get("model") == "codex-auto-review":
+        if is_review(body):
             self.server.requests.append(body)
             self.request_path().parent.mkdir(parents=True, exist_ok=True)
             self.request_path().write_text(json.dumps(body, indent=2))

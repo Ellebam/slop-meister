@@ -1,6 +1,6 @@
 # Task summary
 
-Use this guidance for the `sow` message, freeform opening and closing, testing handoff, halt, blocked exit, harvest report and tracker closing comment.
+Use this guidance for the `sow` message, freeform opening and closing, testing handoff, halt, blocked exit, harvest report and tracker closing comment. Turn end alone is not a handoff.
 
 ## The operator summary
 
@@ -11,7 +11,7 @@ The operator is the first reader. They read on a phone, between many sessions, a
 - Keep the summary within 150 words and the whole message within 350 words. Aim for about 100 summary words. Check the exact draft locally. Count whitespace-separated words before Details and in the whole message, and reject summary backticks. Shorten Goal and Details first, keeping Plan cuts and New answers. Copy the checked draft verbatim into the final message.
 - What does not fit moves to the pull request, the notes file or a linked receipt, and the message says in one line where it is. Chat is not the archive. Move evidence, never drop it.
 - A blocker, a failed proof or a non-clean merge state is the first line of the summary.
-- Review and tester verdicts keep their exact wording.
+- Review verdicts and scenario statuses keep their exact wording.
 
 Reviewer detail follows the summary under **Details**. The operator can stop reading before it.
 
@@ -35,13 +35,13 @@ For one or two open operator decisions, keep each recommendation and the pros an
 
 ```markdown
 **Result** <the outcome in one sentence>
-**Proven** <open with "In the real system" or "Local only", then say by what, with the exact tester and review verdicts>
+**Proven** <open with "In the real system" or "Local only", then say by what, with the exact review verdicts and scenario statuses>
 **Weak** <what is weak or was not checked>
 **Your move** <the one thing the operator does next, in plain words>
 
 **Details**
 - This work follows <issue link>. <Explain each operator decision that departs from the issue.>
-- I <applied or dropped> <review or tester finding> because <reason>. <Use one bullet per finding, or write "There were no findings.">
+- I <applied or dropped> <review finding or scenario that did not pass> because <reason>. <Use one bullet per finding, or write "There were no findings.">
 - Run <operator-check command from the test guide>. Expect <result>.
 - The pull request is <link>. Its merge state is <state>.
 - The changed files are listed in <location, normally the pull request>.
@@ -53,6 +53,6 @@ The tracker closing comment has a different reader and survives cleanup. It open
 
 ## Evidence
 
-Preserve actual review and tester verdicts and uncertainty. The operator can reopen any finding from its line. Link evidence near the claim it supports and retain unchanged originals with their producers. Missing evidence stays unproven. Never infer approval, regrade a tester or claim later cleanup has happened. At harvest, cite evidence that survives cleanup.
+Preserve actual review verdicts, scenario statuses and uncertainty. The operator can reopen any finding from its line. Link evidence near the claim it supports and retain unchanged originals with their producers. Missing evidence stays unproven. Never infer approval, regrade a scenario or claim later cleanup has happened. At harvest, cite evidence that survives cleanup.
 
 Record each fact once, from the notes, Git state and existing producer receipts. Carry results into the handoff, not another report file, copied logs, phase or milestone table. At testing acceptance or a halt, give the report in the same response before the request. A completion notice, receipt list or test invitation is insufficient. After an authorized amendment or replacement review, replace stale facts and refresh the next handoff instead of repeating history. This guidance changes no workflow action or permission.

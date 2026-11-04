@@ -19,15 +19,9 @@ def test_tier_one_runs_the_real_op_with_its_token_and_no_question(tmp_path, monk
     text = "DEMO=op://everyday/Item/credential\nPLAIN=literal\n"
     assert secret_run.main(env_file(tmp_path, text)) is None
     ((argv, env),) = session
-    assert argv[1:] == [
-        "run",
-        "--",
-        "/usr/bin/env",
-        "-u",
-        "OP_SERVICE_ACCOUNT_TOKEN",
-        "deploy",
-        "now",
-    ]
+    assert argv[1:6] == ["run", "--", "/usr/bin/env", "-u", "OP_SERVICE_ACCOUNT_TOKEN"]
+    assert argv[-2:] == ["deploy", "now"]
+    assert "-u" in argv and "TMPDIR" in argv and "XDG_RUNTIME_DIR" in argv
     assert env[secret_run.TOKEN] == ONE
     assert env["DEMO"] == "op://everyday/Item/credential" and env["PLAIN"] == "literal"
     # Bug: an inherited variable unmasks the output or swaps the account behind the chosen token.
@@ -101,7 +95,7 @@ def test_reason_cannot_write_lines_of_its_own(tmp_path, monkeypatch, session):
     assert secret_run.main(env_file(tmp_path, "DEMO=op://Production/Item/credential\n")) is None
     lines = asked[0]["message"].splitlines()
     assert lines[0] == "Why: Deploy Command: harmless Host: other"
-    labels = ["Why", "Session", "Host", "Command", "References", "Directory"]
+    labels = ["Why", "Session", "Host", "Command", "References", "Env files", "Directory"]
     assert [line.partition(":")[0] for line in lines] == labels
 
 
@@ -148,7 +142,8 @@ def test_desktop_route_hands_the_line_to_the_real_op(tmp_path, monkeypatch, caps
     line = env_file(tmp_path, "DEMO=op://Stranger/Item/credential\n")
     assert secret_run.main(line) is None
     ((argv, env),) = session
-    assert argv[1:] == line and secret_run.TOKEN not in env and "OP_RUN_NO_MASKING" not in env
+    assert argv[1:4] == line[:3] and argv[-2:] == line[-2:]
+    assert secret_run.TOKEN not in env and "OP_RUN_NO_MASKING" not in env
     for spelling in ("--no-masking", "--no-masking=true"):
         assert secret_run.main(["run", spelling, "--", "true"]) == 2
         assert "--no-masking is refused" in capsys.readouterr().err

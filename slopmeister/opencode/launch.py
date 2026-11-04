@@ -8,7 +8,7 @@ from pathlib import Path
 import subprocess
 
 from slopmeister.launch import model
-from slopmeister.launch.model import BROKER_MARK, Delivery, Launch, Stop, shq
+from slopmeister.launch.model import BROKER_MARK, NOTICE_VARIABLE, Delivery, Launch, Stop, shq
 from slopmeister.opencode import native
 
 SESSION_POLL = 60
@@ -27,7 +27,8 @@ def line(launch: Launch) -> str:
     return (
         f"cd {wt} && env OPENCODE_DISABLE_CLAUDE_CODE=1 {BROKER_MARK} "
         f"OPENCODE_CONFIG_CONTENT={shq(config)} "
-        f'{shq(launch.opencode_bin)} {wt}{selected} --prompt "$(cat {kickoff})"'
+        f"{shq(launch.opencode_bin)} {wt}{selected} --prompt "
+        f'"$(cat {kickoff})${{{NOTICE_VARIABLE}}}"'
     )
 
 

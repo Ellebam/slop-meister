@@ -130,7 +130,7 @@ def test_more_than_fifty_children_fails_with_related_limit():
 @pytest.mark.parametrize(
     "issues,total",
     [
-        ([_body("X-9")], 1),
+        ([_body("../X-9")], 1),
         ([_body("B-2"), _body("B-2")], 2),
         ([_body("B-2")], 3),
         ([], 1),
@@ -161,3 +161,43 @@ def test_request_budget_is_enforced_for_every_jira_read(monkeypatch):
         client.get("rest/api/2/myself")
     with pytest.raises(ValueError, match="SEARCH_LIMIT"):
         client.get("rest/api/2/myself")
+
+
+def _moved_routes(*issues):
+    routes = {"rest/api/2/myself": {"name": "reader"}, "rest/api/2/search": _search(list(issues))}
+    for issue in issues:
+        key = issue["key"]
+        routes[f"rest/api/2/issue/{key}/remotelink"] = []
+        comments = {"startAt": 0, "total": 1, "comments": [{"id": key + "-c"}]}
+        routes[f"rest/api/2/issue/{key}/comment"] = comments
+    return routes
+
+
+def test_moved_ticket_reads_under_its_current_key():
+    """Bug: a ticket moved to another project is refused although the token can read it."""
+    moved = _body("NEW-7")
+    routes = _moved_routes(moved)
+    routes.update({"rest/api/2/issue/OLD-7": moved, "rest/api/2/issue/NEW-7": moved})
+    result, _ = _read(routes, ["--issue", "OLD-7"])
+    assert result["result"] == "JIRA_CONTEXT_PASS" and result["issue"]["key"] == "NEW-7"
+
+
+def test_moved_ticket_does_not_fail_its_batch():
+    """Bug: one moved key refuses the readable tickets in the same batch."""
+    result, _ = _read(_moved_routes(_body("NEW-7"), _body("B-2")), ["--issues", "OLD-7,B-2"])
+    assert sorted(issue["key"] for issue in result["issues"]) == ["B-2", "NEW-7"]
+    assert result["not_returned"] == ["OLD-7"]
+
+
+def test_batch_never_returns_more_tickets_than_it_requested():
+    """Bug: accepting moved keys makes an impossible batch response valid."""
+    routes = _moved_routes(_body("NEW-1"), _body("NEW-2"))
+    with pytest.raises(ValueError, match="RESPONSE_INVALID"):
+        _read(routes, ["--issues", "OLD-1"])
+
+
+def test_moved_neighbour_stays_in_a_related_read():
+    """Bug: a neighbour returned under its current key breaks the whole related read."""
+    root = _root(issuelinks=[{"type": {"inward": "relates"}, "inwardIssue": {"key": "OLD-2"}}])
+    result, _ = _read(_routes(root, [_body("NEW-2")]), ["--issue", "ROOT-1", "--related", "links"])
+    assert [issue["key"] for issue in result["related"]["issues"]] == ["NEW-2"]

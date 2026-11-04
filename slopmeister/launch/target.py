@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+import json
 import os
 from pathlib import Path
 import shlex
 import shutil
 import subprocess
 
+from slopmeister.install.check import state_directory
+from slopmeister.launch import arguments, terminal
 from slopmeister.launch.model import REPORT, ROOT, Launch, die, plain
 from slopmeister.launch.workspace import session_root
 from slopmeister.opencode import native
@@ -63,7 +66,9 @@ def policy(launch: Launch) -> None:
     launch.git_prompts = not launch.directory and (
         repository.get("commit") == "deny" or repository.get("shipping", "deny") != "allow"
     )
-    launch.approval_required = launch.service_actions or launch.git_prompts
+    launch.approval_required = (
+        launch.service_actions or launch.git_prompts or bool(launch.proof_for)
+    )
 
 
 def declaration(launch: Launch) -> None:
@@ -128,6 +133,8 @@ def rendered(launch: Launch) -> None:
 
 def name_lookup(launch: Launch) -> int:
     """pgrep's status for the session name, boundary-anchored so wt1 never matches inside wt10."""
+    if _recorded_handle(launch.orca_file) is not None:
+        return 0
     pattern = f"remote-control={launch.name}($| )"
     return subprocess.run(["pgrep", "-f", pattern], capture_output=True).returncode
 
@@ -202,3 +209,36 @@ def binaries(launch: Launch) -> None:
     if not os.access(launch.codex_bin, os.X_OK):
         raise die(f"codex not found at {launch.codex_bin}" + REPORT)
     launch.codex_baseline = codex_clients()
+
+
+def _recorded_handle(record: Path) -> str | None:
+    """The live Orca terminal a launch record names, or None."""
+    handle = "" if record.is_symlink() or not record.is_file() else record.read_text().strip()
+    live = terminal.terminals() if handle else None
+    return handle if live is not None and handle in live else None
+
+
+def saved_proof(launch: Launch) -> None:
+    """Redispatch keeps a proof session's native approval, so its arguments are checked again."""
+    state, _ = state_directory(launch.wt)
+    record = state / "state.json"
+    if (
+        not record.is_symlink()
+        and record.is_file()
+        and json.loads(record.read_text()).get("proof_owner")
+    ):
+        launch.approval_required = True
+        arguments.check_tool_arguments(launch)
+
+
+def proof_owner(launch: Launch) -> None:
+    """The owner's own launch record and live terminal bind a proof session to that instance."""
+    if not launch.proof_for:
+        return
+    handle = _recorded_handle(launch.state_dir / f"{launch.proof_for}.orca")
+    if handle is None:
+        raise die(
+            f"--proof-for {launch.proof_for} needs that session's launch record and its live "
+            "Orca terminal; launch the owner first"
+        )
+    launch.proof_handle = handle

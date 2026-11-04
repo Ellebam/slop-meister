@@ -48,6 +48,7 @@ def test_consumer_keeps_its_python_environment_and_import_path(machine, route):
     if route != "run":
         command = ["op", route, "--", *command]
     env = {"HOME": str(machine.home), "PATH": machine.path, "SLOPMEISTER_SECRET_BROKER": "1"}
+    env.update(machine.extra_env)
     env.update(PYTHONPATH=str(modules), PYTHONDONTWRITEBYTECODE="0")
     done = subprocess.run(
         command, cwd=machine.home, env=env, capture_output=True, text=True, timeout=10

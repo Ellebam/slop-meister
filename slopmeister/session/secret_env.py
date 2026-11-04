@@ -3,6 +3,111 @@
 import os
 from pathlib import Path
 import re
+import stat
+import sys
+
+# Refuse known env-file controls of executable lookup, startup code, transport and trust roots.
+EXECUTION_NAMES = frozenset(
+    [
+        "PATH",
+        "BASH_ENV",
+        "ENV",
+        "SHELLOPTS",
+        "BASHOPTS",
+        "IFS",
+        "CDPATH",
+        "GLOBIGNORE",
+        "ZDOTDIR",
+        "FPATH",
+        "NODE_OPTIONS",
+        "NODE_PATH",
+        "PERL5OPT",
+        "PERL5LIB",
+        "PERLLIB",
+        "NODE_EXTRA_CA_CERTS",
+        "NODE_TLS_REJECT_UNAUTHORIZED",
+        "GIT_SSL_NO_VERIFY",
+        "GIT_SSL_CAINFO",
+        "GIT_SSH_COMMAND",
+        "GIT_EXEC_PATH",
+        "GIT_CONFIG_COUNT",
+        "GIT_CONFIG_PARAMETERS",
+        "GIT_CONFIG_GLOBAL",
+        "GIT_CONFIG_SYSTEM",
+        "GIT_PROXY_COMMAND",
+        "GIT_ASKPASS",
+        "SSH_ASKPASS",
+        "GCONV_PATH",
+        "LUA_INIT",
+        "FTP_PROXY",
+        "RUBYOPT",
+        "RUBYLIB",
+        "JAVA_TOOL_OPTIONS",
+        "JDK_JAVA_OPTIONS",
+        "_JAVA_OPTIONS",
+        "CLASSPATH",
+        "SSL_CERT_FILE",
+        "SSL_CERT_DIR",
+        "REQUESTS_CA_BUNDLE",
+        "CURL_CA_BUNDLE",
+        "OPENSSL_CONF",
+        "OPENSSL_MODULES",
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+        "NO_PROXY",
+    ]
+)
+EXECUTION_PREFIXES = ("LD_", "DYLD_", "PYTHON")
+
+
+def validate_names(names: tuple[str, ...], reserved: tuple[str, ...]) -> None:
+    owned = next((name for name in names if name in reserved), None)
+    if owned:
+        raise ValueError(f"{owned} is set by the session's op and cannot come from an env file")
+    for name in names:
+        if name.upper() in EXECUTION_NAMES or name.startswith(EXECUTION_PREFIXES):
+            raise ValueError(f"{name} can alter execution and cannot come from an env file")
+
+
+# Apple's _CS_DARWIN_USER_TEMP_DIR key is not named in Python's confstr table.
+DARWIN_USER_TEMP_DIR = 65537
+
+
+def cli_environment(env: dict[str, str]) -> dict[str, str]:
+    """Use the private OS root, independent of the session's workspace TMPDIR."""
+    try:
+        root = (
+            os.confstr(DARWIN_USER_TEMP_DIR)
+            if sys.platform == "darwin"
+            else env.get("XDG_RUNTIME_DIR")
+        )
+        if not root:
+            raise ValueError("private temporary root is unavailable; Linux needs XDG_RUNTIME_DIR")
+        path = Path(root)
+        info = path.lstat()
+    except OSError:
+        raise ValueError("private temporary root is unavailable") from None
+    workspace = env.get("SLOPMEISTER_SESSION_WORKSPACE")
+    safe = path.is_absolute() and stat.S_ISDIR(info.st_mode)
+    safe &= info.st_uid == os.getuid() and stat.S_IMODE(info.st_mode) == 0o700
+    if not safe or workspace and path.resolve().is_relative_to(Path(workspace).resolve()):
+        raise ValueError("private temporary root must be outside the workspace, owned, mode 700")
+    return env | {"TMPDIR": str(path), "XDG_RUNTIME_DIR": str(path)}
+
+
+def command_environment(argv: list[str], env: dict[str, str], token: str) -> list[str]:
+    """Restore the command's original roots after op resolves and masks its environment."""
+    if argv[:1] != ["run"] or "--" not in argv:
+        return argv
+    split = argv.index("--") + 1
+    if split == len(argv):
+        return argv
+    names = ("TMPDIR", "XDG_RUNTIME_DIR")
+    unset = [arg for name in names for arg in ("-u", name)]
+    values = [f"{name}={env[name]}" for name in names if name in env]
+    return [*argv[:split], "/usr/bin/env", "-u", token, *unset, *values, *argv[split:]]
+
 
 NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 # Vault, item, section and field names may hold spaces, never separators or control characters.

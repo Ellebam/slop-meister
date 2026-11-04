@@ -59,13 +59,16 @@ def test_permission_contract_accepts_an_absolute_executable_path(tmp_path):
     """Absolute launcher binaries must reach the same contract as bare command names."""
     prefix = "/opt/Orca.app/bin/orca terminal send"
     source = tmp_path / "permissions.toml"
+    (tmp_path / "github-permissions.toml").write_bytes(
+        (ROOT / "src/github-permissions.toml").read_bytes()
+    )
     (tmp_path / "native-permissions.toml").write_bytes(
         (ROOT / "src/native-permissions.toml").read_bytes()
     )
     source.write_text(
         (ROOT / "src/permissions.toml")
         .read_text()
-        .replace('prefix = "gh pr merge"', f"prefix = {json.dumps(prefix)}", 1)
+        .replace('prefix = "op read"', f"prefix = {json.dumps(prefix)}", 1)
     )
     commands = permission_contract(source)["command"]
     assert any(entry["prefix"] == prefix for entry in commands)
@@ -86,15 +89,16 @@ def test_permission_contract_accepts_an_absolute_executable_path(tmp_path):
 def test_permission_contract_rejects_shell_syntax_in_executable_paths(tmp_path, executable):
     """Path support must not turn command prefixes into shell expressions."""
     source = tmp_path / "permissions.toml"
+    (tmp_path / "github-permissions.toml").write_bytes(
+        (ROOT / "src/github-permissions.toml").read_bytes()
+    )
     (tmp_path / "native-permissions.toml").write_bytes(
         (ROOT / "src/native-permissions.toml").read_bytes()
     )
     source.write_text(
         (ROOT / "src/permissions.toml")
         .read_text()
-        .replace(
-            'prefix = "gh pr merge"', f"prefix = {json.dumps(executable + ' terminal send')}", 1
-        )
+        .replace('prefix = "op read"', f"prefix = {json.dumps(executable + ' terminal send')}", 1)
     )
     with pytest.raises(ValueError, match="unsupported command prefix"):
         permission_contract(source)
@@ -178,5 +182,6 @@ def test_secret_exception_names_both_routes_and_keeps_service_actions():
     rule = source["autoMode"]["allow"][1]
     assert "op tier-two -- <command> and op desktop -- <command> are permitted only for" in rule
     assert "reading the token files" in rule
-    assert "Selected service actions keep their existing" in rule
+    assert "Selected service reads run without approval" in rule
+    assert "selected service writes keep their native approval" in rule
     assert "Bash(op run" not in json.dumps(source["permissions"])

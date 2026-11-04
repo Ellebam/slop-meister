@@ -9,6 +9,7 @@ import pytest
 
 from slopmeister import paths
 from slopmeister.launch.command import CODEX_SANDBOX
+from slopmeister.launch.model import INBOX_NOTICE
 from tests.integration.launch.helpers import (
     KICKOFF,
     Machine,
@@ -44,13 +45,13 @@ def _claude(world: Machine, worktree: Path, recorded: list[str]) -> tuple[list[s
         *("--setting-sources", "user,project"),
         *("--settings", f"{worktree}/.claude/access-settings.json"),
     ]
-    return before, ["--permission-mode", "auto", "--", KICKOFF]
+    return before, ["--permission-mode", "auto", "--", KICKOFF + INBOX_NOTICE]
 
 
 def _codex(world: Machine, worktree: Path, recorded: list[str]) -> tuple[list[str], list[str]]:
     after = [
         *("-c", 'project_root_markers=["AGENTS.md"]', "-c", "project_doc_fallback_filenames=[]"),
-        *("-C", str(worktree), "--", f"{worktree.name}\n\n{KICKOFF}"),
+        *("-C", str(worktree), "--", f"{worktree.name}\n\n{KICKOFF}{INBOX_NOTICE}"),
     ]
     sandbox = CODEX_SANDBOX[paths.platform()].strip().split(" ", 1)
     return [

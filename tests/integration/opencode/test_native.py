@@ -85,39 +85,6 @@ def test_provider_names_come_from_the_config_and_never_values(tmp_path):
     assert native.require_provider({**env, "FAKE_KEY": "value"}) == ["FAKE_KEY"]
 
 
-def test_child_env_carries_names_rules_and_disables_claude_files():
-    """Escaping bug: OpenCode loads the operator's Claude skills or runs without deny rules."""
-    rules = native.permission(edit=False)
-    source = {"PATH": "/bin", "FAKE_KEY": "v" * 20, "OTHER": "x"}
-    env = native.child_env(source, ["FAKE_KEY"], rules)
-    assert set(env) == {
-        "PATH",
-        "FAKE_KEY",
-        "OPENCODE_DISABLE_CLAUDE_CODE",
-        "OPENCODE_CONFIG_CONTENT",
-    }
-    assert env["OPENCODE_DISABLE_CLAUDE_CODE"] == "1"
-    assert '"op read *":"deny"' in env["OPENCODE_CONFIG_CONTENT"]
-    assert '"edit":"deny"' in env["OPENCODE_CONFIG_CONTENT"]
-
-
-def test_scrub_removes_an_opaque_value_everywhere(tmp_path):
-    """Escaping bug: an echoed provider key reaches a quoted report that redact() cannot see."""
-    secret = "Zq8vN1opaqueValue9x"
-    (tmp_path / "a").mkdir()
-    (tmp_path / "a/stderr.log").write_text(f"auth failed for {secret}\n")
-    (tmp_path / "events.jsonl").write_text(f'{{"text":"{secret}"}}\n')
-    subject = tmp_path / "checkout"
-    subject.mkdir()
-    (subject / "leaked.txt").write_text(secret)
-    native.scrub(tmp_path, [secret], subject)
-    for path in tmp_path.rglob("*"):
-        if path.is_file() and not path.is_relative_to(subject):
-            assert secret not in path.read_text()
-    # The subject is never rewritten by the runner, a leaked value there stays for the tester.
-    assert (subject / "leaked.txt").read_text() == secret
-
-
 def test_empty_session_list_means_no_sessions(tmp_path):
     """Bug: OpenCode prints nothing for a project without sessions and the launcher crashes."""
     workspace = tmp_path / "wt"

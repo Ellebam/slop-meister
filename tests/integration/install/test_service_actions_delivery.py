@@ -2,6 +2,7 @@
 
 import json
 import re
+import shlex
 
 import pytest
 
@@ -23,8 +24,8 @@ def test_writer_binding_uses_the_executable_the_launcher_runs(tmp_path, monkeypa
     assert binding["cli"] == (str(expected) if tool == "codex" else "/foreign/claude")
 
 
-def test_direct_entry_requires_approval_in_both_tools(tmp_path):
-    """Bug: a selected read can run without review of its exact fixed entry."""
+def test_direct_read_is_allowed_in_both_tools(tmp_path):
+    """Bug: a selected read still prompts or the allow rule names another entry."""
     context = selected_context(tmp_path)
     entries, permissions, instructions = action_payload(context)
     rules = entries[".codex/rules/service-actions.rules"][0].decode()
@@ -32,17 +33,13 @@ def test_direct_entry_requires_approval_in_both_tools(tmp_path):
         entry = context.workspace / native / "service-actions/jira-read/entry.py"
         command = [str(PYTHON), "-E", "-s", "-S", str(entry)]
         assert json.dumps(command) in rules
-        assert "Bash(" + " ".join(command) + " *)" in permissions["ask"]
+        assert "Bash(" + shlex.join(command) + " *)" in permissions["allow"]
         assert str(entry) in instructions
         assert native + "/service-actions/jira-read/entry.py" in entries
-    assert all(
-        'decision="forbidden"' in line
-        for line in rules.splitlines()
-        if "service_actions.supervisor" in line
-    )
+    assert all('decision="allow"' in line for line in rules.splitlines())
 
 
-def test_delivery_has_both_native_prompts_without_copying_a_token(tmp_path):
+def test_delivery_has_both_read_allow_rules_without_copying_a_token(tmp_path):
     entries, permissions, instructions = action_payload(selected_context(tmp_path))
     assert not any(path.endswith("Taskfile.yml") for path in entries)
     for native in (".codex", ".claude"):
@@ -50,8 +47,8 @@ def test_delivery_has_both_native_prompts_without_copying_a_token(tmp_path):
         assert prefix + "config.json" in entries
         assert entries[prefix + "config.json"][1] == 0o400
         assert prefix + "service_actions/supervisor.py" in entries
-    assert 'decision="prompt"' in entries[".codex/rules/service-actions.rules"][0].decode()
-    assert permissions["ask"] and "jira-read" in instructions
+    assert 'decision="allow"' in entries[".codex/rules/service-actions.rules"][0].decode()
+    assert not permissions["ask"] and permissions["allow"] and "jira-read" in instructions
     assert not any(name.endswith(".env") for name in entries)
 
 

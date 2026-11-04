@@ -30,7 +30,7 @@ def test_pat_only_supervisor_never_reads_a_certificate_or_password(tmp_path, mon
         return b'{"result":"JIRA_CONTEXT_PASS"}'
 
     monkeypatch.setattr(module, "invoke", invoke)
-    assert json.loads(module.fetch())["result"] == "JIRA_CONTEXT_PASS"
+    assert json.loads(module.fetch(["--issue", "TEST-7"]))["result"] == "JIRA_CONTEXT_PASS"
     assert calls == ["user", "vault", "run"]
 
 
@@ -61,7 +61,7 @@ def test_supervisor_uses_only_selected_vault_and_never_inherits_desktop_credenti
         return b'{"result":"JIRA_CONTEXT_PASS","user":"reader","total":0,"tickets":[]}'
 
     monkeypatch.setattr(module, "invoke", invoke)
-    assert json.loads(module.fetch())["result"] == "JIRA_CONTEXT_PASS"
+    assert json.loads(module.fetch(["--issue", "TEST-7"]))["result"] == "JIRA_CONTEXT_PASS"
     assert len(calls) == 4 and not list(tmp_path.glob("*.p12"))
 
 
@@ -85,7 +85,7 @@ def test_op_receives_a_home_that_fits_the_system(tmp_path, monkeypatch, platform
         return b'{"result":"JIRA_CONTEXT_PASS"}'
 
     monkeypatch.setattr(module, "invoke", invoke)
-    module.fetch()
+    module.fetch(["--issue", "TEST-7"])
     config = str(Path.home() / ".config")
     assert homes == [(home, config)] * 4
 
@@ -103,7 +103,7 @@ def test_invalid_token_file_fails_without_any_op_fallback(tmp_path, monkeypatch,
         token.symlink_to(saved)
     monkeypatch.setattr(module, "invoke", lambda *args, **kwargs: pytest.fail("op must not run"))
     with pytest.raises(ValueError):
-        module.fetch()
+        module.fetch(["--issue", "TEST-7"])
 
 
 def test_removed_runtime_dependency_stops_before_token_or_provider(tmp_path, monkeypatch):
@@ -118,7 +118,7 @@ def test_removed_runtime_dependency_stops_before_token_or_provider(tmp_path, mon
     monkeypatch.setattr(module, "service_token", lambda *_args: pytest.fail("token was read"))
     monkeypatch.setattr(module, "invoke", lambda *_args, **_kwargs: pytest.fail("child started"))
     with pytest.raises(ValueError, match="^LOCAL_PREREQUISITE_MISSING:/usr/bin/curl$"):
-        module.fetch()
+        module.fetch(["--issue", "TEST-7"])
 
 
 @pytest.mark.parametrize("certificate", [False, True])
@@ -137,7 +137,7 @@ def test_certificate_admission_precedes_all_credentials(tmp_path, monkeypatch, c
     monkeypatch.setattr(module, "service_token", lambda _: pytest.fail("token was read"))
     monkeypatch.setattr(module, "invoke", lambda _: pytest.fail("credential child started"))
     with pytest.raises(ValueError, match="LOCAL_PREREQUISITE_MISSING:OpenSSL legacy provider"):
-        module.fetch()
+        module.fetch(["--issue", "TEST-7"])
 
 
 @pytest.mark.parametrize("wrong", ["identity", "vault"])
@@ -157,7 +157,7 @@ def test_wrong_service_identity_or_vault_stops_before_secret_resolution(
         "SERVICE_ACCOUNT_IDENTITY_MISMATCH" if wrong == "identity" else "VAULT_SCOPE_MISMATCH"
     )
     with pytest.raises(ValueError, match="^" + expected + "$"):
-        module.fetch()
+        module.fetch(["--issue", "TEST-7"])
 
 
 def test_http_child_never_receives_the_service_account_or_parent_environment(tmp_path, monkeypatch):
@@ -177,7 +177,7 @@ def test_http_child_never_receives_the_service_account_or_parent_environment(tmp
         return b'{"result":"JIRA_CONTEXT_PASS"}'
 
     monkeypatch.setattr(module, "invoke", invoke)
-    module.fetch()
+    module.fetch(["--issue", "TEST-7"])
     assert len(seen) == 1
     assert seen[0].argv[3:6] == ["/usr/bin/env", "-u", "OP_SERVICE_ACCOUNT_TOKEN"]
     assert "OP_SESSION_private" not in seen[0].env

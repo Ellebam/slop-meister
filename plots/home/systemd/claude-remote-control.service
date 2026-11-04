@@ -6,6 +6,7 @@ Description=Claude Code remote control for Slopmeister
 WorkingDirectory=%h/dev/slop-meister
 Environment=PATH=%h/.local/bin:/usr/bin:/bin
 Environment=SLOPMEISTER_SECRET_BROKER=1
+Environment=SLOPMEISTER_PHONE_SESSION=1
 ExecStart=%h/.local/bin/claude remote-control
 Restart=always
 RestartSec=60

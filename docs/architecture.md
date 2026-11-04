@@ -14,17 +14,15 @@ The product runs from the checkout through one entry script, `bin/slopmeister <c
 | `slopmeister/dispatch/` | Standing dispatcher launch | `dispatch` |
 | `slopmeister/install/` | Fixed session configuration, snapshots, trust and hooks | `install` |
 | `slopmeister/launch/` | Worker launch and recovery | `plot-session` |
-| `slopmeister/opencode/` | OpenCode launch and tester integration | Library used by `plot-session` and `tester` |
+| `slopmeister/opencode/` | OpenCode worker launch and native evidence | Library used by `plot-session` |
 | `slopmeister/plots/` | Plot declaration, validation and queries | `plots` |
 | `slopmeister/quality/` | Budgets, import rules, field identifiers and plot style | `quality` |
 | `slopmeister/render/` | Rendering sources and plots for both tools | `render` |
 | `slopmeister/review/` | Independent review and final-result replay | `review` |
-| `slopmeister/sandbox/` | Opt-in local Jira and Confluence sandbox | `sandbox` |
 | `slopmeister/session/` | Self-contained delivered session programs | No direct command |
 | `slopmeister/session/service_actions/` | Delivered native read and write actions | No direct command |
 | `slopmeister/slots/` | Target slot allocation, inspection and release | `slots` |
-| `slopmeister/spine/` | Frozen repository candidates and tester composition | `candidate` |
-| `slopmeister/spine/tester/` | Independent tester launch, validation and collection | `tester` |
+| `slopmeister/spine/` | Frozen repository candidates | `candidate` |
 | `slopmeister/threads/` | Worker occupancy and startup context | `occupants`, `startup-context` |
 | `slopmeister/threads/timing/` | Spine session timing | `spine-timing` |
 | `slopmeister/vault/` | Self-contained vault runtime boundary | No direct command |
@@ -40,9 +38,9 @@ A launched session receives fixed copies of what it needs and never follows late
 
 The same boundary serves vault access from repository worktrees and temporary directory sessions. The installer copies `slopmeister/vault/runtime/` byte-for-byte to `~/.vault-git/lib/slopmeister_vault/` and installs one small launcher at `~/.vault-git/bin/slopmeister-vault`. Markdown bytes and external Git own correctness. Its optional `obsidian` pass-through allows only read-only index and UI operations and bounds their process group. The launcher selects an absolute Python 3.14 path, Homebrew's on the Mac and the system's on Linux, and never imports a checkout. The scheduled whole-vault sweep remains the separate Bash job used by its existing applet.
 
-Native startup preflight drives each client protocol with the delivered writer configuration before opening a worker. Existing deliveries retain their saved pin format and scratch ownership on redispatch. Slot setup and tester allocations share the slot owner; setup output digests and tester leases prevent unsafe cleanup.
+Native startup preflight drives each client protocol with the delivered writer configuration before opening a worker. Existing deliveries retain their saved pin format and scratch ownership on redispatch. Slot setup and independent check allocations share the slot owner. Check leases and the public ignored-work guard prevent unsafe cleanup.
 
-The vault runtime separates path/environment selection, initialization, link resolution and retro routes so each module stays within budget. Legacy log callers remain explicit. Permission rendering reads general commands from `src/permissions.toml` and workspace-bound/service policies from `src/native-permissions.toml`, each with one source.
+The vault runtime separates path/environment selection, initialization, link resolution and retro routes so each module stays within budget. Legacy log callers remain explicit. Permission rendering reads general commands from `src/permissions.toml`, GitHub commands from `src/github-permissions.toml`, and workspace-bound/service policies from `src/native-permissions.toml`, each with one source.
 
 The quality checker enforces both snapshot boundaries: `slopmeister/session/` and `slopmeister/vault/runtime/` may import only the standard library and their own subtree. A delivered module that reaches into the rest of the package fails the gate.
 

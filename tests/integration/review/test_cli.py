@@ -56,7 +56,7 @@ def _args(workspace, *tail):
 
 def _read_dir_args(workspace, prompt, directories):
     args = [
-        "review", "--direction", "codex-to-claude", "--mode", "diff",
+        "review", "--direction", "codex-to-claude", "--mode", "plan",
         "--cwd", str(workspace), "--prompt-file", str(prompt),
     ]  # fmt: skip
     for directory in directories:

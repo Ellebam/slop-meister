@@ -31,9 +31,3 @@ tasks:
     desc: The real-session smoke, one sow session per tool, only with the operator's consent
     cmds:
       - .venv/bin/python -m pytest tests/live -q -p no:cacheprovider {{.CLI_ARGS}}
-
-  spine:test:
-    desc: Launch or collect one isolated opposite-tool tester, pass -- launch or -- collect and its arguments
-    silent: true
-    cmds:
-      - bin/slopmeister tester {{.CLI_ARGS}}

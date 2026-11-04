@@ -123,7 +123,6 @@ def test_setup_and_separate_tester_range_are_optional_and_reported():
         "testers": 1,
         "ports": {"WEB": 45100},
         "setup": ["python3", "prepare.py"],
-        "setup_files": [".env.local", ".hooks/generated"],
     }
     data = validate(change("slots", slots), PATH)
     assert data["slots"] == slots
@@ -152,32 +151,7 @@ def test_setup_is_an_argument_array_without_control_characters(command):
         validate(change("slots.setup", command), PATH)
 
 
-@pytest.mark.parametrize("output", ["/tmp/out", "../out", ".git/config", ".slot.env", "x//y"])
-def test_setup_output_paths_cannot_replace_metadata_or_escape(output):
-    slots = {**VALID["slots"], "setup": ["prepare"], "setup_files": [output]}
-    with pytest.raises(ValueError, match="relative output paths"):
-        validate(change("slots", slots), PATH)
-
-
-def test_setup_files_require_a_command_and_unique_names():
-    with pytest.raises(ValueError, match="requires setup"):
-        validate(change("slots.setup_files", [".env"]), PATH)
-    slots = {**VALID["slots"], "setup": ["prepare"], "setup_files": [".env", ".env"]}
-    with pytest.raises(ValueError, match="unique outputs"):
-        validate(change("slots", slots), PATH)
-
-
-def test_disposable_outputs_need_no_setup_and_are_reported_as_data():
-    slots = {**VALID["slots"], "disposable": ["artifacts"]}
-    data = validate(change("slots", slots), PATH)
-    assert data["slots"]["disposable"] == ["artifacts"]
-    assert 'disposable\t-\t["artifacts"]' in slot_rows(data)
-
-
-@pytest.mark.parametrize(
-    "value",
-    ["artifacts", ["../state"], [".git"], ["artifacts/.slot.env"], ["artifacts", "artifacts"]],
-)
-def test_disposable_outputs_refuse_unsafe_or_duplicate_paths(value):
-    with pytest.raises(ValueError, match="slots.disposable"):
-        validate(change("slots.disposable", value), PATH)
+@pytest.mark.parametrize("key", ["setup_files", "disposable"])
+def test_retired_output_contract_is_rejected(key):
+    with pytest.raises(ValueError, match="unknown"):
+        validate(change("slots." + key, ["artifacts"]), PATH)
