@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from slopmeister.install.prepare import TERMINAL_INPUT
+from slopmeister.install.prepare import EVERY_SESSION
 from tests.integration.launch.helpers import (
     ROOT,
     codex_writable,
@@ -57,7 +57,7 @@ def test_plot_grants_reach_each_tool(tmp_path, tool, grants):
     render = (ROOT / "dist/codex/plots/slopmeister.md").read_bytes()
     assert (
         worktree / "AGENTS.md"
-    ).read_bytes() == render + b"\n" + ALLOW + TERMINAL_INPUT.encode() + b"\n"
+    ).read_bytes() == render + b"\n" + ALLOW + EVERY_SESSION.encode() + b"\n"
     assert git(worktree, "show", ":AGENTS.md") == "foreign agreement\n"
     assert git(repo, "status", "--porcelain") == git(worktree, "status", "--porcelain") == ""
     git(worktree, "commit", "-q", "--allow-empty", "-m", "allowed")

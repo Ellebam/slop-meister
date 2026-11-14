@@ -2,6 +2,7 @@
 
 import argparse
 from collections.abc import Sequence
+from dataclasses import replace
 import os
 from pathlib import Path
 import shlex
@@ -11,30 +12,13 @@ import tempfile
 from slopmeister.claims import evidence
 from slopmeister.errors import SlopmeisterError
 from slopmeister.paths import ROOT, main_checkout, session_root
-from slopmeister.removal import (
-    IGNORED_ARGS,
-    check_ignored,
-    listed,
-    nested,
-    read_inventory,
-    remove_tree,
-)
+from slopmeister.removal import check_ignored, ignored_work, nested, read_inventory, remove_tree
+from slopmeister.removal import clean as _clean
+from slopmeister.removal import git as _git
+from slopmeister.repositories import check_companions, remove_companions
 from slopmeister.session import git_environment
-from slopmeister.slots import allocation, claimed, down, leftover
+from slopmeister.slots import allocation, claimed, down, leftover, tester
 from slopmeister.threads import occupants
-
-
-def _git(root: Path, *args: str) -> str:
-    result = subprocess.run(
-        ["git", "-C", str(root), *args],
-        env=git_environment.child(),
-        text=True,
-        capture_output=True,
-        timeout=30,
-    )
-    if result.returncode:
-        raise SlopmeisterError(result.stderr.strip() or "Git inspection failed")
-    return result.stdout
 
 
 def _scope(value: str) -> tuple[Path, Path | None]:
@@ -75,7 +59,9 @@ def _registered(path: Path, repo: Path | None) -> bool:
     return path in known
 
 
-def _slot(path: Path, repo: Path | None) -> None:
+def _slot(
+    path: Path, repo: Path | None, *, own: bool = False, force: bool = False
+) -> down.Request | None:
     if repo is None:
         return
     source = path / allocation.ALLOCATION
@@ -84,6 +70,8 @@ def _slot(path: Path, repo: Path | None) -> None:
         if item.name != path.name:
             raise SlopmeisterError("allocation names a different workspace, refusing")
         plot, number = item.target, str(item.slot)
+        if own:
+            return down.Request(str(repo), plot, path.name, force, number, True)
     else:
         receipt = claimed._receipt(path, repo)
         saved = (read_inventory(receipt.parent) or {}) if receipt else {}
@@ -93,9 +81,13 @@ def _slot(path: Path, repo: Path | None) -> None:
         if not isinstance(plot, str):
             raise SlopmeisterError("saved slot allocation has no plot, refusing")
         allocation.validate_name(plot, "plot")
-    prefix = ["task", "--dir", str(ROOT), "slot:down", "--", str(repo)]
-    command = shlex.join([*prefix, plot, path.name, "--slot", number])
+    command = _slot_command(str(repo), plot, path.name, number)
     raise SlopmeisterError(f"this workspace belongs to a slot, run: {command}")
+
+
+def _slot_command(repo: str, plot: str, name: str, number: str) -> str:
+    prefix = ["task", "--dir", str(ROOT), "slot:down", "--", repo]
+    return shlex.join([*prefix, plot, name, "--slot", number])
 
 
 def _occupied(path: Path) -> None:
@@ -108,11 +100,30 @@ def _occupied(path: Path) -> None:
         raise SlopmeisterError(f"a worker still occupies {path}, refusing: {names}")
 
 
-def _check(path: Path, repo: Path | None, args: argparse.Namespace) -> bool:
+def _contents(
+    path: Path, repo: Path | None, registered: bool, force: bool, slotted: bool = False
+) -> None:
+    """Refuse unsaved ignored work and nested worktrees other than the checked companions.
+
+    A slot release allows the slot's own allocation file, so it checks ignored work itself."""
+    children = check_companions(path, force) if registered else []
+    owned = frozenset(Path(row["worktree"]) for row in children)
+    if registered and not force and not slotted:
+        ignored_work(path, owned)
+    if repo is None and not force:
+        check_ignored(path, ["? " + p.name for p in path.iterdir()], path / ".slopmeister-config")
+    nested(path, owned)
+
+
+def _check(
+    path: Path, repo: Path | None, args: argparse.Namespace
+) -> tuple[occupants.Process | None, down.Request | None]:
     registered = _registered(path, repo)
-    if args.self and not registered:
-        raise SlopmeisterError("--self requires a registered worktree")
-    _slot(path, repo)
+    if args.self and repo is not None and not registered:
+        raise SlopmeisterError("--self requires a registered worktree or a session directory")
+    if args.stop_only:
+        return down._calling_worker(path, "workspace"), None
+    slot = _slot(path, repo, own=args.self, force=args.force)
     claimed.refuse(path, "<plot>", repo)
     if Path.cwd().resolve().is_relative_to(path):
         raise SlopmeisterError("run workspace removal from outside the selected workspace")
@@ -122,38 +133,12 @@ def _check(path: Path, repo: Path | None, args: argparse.Namespace) -> bool:
         if claimed._receipt(path, repo) is not None:
             raise SlopmeisterError("Git still identifies this workspace, use its owning repository")
         leftover.confirm(args.force, _retry(path))
-    if repo is None and not args.force:
-        check_ignored(path, ["? " + p.name for p in path.iterdir()], path / ".slopmeister-config")
-    nested(path)
+    _contents(path, repo, registered, args.force, slot is not None)
     if args.self:
-        down._calling_worker(path, "workspace")
+        return down._calling_worker(path, "workspace"), slot
     else:
         _occupied(path)
-    return registered
-
-
-def _clean(path: Path, repo: Path, force: bool) -> None:
-    if (path / ".git").is_symlink() or not (path / ".git").is_file():
-        repair = shlex.join(["git", "-C", str(repo), "worktree", "repair"])
-        raise SlopmeisterError(f"registered worktree has no valid Git link; repair with: {repair}")
-    if Path(_git(path, "rev-parse", "--show-toplevel").strip()).resolve() != path:
-        raise SlopmeisterError("Git link does not identify the selected worktree, refusing")
-    common = _git(path, "rev-parse", "--path-format=absolute", "--git-common-dir").strip()
-    if Path(common).resolve() != repo / ".git":
-        raise SlopmeisterError("Git link does not belong to the owning repository, refusing")
-    metadata = Path(_git(path, "rev-parse", "--absolute-git-dir").strip())
-    if (metadata / "locked").exists():
-        raise SlopmeisterError("locked worktree, unlock it before workspace removal")
-    if not _git(path, "branch", "--show-current").strip() and not force:
-        raise SlopmeisterError("detached HEAD may lose commits, pass --force to confirm deletion")
-    changed = _git(path, "status", "--porcelain", "--untracked-files=all").splitlines()
-    if changed and not force:
-        names = listed([line[3:] for line in changed])
-        raise SlopmeisterError(f"uncommitted work: {names}; pass --force to confirm deletion")
-    if not force:
-        entries = _git(path, *IGNORED_ARGS).split("\0")
-        ignored = [entry for entry in entries if entry.startswith(("? ", "S ", "s ", "h "))]
-        check_ignored(path, ignored, metadata / "slopmeister-config")
+    return None, None
 
 
 def _retry(path: Path) -> str:
@@ -162,6 +147,8 @@ def _retry(path: Path) -> str:
 
 def _remove(path: Path, repo: Path | None) -> int:
     if repo is not None:
+        if _registered(path, repo):
+            remove_companions(path)
         leftover.remove(path, _retry(path), repo)
     else:
         remove_tree(path)
@@ -169,9 +156,16 @@ def _remove(path: Path, repo: Path | None) -> int:
     return 0
 
 
-def _self(path: Path, repo: Path, args: argparse.Namespace) -> int:
-    state = read_inventory(evidence.receipt_path(path).parent) or {}
-    plot = state.get("plot")
+def _self(
+    path: Path,
+    repo: Path | None,
+    args: argparse.Namespace,
+    caller: occupants.Process,
+    slot: down.Request | None,
+) -> int:
+    # A directory session keeps its launcher state in itself, it has no Git metadata.
+    saved = evidence.receipt_path(path).parent if repo else path / ".slopmeister-config"
+    plot = (read_inventory(saved) or {}).get("plot")
     if not isinstance(plot, str):
         raise SlopmeisterError("self-cleanup requires the saved launcher plot")
     allocation.validate_name(plot, "plot")
@@ -182,13 +176,44 @@ def _self(path: Path, repo: Path, args: argparse.Namespace) -> int:
     descriptor, name = tempfile.mkstemp(prefix=f"{path.name}.remove.", suffix=".log", dir=directory)
     os.close(descriptor)
     if not down._detach(Path(name)):
-        print(f"workspace cleanup pending; this worker stops now; result in {name}; branches kept")
+        action = "session stop" if args.stop_only else "workspace cleanup"
+        print(f"{action} pending; this worker stops now; result in {name}; branches kept")
         return 0
-    request = down.Request(str(repo), plot, path.name, args.force, "")
-    down._stop_worker(request, repo, path)
+    request = slot or down.Request(str(repo or ""), plot, path.name, args.force, "")
+    down._stop_worker(request, repo, path, caller)
+    if args.stop_only:
+        print(f"session stopped; workspace kept: {path}")
+        return 0
+    if slot:
+        return down._release(replace(slot, own=False))
     args.self = False
     _check(path, repo, args)
     return _remove(path, repo)
+
+
+def _detached(
+    path: Path,
+    repo: Path,
+    args: argparse.Namespace,
+    caller: occupants.Process,
+    slot: down.Request | None,
+) -> int:
+    """A failure after the fork reaches only the private log, when the worker is already told
+    to stop. That log must name what stayed behind and the command that removes it."""
+    command = os.getpid()
+    try:
+        return _self(path, repo, args, caller, slot)
+    except (SlopmeisterError, OSError, ValueError, subprocess.TimeoutExpired) as error:
+        if os.getpid() == command or args.stop_only:
+            raise
+        cleanup = (
+            _slot_command(slot.repo, slot.target, slot.name, slot.wanted)
+            if slot
+            else shlex.join(["task", "--dir", str(ROOT), "workspace:remove", "--", str(path)])
+        )
+        raise SlopmeisterError(
+            f"{error}; workspace kept: {path}; when its worker has stopped, run: {cleanup}"
+        ) from error
 
 
 def main(argv: Sequence[str]) -> int:
@@ -200,12 +225,21 @@ def main(argv: Sequence[str]) -> int:
     parser.add_argument(
         "--self", action="store_true", help="stop the sole calling worker before removal"
     )
+    parser.add_argument(
+        "--stop-only", action="store_true", help="with --self, keep the workspace, slot and claim"
+    )
     args = parser.parse_args(argv)
+    if args.stop_only and (not args.self or args.force):
+        parser.error("--stop-only requires --self and refuses --force")
     if git_environment.redirect():
         raise SlopmeisterError("Git context overrides are refused for workspace removal")
     try:
         path, repo = _scope(args.path)
-        _check(path, repo, args)
-        return _self(path, repo, args) if args.self else _remove(path, repo)
+        caller, slot = _check(path, repo, args)
+        if slot:
+            if tester.find(slot.target, slot.name, slot.wanted):
+                raise SlopmeisterError("slot has a check lease; finish or recover it before --self")
+            down._context(slot)
+        return _detached(path, repo, args, caller, slot) if args.self else _remove(path, repo)
     except (OSError, ValueError, subprocess.TimeoutExpired) as error:
         raise SlopmeisterError(f"workspace removal failed: {error}") from error

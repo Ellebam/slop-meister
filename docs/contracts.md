@@ -29,6 +29,7 @@ Include:
 
 - The task and the outcome being pursued.
 - Live sibling sessions and any overlapping files.
+- Owning repositories when the user result crosses repository boundaries. The session keeps one plot and its approval rules.
 - Constraints the global rules, plot or launch flags don't already cover.
 - For a temporary rule, the issue that will remove the need for it.
 

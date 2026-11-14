@@ -12,11 +12,11 @@ For the operator's policy to take effect, the effective `approvals_reviewer` mus
 
 The example policy records approval for requested Slopmeister and vault reviews through OpenAI Codex and Anthropic Claude Code. It preserves every other approval requirement and reviewer safeguard. The requested diff check includes execution of its guide in the isolated checkout. This grants no implementation, unrelated send or additional destination authority.
 
-This is a Codex approval setting. Claude's existing launch permissions remain in its [settings template](../plots/home/claude/settings.json.tmpl). A Codex rejection does not establish the same defect in Claude's approval system.
+This is a Codex approval setting. The [session installer](../slopmeister/install/payload.py) delivers Claude's launch permissions. A Codex rejection does not establish a Claude defect.
 
 ## Apply the policy once
 
-`task home:install` manages only the template's top-level `model_context_window` in `~/.codex/config.toml`. It preserves every other setting. The reviewer and policy remain operator-owned and follow the manual procedure below. `task home:diff` reports the context key and declared approval rules by status only, main-checkout `task check` fails when the context key drifts, and neither prints a live configuration or rule file.
+`task home:install` manages the top-level keys and `[features] memories = false` of `plots/home/codex/config.toml.tmpl` in `~/.codex/config.toml`. The reviewer, policy and other settings remain operator-owned. `task home:diff` reports owned settings and approval rules by status only. Main-checkout `task check` fails on drift. Neither prints live configuration or rules.
 
 After the operator approves this exact scope, the operator-owned settings are:
 
@@ -72,7 +72,7 @@ If the supported configuration cannot produce the required behavior, keep accept
 
 ## Replacement boundary
 
-The generated per-session Claude and Codex rules allow only the ordinary `review review` command. Claude runs without a Bash sandbox, so the command reaches the reviewer and protected result store directly and still passes through the narrow allow rule. Claude carries a separate ask rule for `review replace`, and Codex has no standing allow for it. When the operator explicitly requests a fresh task-and-mode result, the agent runs that separate command through native approval; it removes one exact result and launches nothing. Direct state writes remain outside routine workspace permissions.
+The generated per-session Claude and Codex rules allow only the ordinary `review review` command through the expanded absolute `bin/slopmeister` in the launcher's saved `source_root`. The executable, not just the subcommand, must match the delivered allow. The reviewed checkout's binary, a relative path and a raw client do not inherit it. Keep the process working directory and `--cwd` at the reviewed checkout. Claude runs without a Bash sandbox, so the command reaches the reviewer and protected result store directly and still passes through the narrow allow rule. Claude carries a separate ask rule for `review replace`, and Codex has no standing allow for it. When the operator explicitly requests a fresh task-and-mode result, the agent runs that separate command through native approval. It removes one exact result and launches nothing. Direct state writes remain outside routine workspace permissions.
 
 Live proof must exercise ordinary prompt-free review, replay, unauthorized replacement refusal and operator-authorized exact replacement in fresh Claude and Codex sessions. Approval-policy consumption and the replacement boundary may be claimed only for the tools and implementations whose probe evidence is retained.
 

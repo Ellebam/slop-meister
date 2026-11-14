@@ -2,12 +2,23 @@
 
 from dataclasses import dataclass, field
 import json
+import re
 
 from slopmeister.threads.timing.events import REPORT, Command, Session, Turn, User, epoch
+from slopmeister.threads.timing.records import records
 
 META_KEYS = ("originator", "thread_source", "parent_thread_id")
 # Codex records its own injected context as user messages.
 INJECTED = ("<environment_context", "# AGENTS.md", "<user_instructions", "<turn_aborted")
+SHELL_ARGUMENT = re.compile(r'\bcmd:\s*("(?:[^"\\]|\\.)*")')
+HEADER = (
+    rb'^\s*\{\s*"timestamp"\s*:\s*"([^"\\]+)"\s*,(?:\s*"ordinal"\s*:\s*\d+\s*,)?'
+    rb'\s*"type"\s*:\s*"response_item"\s*,'
+)
+PASSIVE = re.compile(
+    HEADER + rb'\s*"payload"\s*:\s*\{\s*"type"\s*:\s*'
+    rb'"(?:reasoning|custom_tool_call_output|function_call_output|message)"'
+)
 
 
 @dataclass
@@ -32,6 +43,7 @@ class _Reader:
             "turn_context": self.context,
             "token_usage_record": self.usage,
             "event_msg": self.event,
+            "response_item": self.call,
         }
         if kind == "compacted":
             self.session.compactions += 1
@@ -41,6 +53,24 @@ class _Reader:
     def context(self, when: float, payload: dict) -> None:
         self.session.model = payload.get("model") or self.session.model
         self.session.effort = payload.get("effort") or self.session.effort
+
+    def call(self, when: float, payload: dict) -> None:
+        kind, name = payload.get("type"), payload.get("name", "").split(".")[-1]
+        if kind == "custom_tool_call" and name == "exec":
+            for match in SHELL_ARGUMENT.finditer(payload.get("input") or ""):
+                try:
+                    command = json.loads(match.group(1))
+                except ValueError:
+                    continue
+                self.session.start_command(when, command)
+        elif kind == "function_call" and name == "exec_command":
+            try:
+                arguments = json.loads(payload.get("arguments") or "{}")
+            except ValueError:
+                return
+            command = arguments.get("cmd") if isinstance(arguments, dict) else None
+            if isinstance(command, str):
+                self.session.start_command(when, command)
 
     def usage(self, when: float, payload: dict) -> None:
         usage = payload.get("usage") or {}
@@ -99,13 +129,11 @@ class _Reader:
             self.session.add_user(span[1], text)
 
 
-def read(path: str) -> tuple[Session, dict]:
+def read(
+    path: str, *, strict: bool = False, deadline: float | None = None, starts: bool = False
+) -> tuple[Session, dict]:
     reader = _Reader(Session("codex"))
-    with open(path, encoding="utf-8", errors="replace") as handle:
-        for line in handle:
-            try:
-                record = json.loads(line)
-            except ValueError:
-                continue
-            reader.record(record)
+    passive = PASSIVE if starts else re.compile(HEADER)
+    for record in records(path, strict=strict, deadline=deadline, passive=passive):
+        reader.record(record)
     return reader.session, reader.meta

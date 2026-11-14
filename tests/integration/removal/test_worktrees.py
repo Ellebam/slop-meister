@@ -32,6 +32,7 @@ def test_locked_service_actions_do_not_leave_a_ghost_worktree(workspace, invoke,
 
 def test_stale_git_link_requires_confirmation_then_is_removed(workspace, invoke, snapshot):
     repo, worktree, env = workspace
+    pointer = (worktree / ".git").read_text()
     failed = subprocess.run(
         ["git", "-C", str(repo), "worktree", "remove", str(worktree)],
         env=env,
@@ -39,7 +40,9 @@ def test_stale_git_link_requires_confirmation_then_is_removed(workspace, invoke,
         text=True,
         timeout=30,
     )
-    assert failed.returncode != 0 and (worktree / ".git").is_file()
+    assert failed.returncode != 0
+    # Git deletes in directory order up to the first locked entry, so the link may be gone.
+    (worktree / ".git").write_text(pointer)
     before = snapshot(worktree)
     refused = invoke(worktree)
     assert refused.returncode != 0 and snapshot(worktree) == before

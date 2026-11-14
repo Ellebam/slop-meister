@@ -144,6 +144,9 @@ def test_commit_and_shipping_permissions_select_continuations_without_blocking_r
     assert "Shipping: N/A" in execute
     assert "final candidate" in execute
     assert "final candidate" in review
+    assert "one consent block for the step's foreseeable exact actions" in execute
+    assert "working agreement's consent rule" in execute
+    assert "that separate action changes no saved permission" in execute
 
 
 def test_guide_cleanup_preserves_changed_files_for_any_subject():
@@ -153,9 +156,13 @@ def test_guide_cleanup_preserves_changed_files_for_any_subject():
     assert "unrecorded files" in source
 
 
-def test_review_uses_the_reviewed_checkouts_own_binary():
+def test_native_review_route_keeps_the_subject_at_the_reviewed_checkout():
+    """The review must use its native allow while still reviewing the worker's candidate."""
     source = (ROOT / "src/skills/cross-tool-review/SKILL.md").read_text()
-    assert "reviewed checkout's own `bin/slopmeister`" in source
+    command = source.index("review review --direction")
+    assert source.index("Read `source_root` from the saved launcher state") < command
+    assert source.index("confirm it matches the delivered ordinary-review allow") < command
+    assert "pass that same worktree to `--cwd`" in source
     assert "--guide <absolute guide>" in source
 
 

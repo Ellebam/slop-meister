@@ -32,6 +32,7 @@ def world(tmp_path, monkeypatch):
     )  # fmt: skip
     origin = Origin()
     monkeypatch.setattr(ship, "command", origin.command)
+    monkeypatch.setattr(ship, "entry_workspace", lambda: repo)
     sleep = SimpleNamespace(sleep=lambda seconds: origin.calls.append(("sleep", seconds)))
     monkeypatch.setattr(ship, "time", sleep)
     return dict(repo=repo, git=git, state=state, origin=origin, body=BODY, tmp=tmp_path)
@@ -44,15 +45,19 @@ def run(world, capsys):
     body = world["tmp"] / "body.md"
     body.write_text(world["body"])
     argv = ["--cwd", str(world["repo"]), "--title", "Task", "--body-file", str(body)]
+    argv += world.get("options", [])
     code = ship.main(argv)
     out, err = capsys.readouterr()
     return code, json.loads(out) if code == 0 else out, err
 
 
-def test_first_run_pushes_creates_and_reports(world, capsys, monkeypatch):
+@pytest.mark.parametrize("review_in_notes", [False, True])
+def test_first_run_pushes_creates_and_reports(world, capsys, monkeypatch, review_in_notes):
     """Bug: push.followTags adds tags to an agent push, or session Git settings block shipping."""
     monkeypatch.setenv("GIT_EDITOR", "true")
     monkeypatch.setenv("GIT_PAGER", "cat")
+    if review_in_notes:
+        world.update(body="Task proof\n", options=["--review-in-notes"])
     code, result, _ = run(world, capsys)
     assert code == 0
     sha, action = world["git"]("rev-parse", "HEAD"), "created"
@@ -62,6 +67,19 @@ def test_first_run_pushes_creates_and_reports(world, capsys, monkeypatch):
         ("gh", "pr", "create", "--head", "task", "--base"),
     ]
     assert world["origin"].writes()[0][6:] == ("refs/heads/task:refs/heads/task",)
+    assert world["origin"].prs[0]["body"] == world["body"]
+
+
+def test_foreign_target_cannot_borrow_an_allowed_shipping_helper(world, capsys, monkeypatch):
+    from tests.integration.install.installer_helpers import prepared
+
+    owner = world["tmp"] / "other-session"
+    owner.mkdir()
+    installed = prepared(owner)
+    monkeypatch.setattr(ship, "entry_workspace", lambda: installed.workspace)
+    code, _, error = run(world, capsys)
+    assert code == 1 and "outside its session" in error
+    assert world["origin"].writes() == []
 
 
 def test_harness_git_variables_do_not_stop_shipping(world, capsys, monkeypatch):
@@ -177,6 +195,34 @@ def refuse(world, monkeypatch, case):
         "dirty": (lambda: (world["repo"] / "x.py").write_text("x\n"), "commit the explicit"),
         "no-review-line": (lambda: world.update(body="Task\n"), "exactly one independent"),
         "two-review-lines": (lambda: world.update(body=BODY * 2), "exactly one independent"),
+        "external-review": (
+            lambda: world.update(options=["--review-in-notes"]),
+            "keep independent review",
+        ),
+        "external-markdown": (
+            lambda: world.update(
+                body="**Independent review:** invalid\n", options=["--review-in-notes"]
+            ),
+            "keep independent review",
+        ),
+        "external-indented": (
+            lambda: world.update(
+                body="  independent REVIEW: invalid\n", options=["--review-in-notes"]
+            ),
+            "keep independent review",
+        ),
+        "external-numbered": (
+            lambda: world.update(
+                body="1. Independent review: PASS - hidden\n", options=["--review-in-notes"]
+            ),
+            "keep independent review",
+        ),
+        "external-comment": (
+            lambda: world.update(
+                body="<!-- Independent review: PASS - hidden -->\n", options=["--review-in-notes"]
+            ),
+            "keep independent review",
+        ),
         "git-dir": (lambda: monkeypatch.setenv("GIT_DIR", str(other)), "overrides: GIT_DIR"),
         "git-ssh": (lambda: monkeypatch.setenv("GIT_SSH_COMMAND", "ssh"), "GIT_SSH_COMMAND"),
         "detached": (lambda: git("switch", "-q", "--detach"), "HEAD is detached"),
@@ -188,7 +234,8 @@ def refuse(world, monkeypatch, case):
 
 
 CASES = """commit-missing shipping-missing directory worktree branch
-remote fetch-url default dirty no-review-line two-review-lines git-dir git-ssh detached
+remote fetch-url default dirty no-review-line two-review-lines external-review external-markdown
+external-indented external-numbered external-comment git-dir git-ssh detached
 verification delivered"""
 
 

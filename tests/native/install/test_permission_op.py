@@ -8,6 +8,8 @@ import subprocess
 
 import pytest
 
+from tests.native.install.discovery_fixture import CODEX
+from tests.native.install.intent_fixture import is_review
 from tests.native.install.test_permissions import client_command, shell_call
 from tests.support.fakes import fake_binary
 from tests.support.standin import capture_server, run, tool_results
@@ -41,8 +43,7 @@ def test_real_client_runs_op_run_unprompted_and_refuses_value_reads(tmp_path, mo
     main = [
         r
         for r in server.requests
-        if r.get("model") != "codex-auto-review"
-        and "security monitor" not in json.dumps(r.get("system", "")).lower()
+        if not is_review(r) and "security monitor" not in json.dumps(r.get("system", "")).lower()
     ]
     results = tool_results(main[-1])
     assert len(results) == 2
@@ -54,7 +55,7 @@ def test_real_client_runs_op_run_unprompted_and_refuses_value_reads(tmp_path, mo
 def test_codex_rules_allow_op_run_hold_route_words_and_keep_the_value_denies():
     """Bug: the allow on op run overrides the refusal of unmasked output or value reads, or a
     route word runs without the reviewer asking for the operator's word."""
-    binary = str(Path.home() / ".local/bin/codex")
+    binary = str(CODEX)
     base = [
         binary,
         "execpolicy",

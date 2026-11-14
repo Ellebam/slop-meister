@@ -4,7 +4,7 @@ description: "Implement: execute the plan, write code and tests, run the gates. 
 
 # Implement
 
-Step 4 of the spine. Read the plan, build it step by step, run the gates. Proving it actually works, the acceptance commands and the break-it pass, is step 5, and that is where the value is, do not declare victory here.
+Step 4 of the spine. Build the approved plan step by step. Run the tracer bullet's acceptance command immediately after step 1, before editing for later steps. Step 5 supplies the broader behavior proof and break-it pass. A working first slice is not completion.
 
 Both modes use the approved `## Plan` and the working agreement's approval and resume rule.
 
@@ -16,6 +16,8 @@ Both modes use the approved `## Plan` and the working agreement's approval and r
 ## Test purpose
 
 Admit a permanent test when it protects required behavior or a reachable harmful failure that existing coverage misses. Name the caller or input, observable consequence and coverage gap. Reuse or extend existing coverage first. A bug name or a mutation-sensitive wording pin alone does not justify a test. Keep exploratory controls temporary unless they expose uncovered regression risk.
+
+When changing tests, trace what each affected test protects. Delete or merge overlapping checks when a retained test covers the same failure. Keep distinct critical regressions, not a target test count or a copy of every implementation branch. Record the retained protection for each removed check in the task notes.
 
 Negative tests must establish that the intended stage was reached and assert its diagnostic or preserved state. A generic nonzero exit can hide a missing executable or broken setup. Keep distinct security, data-loss, authority and recovery obligations, render structure, delivery, parity and actual tool-specific behavior. Check a shared instruction's safety obligation once in source. Remove duplicate wording pins and retired-name checks with no consumer.
 
@@ -31,6 +33,8 @@ Negative tests must establish that the intended stage was reached and assert its
 ### 2. Build
 
 Follow the plan's steps in order. For each of them.
+
+Finish step 1 by running its acceptance command through the actual consumer. Record the command and observed result. A failed acceptance shows that the product did not meet the expected result. Diagnose and fix that slice within scope before any later-step implementation. An acceptance is blocked when an external prerequisite prevents it from running or proving that result. Record the blocking prerequisite, evidence and dependent steps, then ask once through the existing operator route. While the answer is pending, continue only approved later steps that do not depend on the blocked acceptance. Keep dependent steps blocked. Silence is not approval, and a blocked acceptance is not a pass. Required proof remains owed. If the approach or scope must change, use the existing halt. This applies to single-repository and multi-repository spines alike.
 
 - Deliver the approved user result with the smallest runnable path first. Add permanent machinery only when that result requires it. Before retiring shared machinery, drive each affected existing capability through its replacement, including its approval boundary.
 - Test-first. Apply Test purpose above before writing the test `## Plan` named. Run it before the production change. Record red first only when its assertion observes the intended missing behavior. Diagnose and correct setup or import errors before counting them as proof. A prior pass can reflect existing coverage, check that gap before adding more tests. Do not manufacture a red receipt. Use the [behavior proof](../local-qa/SKILL.md#3-the-break-it-pass) for changed obligations without a valid failing reproducer.

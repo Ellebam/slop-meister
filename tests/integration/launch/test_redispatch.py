@@ -2,13 +2,13 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-import shutil
 import subprocess
 
 import pytest
 
 from slopmeister.launch import closure
 from slopmeister.launch.model import Stop
+from slopmeister.removal import remove_tree
 from tests.integration.launch.helpers import (
     CLI,
     Machine,
@@ -131,7 +131,7 @@ def _state_dir(scene: Scene) -> Path:
 def _remove(relative: str, state: bool = False):
     def damage(scene: Scene) -> dict[str, str]:
         path = (_state_dir(scene) if state else scene.wt) / relative
-        shutil.rmtree(path) if path.is_dir() else path.unlink()
+        remove_tree(path) if path.is_dir() else path.unlink()
         return {}
 
     return damage
@@ -171,13 +171,13 @@ def _kickoff_directory(scene: Scene) -> dict[str, str]:
 
 
 def _foreign(scene: Scene) -> dict[str, str]:
-    shutil.rmtree(scene.wt)
+    remove_tree(scene.wt)
     git(target(scene.world.root / "foreign"), "worktree", "add", "-q", "-b", "x", str(scene.wt))
     return {}
 
 
 def _unregistered(scene: Scene) -> dict[str, str]:
-    shutil.rmtree(scene.wt)
+    remove_tree(scene.wt)
     scene.wt.mkdir()
     return {}
 

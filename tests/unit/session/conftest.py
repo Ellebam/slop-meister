@@ -8,6 +8,7 @@ import subprocess
 import pytest
 
 from slopmeister.session import (
+    browser_display,
     browser_runtime,
     launch_identity,
     secret_approval,
@@ -16,6 +17,15 @@ from slopmeister.session import (
 )
 from slopmeister.session import browser_state as state
 from tests.support.op_session import LISTS, ONE, TWO, private
+
+# The entry kinds a delivered rules file holds, a tool name, both command forms and a path.
+DENY = ["AskUserQuestion", "Bash(git commit -a)", "Bash(git commit -a *)", "Edit(~/state/**)"]
+
+
+def deliver_rules(workspace: Path) -> None:
+    rules = workspace / secret_run.RULES
+    rules.parent.mkdir(parents=True)
+    rules.write_text(json.dumps({"permissions": {"deny": DENY}}))
 
 
 @pytest.fixture
@@ -33,7 +43,7 @@ def session(monkeypatch, tmp_path):
     (real / "op").chmod(0o755)
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
     workspace = tmp_path / "example-task"
-    workspace.mkdir()
+    deliver_rules(workspace)
     launch_identity.write(
         workspace, (workspace.name, "claude", "00000000-0000-0000-0000-000000000001")
     )
@@ -92,4 +102,6 @@ def tool(root, monkeypatch, tmp_path):
 def started(tool, tmp_path, monkeypatch):
     monkeypatch.setenv(browser_runtime.TOKEN, "dummy-private-token")
     monkeypatch.setenv(state.WORKSPACE, str(tmp_path))
+    # The test host may itself have a desktop with no monitor.
+    monkeypatch.setattr(browser_display, "monitorless", lambda: False)
     return tool

@@ -5,10 +5,13 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shlex
 import shutil
 import stat
+import subprocess
 
 from slopmeister.errors import SlopmeisterError
+from slopmeister.session import git_environment
 
 SCRATCH = ".slopmeister-tmp"
 CACHES = {
@@ -87,7 +90,7 @@ def _recorded(root: Path, state_dir: Path) -> tuple[dict[str, str], bool]:
 
 
 def _files(
-    root: Path, paths: list[str], scratch: bool = False
+    root: Path, paths: list[str], scratch: bool, owned: frozenset[Path]
 ) -> Iterator[tuple[Path, os.stat_result, str]]:
     """Retain Git's marker so tracked files do not inherit the cache exemption."""
     pending = []
@@ -112,16 +115,20 @@ def _files(
             continue
         if stat.S_ISDIR(info.st_mode):
             if path.name not in caches:
-                pending.extend((child, marker) for child in path.iterdir())
+                pending.extend((child, marker) for child in path.iterdir() if child not in owned)
         else:
             yield path, info, marker
 
 
-def check_ignored(root: Path, paths: list[str], state_dir: Path) -> None:
-    """Only unchanged delivery and disposable caches may disappear without confirmation."""
+def check_ignored(
+    root: Path, paths: list[str], state_dir: Path, owned: frozenset[Path] = frozenset()
+) -> None:
+    """Only unchanged delivery and disposable caches may disappear without confirmation.
+
+    Each owned companion worktree is skipped here because its own check covers it."""
     known, scratch = _recorded(root, state_dir)
     blocked = []
-    for path, info, _marker in _files(root, paths, scratch):
+    for path, info, _marker in _files(root, paths, scratch, owned):
         relative = path.relative_to(root).as_posix()
         if stat.S_ISREG(info.st_mode):
             empty_note = (
@@ -144,7 +151,7 @@ def listed(paths: list[str]) -> str:
     return shown + (f" and {len(paths) - SHOWN_PATHS} more" if len(paths) > SHOWN_PATHS else "")
 
 
-def nested(path: Path) -> None:
+def nested(path: Path, owned: frozenset[Path] = frozenset()) -> None:
     """A child linked worktree owns a separate record that recursive deletion would strand."""
     for directory, names, files in os.walk(path):
         common = Path(directory) / ".git"
@@ -152,7 +159,7 @@ def nested(path: Path) -> None:
             raise SlopmeisterError(f"nested linked worktree {outside}, remove it separately")
         names[:] = [name for name in names if name != ".git"]
         link = Path(directory) / ".git"
-        if link.parent == path or ".git" not in files:
+        if link.parent == path or link.parent in owned or ".git" not in files:
             continue
         # A pipe would block the read, and a link can hide what it points at.
         if not stat.S_ISREG(link.lstat().st_mode):
@@ -203,3 +210,43 @@ def remove_tree(root: Path) -> None:
         function(path)
 
     shutil.rmtree(root, onexc=retry)
+
+
+def git(root: Path, *args: str) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(root), *args],
+        env=git_environment.child(),
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+    if result.returncode:
+        raise SlopmeisterError(result.stderr.strip() or "Git inspection failed")
+    return result.stdout
+
+
+def clean(path: Path, repo: Path, force: bool) -> None:
+    if (path / ".git").is_symlink() or not (path / ".git").is_file():
+        repair = shlex.join(["git", "-C", str(repo), "worktree", "repair"])
+        raise SlopmeisterError(f"registered worktree has no valid Git link; repair with: {repair}")
+    if Path(git(path, "rev-parse", "--show-toplevel").strip()).resolve() != path:
+        raise SlopmeisterError("Git link does not identify the selected worktree, refusing")
+    common = git(path, "rev-parse", "--path-format=absolute", "--git-common-dir").strip()
+    if Path(common).resolve() != repo / ".git":
+        raise SlopmeisterError("Git link does not belong to the owning repository, refusing")
+    metadata = Path(git(path, "rev-parse", "--absolute-git-dir").strip())
+    if (metadata / "locked").exists():
+        raise SlopmeisterError("locked worktree, unlock it before workspace removal")
+    if not git(path, "branch", "--show-current").strip() and not force:
+        raise SlopmeisterError("detached HEAD may lose commits, pass --force to confirm deletion")
+    changed = git(path, "status", "--porcelain", "--untracked-files=all").splitlines()
+    if changed and not force:
+        names = listed([line[3:] for line in changed])
+        raise SlopmeisterError(f"uncommitted work: {names}; pass --force to confirm deletion")
+
+
+def ignored_work(path: Path, owned: frozenset[Path] = frozenset()) -> None:
+    metadata = Path(git(path, "rev-parse", "--absolute-git-dir").strip())
+    entries = git(path, *IGNORED_ARGS).split("\0")
+    ignored = [entry for entry in entries if entry.startswith(("? ", "S ", "s ", "h "))]
+    check_ignored(path, ignored, metadata / "slopmeister-config", owned)

@@ -13,7 +13,7 @@ USAGE = (
     "usage: slopmeister plot-session [<repo-path>] <plot> <name> "
     "[--redispatch | --abandon --handoff <path>] [--directory] [--manager] [--proof-for <name>] "
     "[--tool claude|codex|opencode] "
-    "[--host <alias>] [--model <model>] "
+    "[--host <alias>] [--model <model>] [--repository <path>] "
     "[--issue <n> | --issue-id <n> | --note <path>] [-- <extra tool args>]"
 )
 SESSION_NAME = re.compile(r"[a-z0-9][a-z0-9-]*")
@@ -50,6 +50,9 @@ def _issue(launch: Launch, flag: str, args: list[str]) -> None:
 
 def _option(launch: Launch, args: list[str]) -> int:
     flag = args[0]
+    if flag == "--repository":
+        launch.repositories.append(_value(args))
+        return 2
     if flag == "--directory":
         launch.directory_requested = True
         return 1

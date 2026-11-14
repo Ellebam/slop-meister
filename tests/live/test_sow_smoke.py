@@ -6,9 +6,11 @@ import shutil
 
 import pytest
 
+from slopmeister.slots import leftover
 from tests.support.standin import Command, run
 
 ROOT = Path(__file__).resolve().parents[2]
+pytestmark = pytest.mark.real_home
 CLAUDE = shutil.which("claude")
 CODEX = Path.home() / ".local/bin/codex"
 TASK = (
@@ -41,21 +43,33 @@ DISPATCH_TASK = (
 )
 
 
+@pytest.fixture
+def workspace(tmp_path):
+    try:
+        yield prepare(tmp_path)
+    finally:
+        path = tmp_path / "workspace"
+        if path.exists():
+            leftover.remove(path, "remove the test-owned smoke workspace", tmp_path / "repo")
+
+
 @pytest.mark.timeout(SESSION_SECONDS + 30)
 @pytest.mark.parametrize("tool", ["claude", "codex"])
-def test_sow_sends_the_one_message_before_editing(tmp_path, tool):
-    workspace = prepare(tmp_path)
+def test_sow_sends_the_one_message_before_editing(tmp_path, workspace, tool):
     reply = claude(tmp_path, workspace) if tool == "claude" else codex(tmp_path, workspace)
     changes = git(tmp_path, workspace, ["status", "--porcelain"]).splitlines()
     assert [line for line in changes if not line.endswith("-NOTES.md")] == [], changes
     assert opening_faults(reply) == [], reply
+    notes = list(workspace.glob("*-NOTES.md"))
+    assert len(notes) == 1, "sow must leave its runnable plan for implementation"
+    plan = notes[0].read_text()
+    assert "## Scope" in plan and "## Plan" in plan
 
 
 @pytest.mark.skipif(not DISPATCH, reason="dispatcher live validation is opt-in")
 @pytest.mark.timeout(SESSION_SECONDS + 30)
 @pytest.mark.parametrize("tool", ["claude", "codex"])
-def test_dispatcher_chooses_mode_for_diagnosis(tmp_path, tool):
-    workspace = prepare(tmp_path)
+def test_dispatcher_chooses_mode_for_diagnosis(tmp_path, workspace, tool):
     reply = (
         claude(tmp_path, workspace, DISPATCH_TASK)
         if tool == "claude"

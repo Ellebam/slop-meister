@@ -7,6 +7,7 @@ import shutil
 import pytest
 
 from slopmeister.render.settings import permission_contract
+from slopmeister.workstation import rules
 from tests.native.install.discovery_fixture import CLAUDE, CODEX
 from tests.support.fakes import fake_binary, path_with
 from tests.support.standin import Command, capture_server, run, tool_results
@@ -27,14 +28,15 @@ RAN = "STANDIN_RAN"
 
 @pytest.mark.xdist_group("native-standin")
 @pytest.mark.parametrize("tool", ["claude", "codex"])
-def test_every_deny_entry_is_refused_by_the_real_client(tmp_path, tool):
+@pytest.mark.parametrize("global_policy", [False, True])
+def test_every_deny_entry_is_refused_by_the_real_client(tmp_path, tool, global_policy):
     assert DENIED, "src/permissions.toml lists no deny entry"
     for executable in EXECUTABLES:
         fake_binary(tmp_path / "stubs", executable, f'echo "{RAN} {executable} $*;"')
     commands = DENIED_CALLS + WRAPPED + CONTROLS
     server = capture_server(tmp_path / "requests", tool, [shell_call(tool, c) for c in commands])
     try:
-        client = client_command(tool, tmp_path, server.server_port)
+        client = client_command(tool, tmp_path, server.server_port, global_policy)
         for executable in EXECUTABLES:
             assert shutil.which(executable, path=client.env["PATH"]) == str(
                 tmp_path / "stubs" / executable
@@ -63,14 +65,31 @@ def shell_call(tool, command):
     return "exec_command", {"cmd": command, "login": False}
 
 
-def client_command(tool, root, port):
+def client_command(tool, root, port, global_policy=False):
     home, workspace = root / "home", root / "workspace"
     for path in (home, workspace):
         path.mkdir()
     env = {"PATH": path_with(root / "stubs"), "HOME": str(home), "TMPDIR": str(root)}
     if tool == "claude":
-        return Command(claude_argv(root, env, port), workspace, env, root / "claude")
-    return Command(codex_argv(root, env, port, workspace), workspace, env, root / "codex")
+        client = Command(claude_argv(root, env, port), workspace, env, root / "claude")
+    else:
+        client = Command(codex_argv(root, env, port, workspace), workspace, env, root / "codex")
+    if global_policy:
+        home = Path(client.env["HOME"])
+        for name in rules.NAMES:
+            rules.install(home, root / "backups", name)
+        store = home / (".claude" if tool == "claude" else ".codex")
+        client.env["CLAUDE_CONFIG_DIR" if tool == "claude" else "CODEX_HOME"] = str(store)
+        if tool == "claude":
+            settings = json.loads((store / "settings.json").read_text())
+            settings["permissions"]["allow"] = [f"Bash({name} *)" for name in EXECUTABLES]
+            (store / "settings.json").write_text(json.dumps(settings))
+        else:
+            saved = [prefix.split() for prefix in [*EXECUTABLES, *DENIED]]
+            (store / "rules/default.rules").write_text(
+                "".join(f'prefix_rule(pattern={json.dumps(p)}, decision="allow")\n' for p in saved)
+            )
+    return client
 
 
 def claude_argv(root, env, port):

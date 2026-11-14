@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 import os
 from pathlib import Path
@@ -24,9 +24,6 @@ class Request:
     name: str
     wanted: str
     launcher: list[str]
-    checkout: Path | None = None
-    prepare: Callable[[allocation.Claim], allocation.Claim] | None = None
-    tester: bool = False
 
 
 def parse(argv: Sequence[str]) -> Request:
@@ -79,12 +76,8 @@ def _available(request: Request, root: Path, slots: dict) -> int:
             f"--slot must be 1 to {maximum} for target '{request.target}', got '{request.wanted}'"
         )
     candidates = [int(request.wanted)] if request.wanted else list(range(1, maximum + 1))
-    if testers := request.tester and allocation.testers(slots):
-        candidates = list(range(maximum + 1, maximum + testers + 1))
     if (found := _candidate(request, candidates, {item.slot for item in held})) is not None:
         return found
-    if testers:
-        raise SlopmeisterError(f"every tester slot of target '{request.target}' is in use")
     raise SlopmeisterError(
         f"every slot of target '{request.target}' is live or holds residue, "
         f"{maximum} declared, release one first"
@@ -121,7 +114,7 @@ def _context(request: Request) -> tuple[dict, Path, Path, str]:
 
 
 def _claim_compose(root: Path, live: allocation.Live, relative: str) -> Path | None:
-    """Root is the checkout the stack runs from, a tester's being the tested commit."""
+    """Resolve the worker stack before reserving its project."""
     if not relative:
         return None
     project = f"{live.target}-slot{live.slot}"
@@ -146,10 +139,8 @@ def _claim(request: Request, slots: dict, root: Path) -> allocation.Claim:
             )
     project = f"{request.target}-slot{number}"
     data = allocation.state_path() / project
-    live = allocation.Live(
-        request.target, number, request.name, request.checkout or root / ".worktrees" / request.name
-    )
-    compose = _claim_compose(request.checkout or root, live, allocation.compose_relative(slots))
+    live = allocation.Live(request.target, number, request.name, root / ".worktrees" / request.name)
+    compose = _claim_compose(root, live, allocation.compose_relative(slots))
     data.parent.mkdir(parents=True, exist_ok=True)
     try:
         data.mkdir()
@@ -157,8 +148,6 @@ def _claim(request: Request, slots: dict, root: Path) -> allocation.Claim:
         raise SlopmeisterError(f"could not claim {data}, a concurrent up or residue") from error
     claim = allocation.Claim(live, data, compose, ports)
     try:
-        if request.prepare:
-            claim = request.prepare(claim)
         allocation.write(data / allocation.ALLOCATION, claim)
     except Exception:
         rollback.discard(claim)

@@ -35,7 +35,7 @@ Harvest of unfinished work preserves the worktree, notes, slot and active claim.
 
 GitHub repository plots use their existing commit and shipping `allow` declarations for project eligibility. There is no new permission knob. Task retrieval, repository access or commit permission alone never authorizes issue mutation. Saved workspace permissions remain fixed on redispatch.
 
-The explicit operator request or invoked workflow authorizes its prescribed action. Dispatch authorizes claiming its delivered issue. Harvest authorizes its prescribed closure or hand-back and comment. No second consent question is needed for those actions. Permission alone authorizes none of them. Denied plots and non-GitHub task sources perform no tracker writes.
+The explicit operator request or invoked workflow authorizes its prescribed action. Dispatch authorizes claiming its delivered issue. Harvest authorizes its prescribed closure or hand-back and comment. No second consent question is needed for those actions. Permission alone authorizes none of them. Denied plots perform no GitHub issue writes. Other task sources receive only the ticket updates the operator approved at the handoff, which harvest sends.
 
 Autonomous issue selection needs a separate operator kickoff naming the exact repository, eligible issue set or filters, concurrency bound and stopping condition. Paused claimed workers count against the bound. A backlog question grants no dispatch authority. See the [kickoff contract](contracts.md#authorize-bounded-selection).
 

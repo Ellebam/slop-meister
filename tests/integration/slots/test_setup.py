@@ -219,3 +219,74 @@ def test_setup_stops_its_children_on_exit_and_timeout(tmp_path, monkeypatch, tim
     recorded = json.loads(child.read_text())
     assert recorded["group"] != os.getpgrp()
     assert ownership.identity(recorded["pid"]) is None
+
+
+def application_slot(tmp_path, *, failure=False, compose=False):
+    repository, env = configured(tmp_path, compose=compose)
+    script = repository / "prepare.py"
+    stopped = tmp_path / "application-stopped"
+    stop = (
+        "import os\nfrom pathlib import Path\n"
+        "data = Path(os.environ['SLOT_DATA'])\n"
+        "if os.environ.get('SLOPMEISTER_SLOT_PHASE') == 'stop':\n"
+        "    assert Path('.slot.env').is_file()\n"
+        + (
+            "    raise SystemExit(17)\n"
+            if failure
+            else "    (data / 'applications/fixture.json').unlink()\n"
+            f"    Path({str(stopped)!r}).write_text('stopped')\n"
+            "    print('SLOPMEISTER_SLOT_PHASE_OK=stop')\n"
+            "    raise SystemExit(0)\n"
+        )
+    )
+    script.write_text(
+        stop + script.read_text() + "\n(data / 'applications').mkdir()\n"
+        "(data / 'applications/fixture.json').write_text('owned application')\n"
+    )
+    git(repository, "add", "prepare.py")
+    git(repository, "commit", "-qm", "Register fixture applications")
+    return repository, env, stopped
+
+
+def test_release_stops_registered_applications_before_removing_their_state(tmp_path):
+    repository, env, stopped = application_slot(tmp_path)
+    result = launch(repository, env)
+    assert result.returncode == 0, result.stdout + result.stderr
+    result = release(repository, env, "--force")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert stopped.read_text() == "stopped"
+    assert not (Path(env["SLOT_STATE_DIR"]) / "slopmeister-slot1").exists()
+    assert not (repository / ".worktrees/slopmeister-one").exists()
+
+
+@pytest.mark.parametrize("compose", [False, True])
+def test_failed_application_stop_keeps_worker_data_and_stack(tmp_path, compose):
+    repository, env, stopped = application_slot(tmp_path, failure=True, compose=compose)
+    result = launch(repository, env)
+    assert result.returncode == 0, result.stdout + result.stderr
+    result = release(repository, env, "--force")
+    assert result.returncode != 0 and "setup exited 17" in result.stderr
+    assert not stopped.exists()
+    data = Path(env["SLOT_STATE_DIR"]) / "slopmeister-slot1"
+    assert (data / ".slot.env").is_file() and (data / "applications/fixture.json").is_file()
+    assert (repository / ".worktrees/slopmeister-one/.slot.env").is_file()
+    if compose:
+        assert (tmp_path / "container").exists() and (tmp_path / "network").exists()
+
+
+def test_release_preserves_a_symlinked_application_registry(tmp_path):
+    repository, env, stopped = application_slot(tmp_path)
+    result = launch(repository, env)
+    assert result.returncode == 0, result.stdout + result.stderr
+    data = Path(env["SLOT_STATE_DIR"]) / "slopmeister-slot1"
+    registry = data / "applications"
+    (registry / "fixture.json").unlink()
+    registry.rmdir()
+    outside = tmp_path / "foreign-applications"
+    outside.mkdir()
+    (outside / "fixture.json").write_text("foreign process receipt")
+    registry.symlink_to(outside, target_is_directory=True)
+    result = release(repository, env, "--force")
+    assert result.returncode != 0 and "application registry is a symlink" in result.stderr
+    assert (outside / "fixture.json").read_text() == "foreign process receipt"
+    assert (data / ".slot.env").is_file() and not stopped.exists()

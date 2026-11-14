@@ -1,5 +1,5 @@
 # Workspace-bound release and selected service-write policy, loaded with permissions.toml.
-self_release = { prefix = "workspace-remove --self --", decision = "allow", why = "Only the sole worker may remove this bound workspace. The option terminator prevents enabling force. Path, claim and unsaved-work checks run before shutdown and deletion." }
+self_release = { prefixes = ["workspace-remove --self --", "workspace-remove --self --stop-only --"], decision = "allow", why = "Only the sole calling worker may stop itself in this bound workspace. Stop-only preserves the workspace, slot and claim. Removal also checks claims and unsaved work. The option terminator prevents enabling force." }
 
 [[service_action]]
 action = "jira-write"

@@ -94,6 +94,6 @@ def read_result(path: Path) -> tuple[str, int, str | None]:
     if type(code) is not int or code not in (0, 1):
         raise ValueError("invalid review result exit code")
     candidate = value.get("candidate")
-    if candidate is not None and not re.fullmatch(r"[0-9a-f]{40}", candidate):
+    if candidate is not None and not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", candidate):
         raise ValueError("invalid review result candidate")
     return gate, code, candidate

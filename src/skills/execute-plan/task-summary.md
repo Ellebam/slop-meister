@@ -47,6 +47,10 @@ For one or two open operator decisions, keep each recommendation and the pros an
 - The changed files are listed in <location, normally the pull request>.
 ```
 
+## Ticket updates
+
+When the session worked a ticket and the vault has `fields/<plot>/tickets.md` for its plot, the spine testing handoff and the freeform closing propose that ticket's updates. Read the definition and the ticket fresh through its read route. After Details, add **Ticket updates** with one numbered item per update the definition maps to the point this work reached. Each item names the ticket and its last-update time, then the field with its current and new value, or the exact comment text. An item built on a fact or mapping the definition marks unverified says so. The list is outside the word limits. Keep it with its exact texts in the task notes. The operator approves all, some by number, an edited version or none. Record the answer verbatim in the notes. No answer means none. A proposal is not consent. Approval of an item is consent for that exact update, which harvest sends. Without a definition, the handoff stays as above.
+
 A halt or a blocked exit uses the closing shape. **Result** states the blocker and its diagnosis, and **Your move** opens with the recommendation.
 
 The tracker closing comment has a different reader and survives cleanup. It opens with the same summary, keeps the full detail below it and has no limit on the whole. List each changed file with its role in one line, state what a local file would tell the reader instead of pointing at a local path, and add the three retro lines last: went well, went wrong including every operator intervention and any step that changed no decision, worth changing. No taxonomy, score or counter.

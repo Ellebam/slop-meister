@@ -1,4 +1,4 @@
-"""Validate slot setup outputs and nonoverlapping worker and tester port ranges."""
+"""Validate slot setup outputs and nonoverlapping worker port ranges."""
 
 from pathlib import Path
 import re
@@ -13,7 +13,7 @@ DEFAULT_MAX = 6
 MAX_SLOTS = 99
 MIN_PORT = 1024
 MAX_PORT = 65535
-SLOT_KEYS = {"none", "max", "compose", "ports", "setup", "testers"}
+SLOT_KEYS = {"none", "max", "compose", "ports", "setup"}
 
 
 def _slot_ports(slots: dict, path: Path) -> list[tuple[str, int]]:
@@ -30,7 +30,7 @@ def _slot_ports(slots: dict, path: Path) -> list[tuple[str, int]]:
 
 
 def _validate_collisions(slots: dict, ports: list[tuple[str, int]], path: Path) -> None:
-    maximum = slots.get("max", DEFAULT_MAX) + slots.get("testers", 0)
+    maximum = slots.get("max", DEFAULT_MAX)
     used: dict[int, str] = {}
     for slot in range(1, maximum + 1):
         for name, base_port in ports:
@@ -72,9 +72,6 @@ def validate(data: dict, path: Path) -> None:
             fail(path, "slots.none", "must be boolean true and the only slots key")
         return
     integer(slots.get("max", DEFAULT_MAX), (1, MAX_SLOTS), (path, "slots.max"))
-    integer(slots.get("testers", 0), (0, MAX_SLOTS), (path, "slots.testers"))
-    if slots.get("max", DEFAULT_MAX) + slots.get("testers", 0) > MAX_SLOTS:
-        fail(path, "slots.testers", f"max and testers together exceed {MAX_SLOTS} slots")
     if (compose := slots.get("compose")) is not None and not _relative(compose):
         fail(path, "slots.compose", "expected a nonempty relative path without .. or controls")
     _validate_setup(slots, path)

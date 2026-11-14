@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import hashlib
 import io
 import os
@@ -24,7 +24,7 @@ CLAUDE_STUB = '#!/bin/sh\n[ "$1" = agents ] && echo "[]"\nexit 0\n'
 @dataclass(frozen=True)
 class Machine:
     root: Path
-    env: dict[str, str]
+    env: dict[str, str] = field(repr=False)
 
     @property
     def state(self) -> Path:

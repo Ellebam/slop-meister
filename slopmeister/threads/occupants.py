@@ -45,15 +45,23 @@ def run(args: list[str]) -> subprocess.CompletedProcess:
         raise CensusError("inspection command unavailable: " + args[0]) from error
 
 
-def gone(pid: int) -> bool:
+def _absent(pid: int) -> bool:
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
         return True
     except PermissionError:
         pass
+    return False
+
+
+def gone(pid: int) -> bool:
+    if _absent(pid):
+        return True
     # A killed process stays listed until its parent collects it, on Linux under its own name.
-    return run(["ps", "-p", str(pid), "-o", "stat="]).stdout.strip().startswith("Z")
+    state = run(["ps", "-p", str(pid), "-o", "stat="]).stdout.strip()
+    # No row means its parent collected it since the first probe, only the kernel confirms that.
+    return state.startswith("Z") or (not state and _absent(pid))
 
 
 def beneath(path: str, root: str) -> bool:

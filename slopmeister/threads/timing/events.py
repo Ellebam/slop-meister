@@ -55,6 +55,11 @@ FINALIZE = re.compile(
 )
 RELAY = re.compile(r"^\s*Dispatcher here", re.I)
 KICKOFF_MODE = re.compile(r"^Mode:\s*(spine|freeform)\s*$", re.M)
+MANAGER = re.compile(
+    r"^- Manager(?: and (?:your )?sole recovery owner)?: `([a-z0-9-]+)`, "
+    r"host ([A-Za-z][A-Za-z0-9_-]*), `run:(run_[a-z0-9]+)`\.",
+    re.M,
+)
 VALIDATION = "## Validation"
 TEST_GUIDE = re.compile(r"TEST-GUIDE[^/]*\.md$")
 NOT_SOURCE = re.compile(r"-NOTES\.md$|/memory/|/tmp/|/scratchpad/|/\.slopmeister/vault/|/My Drive/")
@@ -117,10 +122,13 @@ class Session:
     model: str = ""
     effort: str = ""
     mode: str = "unknown"
+    plot: str | None = None
     resumed: bool = False
+    manager: tuple[str, str] | None = None
     users: list[User] = field(default_factory=list)
     turns: list[Turn] = field(default_factory=list)
     commands: list[Command] = field(default_factory=list)
+    command_starts: list[tuple[float, str]] = field(default_factory=list)
     skills: list[tuple[float, str]] = field(default_factory=list)
     edits: list[tuple[float, str]] = field(default_factory=list)
     tokens: list[tuple[float, int, int]] = field(default_factory=list)
@@ -139,6 +147,8 @@ class Session:
             mode = KICKOFF_MODE.search(text)
             self.mode = mode.group(1) if mode else "unknown"
             self.resumed = "## Resume" in text
+            owners = {(host, run) for _, host, run in MANAGER.findall(text)}
+            self.manager = next(iter(owners)) if len(owners) == 1 else None
         explains = kind == "operator" and bool(EXPLAIN.search(text))
         self.users.append(User(when, kind, explains))
 
@@ -148,6 +158,11 @@ class Session:
             kind = "gate-focused"
         self.commands.append(Command(span[0], span[1], kind, failed))
         self.skills.extend((span[0], name) for name in DELIVERED_SKILL.findall(text))
+
+    def start_command(self, when: float, text: str) -> None:
+        kind = command_kind(text)
+        if kind in ("review-plan", "review-diff", "ship", "tester-launch"):
+            self.command_starts.append((when, kind))
 
     def add_edit(self, when: float, path: str, body: str) -> None:
         if TEST_GUIDE.search(path):

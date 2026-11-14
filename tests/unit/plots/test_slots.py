@@ -117,32 +117,20 @@ def test_valid_port_boundaries_are_not_overrestricted(slots):
     assert validate(change("slots", slots), PATH)
 
 
-def test_setup_and_separate_tester_range_are_optional_and_reported():
+def test_setup_is_optional_and_reported():
     slots = {
         "max": 2,
-        "testers": 1,
         "ports": {"WEB": 45100},
         "setup": ["python3", "prepare.py"],
     }
     data = validate(change("slots", slots), PATH)
     assert data["slots"] == slots
-    assert "slots\ttesters\t1" in slot_rows(data)
     assert 'setup\t-\t["python3", "prepare.py"]' in slot_rows(data)
 
 
-@pytest.mark.parametrize("testers", [-1, 100, True, "1"])
-def test_tester_count_is_a_bounded_integer(testers):
-    with pytest.raises(ValueError, match="slots.testers: expected an integer"):
-        validate(change("slots.testers", testers), PATH)
-
-
-def test_tester_range_participates_in_port_collisions_and_slot_limit():
-    slots = {"max": 2, "testers": 1, "ports": {"A": 45100, "B": 45102}}
-    with pytest.raises(ValueError, match="collide"):
-        validate(change("slots", slots), PATH)
-    slots = {"max": 99, "testers": 1, "ports": {"A": 45100}}
-    with pytest.raises(ValueError, match="together exceed"):
-        validate(change("slots", slots), PATH)
+@pytest.mark.parametrize("path", ["./docker/compose.yml", "docker//compose.yml"])
+def test_setup_validation_preserves_existing_relative_compose_spellings(path):
+    assert validate(change("slots.compose", path), PATH)["slots"]["compose"] == path
 
 
 @pytest.mark.parametrize("command", ["prepare", [], [""], ["x\n"], [1]])

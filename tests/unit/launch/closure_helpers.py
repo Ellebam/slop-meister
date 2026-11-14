@@ -23,6 +23,7 @@ class Box:
     events: list[str] = field(default_factory=list)
     states: dict[int, str] = field(default_factory=dict)
     identities: int = 0
+    clock: float = 0
 
     def run(self, args, **_):
         handler = {"ps": self.ps, "lsof": self.lsof}.get(args[0])
@@ -61,14 +62,18 @@ class Box:
     def lsof(self, args):
         return (1, "") if self.fault == "lsof" else (0, f"n{self.alive[int(args[3])][1]}\n")
 
-    def listing(self):
+    def listing(self, **_):
         return None if self.fault == "orca-down" else dict(self.terminals)
 
-    def close_terminal(self, handle):
+    def close_terminal(self, handle, **_):
         assert handle == "old-terminal", "closed an unrelated terminal"
         self.events.append("close")
         if self.fault != "close":
             del self.terminals[handle]
+
+    def sleep(self, seconds):
+        self.clock += seconds
+        self.events.append("sleep")
 
     def kill(self, pid, sig):
         assert pid in self.alive or sig == 0, "a signal escaped the workspace"
@@ -105,7 +110,8 @@ def make_box(tmp_path, monkeypatch, row) -> Box:
     monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
     monkeypatch.setattr(subprocess, "run", box.run)
     monkeypatch.setattr(closure.os, "kill", box.kill)
-    monkeypatch.setattr(closure.time, "sleep", lambda seconds: box.events.append("sleep"))
+    monkeypatch.setattr(closure.time, "sleep", box.sleep)
+    monkeypatch.setattr(closure.time, "monotonic", lambda: box.clock)
     monkeypatch.setattr(closure.terminal, "ready", lambda: box.fault != "orca-down")
     monkeypatch.setattr(closure.terminal, "terminals", box.listing)
     monkeypatch.setattr(closure.terminal, "close", box.close_terminal)

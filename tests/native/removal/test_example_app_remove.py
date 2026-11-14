@@ -12,15 +12,36 @@ import pytest
 from slopmeister.install.fileops import lock_service_actions
 from slopmeister.removal import remove_tree
 from slopmeister.session.verify import snapshot
+from tests.support.fakes import fake_binary
 from tests.support.repos import GIT_ENV, git, scratch_repo
 
 ROOT = Path(__file__).resolve().parents[3]
-WORKER = """while [ ! -e "$GO" ]; do /bin/sleep 0.1; done
+REPORT = (
+    "**Result** The task is unfinished.\n"
+    "**Proven** Keep the draft, slot and claim.\n"
+    "**Your move** Finish the draft. Keep $(false) and $HOME literal.\n"
+)
+WORKER = (
+    """while [ ! -e "$GO" ]; do /bin/sleep 0.1; done
 /bin/sleep 300 &
 echo $! > "$CHILD"
-/bin/sh -c 'cd "$REPO" && "$CLI" workspace-remove "$WORKSPACE" --self' > "$OUT" 2>&1
+/bin/sh -c 'cd "$REPO" && "$CLI" workspace-remove --self -- "$WORKSPACE"' \\
+  <<'HARVEST_REPORT' > "$OUT" 2>&1
+"""
+    + REPORT
+    + """HARVEST_REPORT
 wait
 """
+)
+# An Orca double with one open tab. It lists the tab under $TAB until a close names it.
+ORCA = """reply() { echo '{"ok":true,"result":{'"$1"'}}'; }
+case "$1 $2" in
+"status --json") reply '"app":{"running":true},"runtime":{"reachable":true}' ;;
+"terminal list")
+  [ -e "$CLOSED" ] || row='{"handle":"term_fixture","worktreePath":"'"$TAB"'"}'
+  reply '"truncated":false,"terminals":['"$row"']' ;;
+"terminal close") echo "$4" > "$CLOSED"; reply ;;
+esac"""
 
 
 def _until(check):
@@ -35,15 +56,15 @@ def _ps(pid, column):
     return result.stdout.strip()
 
 
-def _worker(path, env, script):
-    link = Path(env["TEST_ROOT"]) / f"standin-{path.name}/claude"
+def _worker(path, env, script, kind="claude"):
+    link = Path(env["TEST_ROOT"]) / f"standin-{path.name}/{kind}"
     link.parent.mkdir()
     link.symlink_to("/bin/bash")
-    command = "exec -a claude " + shlex.join([str(link), "-c", script])
+    command = f"exec -a {kind} " + shlex.join([str(link), "-c", script])
     process = subprocess.Popen(
         ["/bin/bash", "-c", command], cwd=path, env=env, stdin=subprocess.PIPE
     )
-    _until(lambda: _ps(process.pid, "comm=") == "claude")
+    _until(lambda: _ps(process.pid, "comm=") == kind)
     return process
 
 
@@ -116,5 +137,70 @@ def test_example_app_removes_the_owned_worker_and_descendants_but_keeps_a_neighb
         assert _ps(int(Path(env["CHILD"]).read_text()), "stat=") in ("", "Z")
         assert "cleanup pending" in Path(env["OUT"]).read_text()
         assert all(p.stat().st_mode & 0o077 == 0 for p in logs.glob("*.log"))
+        assert Path(env["OUT"]).read_text().startswith(REPORT)
+        assert all(p.read_text().startswith(REPORT) for p in logs.glob("*.log"))
+    finally:
+        _stop_owned(worker, neighbour, env)
+
+
+def _directory_session(tmp_path, env, notes):
+    """A launched directory session with its saved plot and the tab its launcher recorded."""
+    session = tmp_path / "sessions/desk"
+    (session / ".slopmeister-config").mkdir(parents=True)
+    (session / ".slopmeister-config/state.json").write_text(json.dumps({"plot": "example-notes"}))
+    (session / "desk-NOTES.md").write_text(notes)
+    logs = Path(env["PLOT_SESSION_STATE_DIR"])
+    logs.mkdir()
+    (logs / "desk.orca").write_text("term_fixture\n")
+    env.update(
+        WORKSPACE=str(session),
+        PLOT_SESSION_ROOT=str(session.parent),
+        PLOT_SESSION_ORCA=str(fake_binary(tmp_path / "bin", "orca", ORCA)),
+        CLOSED=str(tmp_path / "closed"),
+        # The launcher opens a directory session's tab in the Slopmeister checkout.
+        TAB=str(ROOT),
+    )
+    return session, logs
+
+
+def _run(command, repo, env):
+    return subprocess.run(command, cwd=repo, env=env, capture_output=True, text=True, timeout=30)
+
+
+def test_directory_session_keeps_unsaved_content_without_force(tmp_path):
+    """Bug: a directory session's self-removal deletes unsaved content without --force."""
+    repo, _, env, _ = _world(tmp_path)
+    session, _ = _directory_session(tmp_path, env, "")
+    (session / "draft.md").write_text("unsaved\n")
+    command = [env["CLI"], "workspace-remove", "--self", "--", str(session)]
+    refused = _run(command, repo, env)
+    assert refused.returncode != 0 and "ignored work" in refused.stderr
+    assert (session / "draft.md").read_text() == "unsaved\n"
+
+
+@pytest.mark.xdist_group("workspace-removal-processes")
+@pytest.mark.parametrize("stop_only", [False, True])
+def test_directory_session_ends_itself_and_closes_its_terminal(tmp_path, stop_only):
+    """Bug: a directory session cannot end itself or its tab is sought under the wrong path."""
+    repo, _, env, other = _world(tmp_path)
+    # Harvest empties finished notes before removal. A stop keeps them for the next worker.
+    session, logs = _directory_session(tmp_path, env, "retain this decision\n" if stop_only else "")
+    flags = ["--self", "--stop-only", "--"] if stop_only else ["--self", "--"]
+    done = "session stopped; workspace kept:" if stop_only else "workspace removed:"
+    neighbour = _worker(other, env, "read")
+    worker = _worker(session, env, WORKER.replace("--self --", " ".join(flags)))
+    command = [env["CLI"], "workspace-remove", *flags, str(session)]
+    try:
+        refused = _run(command, repo, env)
+        assert refused.returncode != 0 and "--self requires the calling worker" in refused.stderr
+        assert not Path(env["CLOSED"]).exists() and worker.poll() is None
+        Path(env["GO"]).touch()
+        _until(lambda: any(done in p.read_text() for p in logs.glob("*.log")))
+        assert worker.wait(timeout=30) is not None and neighbour.poll() is None
+        assert _ps(int(Path(env["CHILD"]).read_text()), "stat=") in ("", "Z")
+        assert Path(env["CLOSED"]).read_text() == "term_fixture\n"
+        assert (session / "desk-NOTES.md").exists() is stop_only
+        assert not (logs / "desk.orca").exists()
+        assert all(p.read_text().startswith(REPORT) for p in logs.glob("*.log"))
     finally:
         _stop_owned(worker, neighbour, env)

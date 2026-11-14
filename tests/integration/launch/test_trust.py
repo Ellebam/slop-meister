@@ -3,11 +3,11 @@
 import json
 import os
 from pathlib import Path
-import shutil
 import tomllib
 
 import pytest
 
+from slopmeister.removal import remove_tree
 from tests.integration.launch.helpers import launch, machine, target
 
 
@@ -104,7 +104,7 @@ def test_launch_prunes_only_owned_kickoff_pairs(tmp_path):
     world = machine(tmp_path)
     for name in ("example-client-gone", "example-client-live"):
         launch(world, "example-client", name, "--directory")
-    shutil.rmtree(world.sessions / "example-client-gone")
+    remove_tree(world.sessions / "example-client-gone")
     store = world.claude / ".claude.json"
     data = json.loads(store.read_text())
     data["projects"][str(tmp_path / "removed-worktree")] = {"hasTrustDialogAccepted": True}

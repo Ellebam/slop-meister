@@ -225,3 +225,31 @@ def test_open_codex_pins_normal_home_in_terminal(tmp_path, monkeypatch):
     assert cli._open(settings) == 0
     normal = f"CODEX_HOME={Path.home() / '.codex'}"
     assert normal in created[0] and str(foreign) not in created[0]
+
+
+def test_dispatcher_starts_on_the_account_selected_in_orca(tmp_path, monkeypatch):
+    """Bug: the dispatcher's exec bypasses Orca's function and its workers ignore later switches."""
+    home = tmp_path / "account/home"
+    home.mkdir(parents=True)
+    pointer = tmp_path / "selected-host"
+    pointer.write_text(f"{home}\n")
+    monkeypatch.setenv("ORCA_CLAUDE_PROFILE_POINTER", str(pointer))
+    store, env = cli._trust("claude", tmp_path / "workspace")
+    assert store == home / ".claude.json"
+    for source in (env, cli.os.environ):
+        assert source["CLAUDE_CONFIG_DIR"] == source["ORCA_CLAUDE_INJECTED_CONFIG_DIR"] == str(home)
+
+    pointer.write_text("")
+    monkeypatch.setattr(cli.Path, "home", lambda: tmp_path)
+    store, env = cli._trust("claude", tmp_path / "workspace")
+    assert store == tmp_path / ".claude.json"
+    assert "CLAUDE_CONFIG_DIR" not in env and "CLAUDE_CONFIG_DIR" not in cli.os.environ
+
+
+def test_dispatcher_keeps_the_operators_own_store(tmp_path, monkeypatch):
+    """Bug: an operator-set store is marked as Orca's choice and the next switch replaces it."""
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", "own")
+    store, env = cli._trust("claude", tmp_path)
+    assert store == (tmp_path / "own").resolve() / ".claude.json"
+    assert env["CLAUDE_CONFIG_DIR"] == str((tmp_path / "own").resolve())
+    assert "ORCA_CLAUDE_INJECTED_CONFIG_DIR" not in env

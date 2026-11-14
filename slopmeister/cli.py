@@ -17,6 +17,7 @@ COMMANDS: dict[str, tuple[str, str]] = {
     "candidate": ("slopmeister.spine.candidate_cli", "freeze or inspect repository state"),
     "check": ("slopmeister.check.cli", "the deterministic gate, every check once with its layer"),
     "claims": ("slopmeister.claims.cli", "manage GitHub issue ownership"),
+    "context-census": ("slopmeister.threads.census.cli", "aggregate recorded context and usage"),
     "dispatch": ("slopmeister.dispatch.cli", "open a standing dispatcher"),
     "install": ("slopmeister.install.cli", "prepare and validate fixed session configuration"),
     "kickoff": (
@@ -31,6 +32,7 @@ COMMANDS: dict[str, tuple[str, str]] = {
         "budgets, imports, the allowlist, field identifiers and plot style",
     ),
     "render": ("slopmeister.render.build", "render src and plots into dist"),
+    "repository": ("slopmeister.repositories", "add or inspect a session's repositories"),
     "review": ("slopmeister.review.cli", "run, replay or replace one cross-tool review"),
     "slots": ("slopmeister.slots.cli", "allocate, inspect and release target slots"),
     "spine-timing": (

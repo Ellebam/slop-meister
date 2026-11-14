@@ -32,8 +32,8 @@ WORKSPACE = "SLOPMEISTER_SESSION_WORKSPACE"
 PHONE = "SLOPMEISTER_PHONE_SESSION"
 DECISIONS = ("approved", "denied")
 NO_REASON = (
-    "a tier-two request needs a reason the operator can read. Put "
-    'SECRET_ASK_REASON="<one line>" in front of the command and run it again.'
+    "a tier-two request needs a reason the operator can read. Run it again as "
+    'op tier-two --reason "<one line>" -- <command>.'
 )
 EXPIRED = "timed out"
 
@@ -123,7 +123,7 @@ def question(request: dict) -> dict:
     if not reason:
         raise ValueError(NO_REASON)
     if len(reason) > REASON_LIMIT:
-        raise ValueError(f"shorten the reason in SECRET_ASK_REASON to {REASON_LIMIT} characters")
+        raise ValueError(f"shorten the reason to {REASON_LIMIT} characters")
     inputs = ""
     if request["files"]:
         inputs += "Env files: " + shlex.join(request["files"]) + "\n"

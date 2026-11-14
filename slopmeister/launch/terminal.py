@@ -35,11 +35,16 @@ def binary() -> str:
     return os.environ.get("PLOT_SESSION_ORCA") or ORCA[paths.platform()]
 
 
-def _orca(*args: str, env: dict[str, str] | None = None, checked: bool = False) -> dict | None:
+def _orca(
+    *args: str,
+    env: dict[str, str] | None = None,
+    checked: bool = False,
+    timeout: float = TIMEOUT,
+) -> dict | None:
     """Orca answers ok even while its app is closed, so callers read the result itself."""
     try:
         done = subprocess.run(
-            [binary(), *args, "--json"], capture_output=True, text=True, timeout=TIMEOUT, env=env
+            [binary(), *args, "--json"], capture_output=True, text=True, timeout=timeout, env=env
         )
         reply = json.loads(done.stdout)
     except (OSError, ValueError, subprocess.TimeoutExpired) as error:
@@ -101,13 +106,13 @@ def name(workspace: Path, display: str, issue: str) -> bool:
     return _orca("worktree", "set", *args) is not None
 
 
-def terminals() -> dict[str, str] | None:
+def terminals(*, timeout: float = TIMEOUT) -> dict[str, str] | None:
     """Handle to workspace path. `terminal show` still answers for a closed handle, the list not."""
-    listed = _orca("terminal", "list", "--limit", LIST_LIMIT)
+    listed = _orca("terminal", "list", "--limit", LIST_LIMIT, timeout=timeout)
     if listed is None or listed.get("truncated") is not False:
         return None
     return {entry.get("handle"): entry.get("worktreePath") for entry in listed.get("terminals", [])}
 
 
-def close(handle: str) -> None:
-    _orca("terminal", "close", "--terminal", handle)
+def close(handle: str, *, timeout: float = TIMEOUT) -> None:
+    _orca("terminal", "close", "--terminal", handle, timeout=timeout)

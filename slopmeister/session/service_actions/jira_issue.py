@@ -99,8 +99,26 @@ def _check_update(client, issue: dict, updated) -> str:
 
 
 def read_issue(client, expected: str, key: str) -> dict:
-    issue = client.get(f"rest/api/2/issue/{key}", {"fields": "*all", "expand": "names,schema"})
+    issue = client.get(
+        f"rest/api/2/issue/{key}", {"fields": "*all", "expand": "names,schema,transitions"}
+    )
     body = _body(client, issue)
+    transitions = issue.get("transitions")
+    if not isinstance(transitions, list):
+        raise ValueError("RESPONSE_INVALID")
+    for transition in transitions:
+        if not isinstance(transition, dict) or not isinstance(transition.get("to"), dict):
+            raise ValueError("RESPONSE_INVALID")
+        if not all(
+            isinstance(value, str) and value.strip()
+            for value in (
+                transition.get("id"),
+                transition.get("name"),
+                transition["to"].get("name"),
+            )
+        ):
+            raise ValueError("RESPONSE_INVALID")
+    body["transitions"] = transitions
     body.update(names=issue.get("names"), schema=issue.get("schema"))
     coverage = _coverage(issue)
     coverage["comments"] = _complete_comments(client, body, always=True)

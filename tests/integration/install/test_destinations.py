@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.integration.install.helpers import unlock_deliveries
 from tests.integration.install.installer_helpers import (
     checkout,
     environment,
@@ -106,6 +107,7 @@ def test_removed_worktree_removes_session_state_without_shared_setting_changes(t
     install(env, "--prepare", "example-app", str(workspace))
     gitdir = Path(git(workspace, "rev-parse", "--absolute-git-dir").strip())
     hooks = git(repo, "config", "core.hooksPath").strip()
+    unlock_deliveries(workspace)
     git(repo, "worktree", "remove", "--force", str(workspace))
     assert not gitdir.exists()
     assert git(repo, "config", "core.hooksPath").strip() == hooks

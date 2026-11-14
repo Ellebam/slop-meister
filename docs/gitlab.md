@@ -1,6 +1,6 @@
 # GitLab through glab
 
-Agents read and change GitLab work with the `glab` CLI, as they do on GitHub with `gh`. This works against a self-managed host. Hosts, group paths and project names live in the owning vault note, in the 1Password item and in `glab`'s own configuration. None of them belongs in this repository.
+Agents use `glab` for GitLab as they use `gh` for GitHub, including self-managed hosts. Hosts, group paths and project names stay in the owning vault note, 1Password item and `glab` configuration, never this repository.
 
 ## Set up the login
 
@@ -9,13 +9,13 @@ Agents read and change GitLab work with the `glab` CLI, as they do on GitHub wit
 3. Store the token and bare host name, without `https://`, in your own 1Password item. Copy [the neutral reference example](../examples/glab.env.example) to `~/.config/slopmeister/glab.env`, outside the checkout, and set mode `0600`. Set `SLOPMEISTER_GLAB_TOKEN` and `SLOPMEISTER_GLAB_HOST` to your `op://` references. Keep actual values and account-specific references out of this repository.
 4. Run `task glab:login`. The target reads that private file through `op run --env-file` and uses the [secret request route](1password-access.md). The expected output is `GLAB_LOGIN_PASS`. A failure prints `GLAB_LOGIN_FAIL` with the reason and never the token or the host.
 
-The target passes the token to `glab auth login --stdin` through masked `op run`. `glab` stores it in the macOS keychain, and its configuration file holds no token. The login is stored because Orca calls `glab` by itself, outside any Task. Renew an expired token with steps 2 to 4.
+The target sends the token through masked `op run` to `glab auth login --stdin`. `glab` stores it in the macOS keychain so Orca can call it outside Task. Its configuration holds no token. Renew an expired token with steps 2 to 4.
 
 `bin/slopmeister workstation doctor` reports `tool:glab` and `login:glab`. `glab auth status` exits 1 while the unused `gitlab.com` entry has no token, so the doctor accepts one logged-in host and reports `glab auth status exited 1, one host is logged in`.
 
 ## Read
 
-Name the project with `-R <host>/<group>/<project>`. A group read takes `--group <group>` and needs `GITLAB_HOST=<host>` in front of the command, because no repository names the host. Add `-F json` to `issue` and `mr` commands for structured output.
+Name projects with `-R <host>/<group>/<project>`. Group reads use `GITLAB_HOST=<host>` and `--group <group>`. Add `-F json` to `issue` and `mr` for JSON. Use these named reads when they provide the requested result. Write an API-only repository or tracker read inside the project's checkout as `glab api -X GET <endpoint>` with the query in the URL. Claude runs that form by [rule](permissions.md). A read with `--hostname`, a field option or a credential endpoint retains review of its exact method, endpoint, destination and payload. The read request supplies task authority without a separate write order. GET alone does not make an endpoint safe. [`glab api`](https://docs.gitlab.com/cli/api/) has no `--jq`, so pipe its JSON to `jq`.
 
 | Command | Expected output, exit 0 |
 |---|---|
@@ -27,7 +27,7 @@ Name the project with `-R <host>/<group>/<project>`. A group read takes `--group
 | `GITLAB_HOST=<host> glab work-items list --group <group> --type epic` | One line per epic with type, IID, title, state and author |
 | `GITLAB_HOST=<host> glab iteration list --group <group>` | One line per iteration with its title and link |
 
-`glab issue board view -R <host>/<group>/<project>` shows a project's issue board. Read a group's epic board in the browser.
+`glab issue board view -R <host>/<group>/<project>` shows a project's issue board. Read group epic boards in the browser. [Legacy epic notes](https://docs.gitlab.com/api/notes/#epics) need the numeric epic ID, not its IID. That API is deprecated. Use Work Items for newer epics.
 
 ## Write
 

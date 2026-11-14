@@ -9,8 +9,10 @@ A slot gives a worktree its own ports and, when declared, a compose project and 
 ```text
 task slot:up -- <repo> <plot> <name> [--slot <n>] [launcher args]
 task slot:status -- [<repo>]
-task slot:down -- <repo> <plot> <name> [--force] [--slot <n>] [--self]
+task slot:down -- <repo> <plot> <name> [--force] [--slot <n>]
 ```
+
+A same-plot session can pass repeated `--repository <checkout>` launcher arguments. The primary holds the one session allocation. Companion source repositories do not each consume a slot. The combined acceptance command uses that allocation, and teardown checks and removes the recorded companions before the primary. A task needing another resource policy follows the existing scope decision.
 
 Use `<plot>-<ticket>-<one or two words>` for new session names, keeping them near twenty characters. `slot:up` checks the full plot prefix before claiming resources. `slot:down` keeps accepting existing names. Recover a saved slot through [launcher redispatch](../src/skills/plot-session/SKILL.md) with its exact name.
 
@@ -27,7 +29,6 @@ Each repository plot declares its resources in `[slots]` inside plot.toml. A plo
 [slots]
 max = 3
 compose = "docker/compose.yml"
-testers = 1
 setup = ["task", "setup"]
 
 [slots.ports]
@@ -43,7 +44,6 @@ Read the project's compose files and environment examples before writing a defin
 | Variable names | Matching `^[A-Z][A-Z0-9_]*$`. |
 | Reserved names | `SLOT`, `SLOT_TARGET`, `SLOT_NAME`, `SLOT_PROJECT`, `SLOT_DATA`, `SLOT_COMPOSE`. |
 | Ports | Integers from 1024 to 65535, never booleans or quoted numbers. Every expanded slot must stay in range, and the port sets of all slot numbers must be disjoint, before any app starts listening. |
-| `testers` | Optional tester-only slots after the worker range, default 0. Worker max plus testers cannot exceed 99. Port validation includes both ranges. |
 | `setup` | Optional nonempty argument array, executed directly after worker stack readiness with the slot environment. No shell parsing. |
 | Compose path | A nonempty relative path with no `..` segment or control character. Spaces are literal. It must name a readable file at allocation time. Its resolved path must remain inside the checkout, including through symlinks. |
 
@@ -65,39 +65,33 @@ The environment file contains the reserved keys and allocated port variables. Co
 
 Repository deliveries use the launcher's staged-file contract, and the launcher refuses a tracked destination basename. Preparation or compose failure before terminal opening reverses the allocation. Once the allocation was delivered into the worktree, the reversal also deletes the branch while it still points at its starting commit, so the same name can be retried. An earlier preparation failure keeps the branch. Once terminal opening is attempted, resources stay up because a worker may already exist. Inspect the worker before cleanup.
 
-
 ## Release a slot
 
-Run `task slot:down` from outside the worktree being removed. It checks that the plot and session name match the allocation, refuses while a worker still occupies the worktree, and refuses a dirty worktree unless `--force` is supplied. `--force` confirms discarding uncommitted work and nothing else. It refuses a worktree whose saved issue association is in any phase other than `released` or `closed`, and names the abandon command, because removing the worktree deletes the record that releases the claim. The refusal also holds when the worktree directory lost its Git link or is gone, because the association lives in the repository's Git metadata until teardown prunes it. Harvest or abandon the task first. A live worker blocks release, except when that worker releases its own slot with `--self`.
-
-A worker occupies the worktree when a `claude`, `codex` or `opencode` client process has its working directory at the worktree or beneath it. `bin/slopmeister occupants` is the one definition, shared with the launcher's redispatch, and the refusal names every occupant. Use launcher redispatch or abandonment to close a known worker before `slot:down`; that path records its descendants before signalling, stops them child-first and verifies every recorded process has gone. Manually closing a terminal must stop that worker's descendants too, because resource teardown cannot reconstruct ownership after the client disappears. When a slotted launch fails, the launcher's message stands and no cleanup command is printed, because the launcher can fail after its worker has started.
-
-A worker releases its own slot with `--self`, run from the main checkout and outside the tool's sandbox, on the operator's cleanup request or in harvest. Inside a sandbox the worker inventory cannot run and the command refuses. The command applies the same checks while the worker still runs. It also requires that the calling worker is the only occupant, so the nearest worker process above the command must be the one in the worktree. A reviewer, a tester or another session is refused. The command then starts one process that outlives the worker and returns. That process stops the worker and its descendants through the redispatch shutdown, which also closes the worker's terminal, then runs strict ordinary teardown and exits. Its output goes to `tmp/slots/<name>.down.log`, which ends with the release line or with the refusal that stopped it.
-
-| Removed | Kept |
-|---|---|
-| Exact-label Compose containers, volumes and networks | Git branch |
-| Slot data directory | Launcher kickoff files and trust entries, until the next launch removes them |
-| Worktree | |
-
-> [!WARNING]
-> Teardown deletes slot data and Docker resources selected by the exact `com.docker.compose.project` label. Neither the editable environment file nor the worker-editable manifest selects deletion targets.
-
-Teardown removes the worktree before the slot data directory. Git removes what it can, and teardown then deletes what Git left behind, including files and directories without write permission. It changes permissions only inside that worktree and follows no symlink inside it. It refuses a symlink at the worktree path. When Git refuses the removal, teardown stops with Git's reason and keeps the worktree. When the deletion fails, the message names the cause and the command that finishes the release. In both cases the slot data directory stays and the slot stays claimed, while Compose resources are already removed.
-
-A leftover is a directory at the worktree path that has neither `.git` nor `.slot.env`, so Git no longer tracks it. Release it with `--slot <n> --force`. Git cannot check a leftover for unsaved work, so teardown refuses without `--force` and prints the exact command. It also refuses while a worker occupies the directory.
-
-Repeating teardown with `--slot <n>` reports nothing live and exits 0. Without the number, it refuses because neither a removed worktree nor a leftover can identify the slot.
-
-Ignored work and hidden tracked changes are checked too. Unchanged delivered files and recognized caches are disposable. Session scratch is disposable only when the saved delivery records ownership. Setup output is ordinary untracked or ignored work. The retired `setup_files` and `disposable` declarations are rejected. Preserve required proof outside the worktree before removal. Unknown or changed work requires explicit accepted loss and `--force`.
+Follow [slot release](slot-release.md) for ownership checks, self-shutdown reports, teardown and recovery.
 
 ## Independent checks
 
-Add `--slot-target <plot>` to `review review --mode diff --guide <absolute-guide>` when its guide needs services. The check receives its own checkout, ports and Compose project. With `testers` set, it uses only the reserved range. Otherwise it competes for ordinary free slots. Directory subjects cannot take a slot.
+Add `--slot-target <plot>` to `review review --mode diff --guide <absolute-guide>` when its guide needs services. The check borrows the calling worker's existing allocation for a clean checkout of its committed head or frozen candidate. It requires matching worker and owned-state `.slot.env` files and a declared setup command. It allocates no second slot or Compose project. Different worker slots can be checked concurrently. A second check of the same worker refuses. Directory subjects cannot take a slot.
 
-The allocation lease remains held until the check ends. Compose readiness runs before the reviewer starts. The guide owns dependency installation and application setup. Cleanup releases only that run's resources. A failed release or unverified reviewer stop retains the checkout and ownership record, with its diagnostic.
+The check discards all disposable worker-slot data before testing and again on return, including application records, authentication state and uploaded objects. Preserve needed evidence outside disposable slot data before starting. The worker must not use its slot while the check holds it. Repository application entrypoints enforce this exclusion. Arbitrary external clients are not fenced by the advisory lease.
 
-For interrupted cleanup, inspect `slot:status`, then use `slot:down` with the saved plot, check name and slot number. Recovery accepts neither `--self` nor `--force`. A live lease, wrong checkout identity, edited allocation, occupant or live listener refuses recovery. Keep the record until recovery succeeds.
+The declared setup command implements three explicit lifecycle phases through `SLOPMEISTER_SLOT_PHASE`. Each successful phase must print exactly `SLOPMEISTER_SLOT_PHASE_OK=<phase>`. An absent command, nonzero exit, timeout or missing acknowledgement blocks the check. A command that ignores the phase never counts as a reset.
+
+1. `stop` runs in the worker checkout before admission. It stops only recorded application processes, verifies their birth identities, and refuses unknown listeners. The worker keeps its stack.
+2. `reset` runs in the clean checker checkout. It installs required dependencies and resets the slot through the repository's own setup route. The checker starts applications from its clean checkout as its guide prescribes.
+3. After verified reviewer exit, `stop` runs in the checker checkout and `reset` runs in the worker checkout. A failing verdict returns that stopped, reset slot to the worker without restarting the rejected application. A passing check also requires `ready` to leave worker applications running for operator testing. Interrupted executions and explicit recovery use the full restoration route. No unverified stop, failed reset or required readiness failure releases the lease.
+
+The lease is `tester.json` inside the existing worker state directory. A held file lock excludes another check and ordinary teardown. Setup phases receive `SLOPMEISTER_SLOT_CHECK_RUN` naming the private check run. Their unique mode-600 logs live under its `evidence/` directory. The original worker `setup.log` and unrelated state stay intact. Repository applications keep process receipts under `SLOT_DATA/applications`. Ordinary slot release calls the declared stop phase before removing those receipts or the worker stack. Failed stops retain the slot.
+
+Cleanup verifies ownership and both allocation copies, restores the worker, removes only the checker checkout and lease, and retains evidence. It never removes the worker's Compose project, allocation file or state directory. A cleanup failure blocks the review result. Uncertain process exit, changed identity, failed setup or incomplete deletion keeps a visible recovery lease and the checkout. Status reports the held lease beside its worker.
+
+After the review command ends and its cause is resolved, recover the exact worker shown by status:
+
+```text
+task slot:down -- <repo> <plot> <worker-name> --slot <n>
+```
+
+When a check lease exists, this command restores the worker and releases only that lease. It does not release the worker slot. Recovery refuses a live review lock, changed ownership, remaining checker or failed restoration, including with `--force`. Legacy separate tester records are preserved for explicit repair, never interpreted as worker leases.
 
 ## Inspect live work
 
@@ -112,4 +106,4 @@ Status makes two `lsof` passes, for listeners and working directories. A listene
 
 The [unit](../tests/unit/slots/), [integration](../tests/integration/slots/) and [native](../tests/native/slots/) suites use scratch repositories, [fixture definitions](../tests/data/slots/), suppressed launches and disposable listeners. Their overrides are `PLOT_DECLARATIONS`, `SLOT_STATE_DIR`, the non-Compose launcher double `SLOT_LAUNCHER`, and a test-owned `CODEX_HOME`.
 
-The suite does not touch Docker. Real container, volume and network behaviour needs the separate local QA run described by the [procedure](../src/skills/slot/SKILL.md).
+The suite does not touch Docker. Real container, volume and network behaviour needs the separate local QA run described by the [procedure](../src/skills/slot/SKILL.md). A borrowed stack needs one real Compose diff check, proving the same worker resources remain and no checker checkout or lease remains.

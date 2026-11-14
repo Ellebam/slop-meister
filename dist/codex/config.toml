@@ -1,3 +1,9 @@
-# Slopmeister installs only this key into ~/.codex/config.toml.
-# The operator sets model and model_reasoning_effort in that file.
+# Slopmeister owns these settings. Other keys remain operator-owned.
 model_context_window = 872000
+# Sessions compact here instead of near the window.
+model_auto_compact_token_limit = 300000
+# Compact at a turn end once 30 percent of the window is used, before the limit hits mid-turn.
+model_post_turn_compact_threshold_percent = 30
+
+[features]
+memories = false

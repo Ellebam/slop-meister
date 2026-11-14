@@ -3,6 +3,7 @@
 import os
 from pathlib import Path
 import subprocess
+import tempfile
 
 from slopmeister.check import jobs
 from slopmeister.errors import SlopmeisterError
@@ -13,10 +14,21 @@ LOG = "setup.log"
 TIMEOUT = 900
 
 
-def _execute(claim: allocation.Claim, command: list[str]) -> None:
+def _execute(
+    claim: allocation.Claim,
+    command: list[str],
+    *,
+    output: Path | None = None,
+    phase: str = "",
+    root: Path | None = None,
+) -> None:
     environment = dict(os.environ)
+    environment.pop("SLOPMEISTER_SLOT_PHASE", None)
+    if phase:
+        environment.update(SLOPMEISTER_SLOT_PHASE=phase, SLOPMEISTER_SLOT_CHECK_RUN=str(root))
     environment.update(line.split("=", 1) for line in allocation.content(claim).splitlines())
-    descriptor = os.open(claim.data / LOG, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    output = output or claim.data / LOG
+    descriptor = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(descriptor, "w") as log:
         process = subprocess.Popen(
             command,
@@ -30,13 +42,24 @@ def _execute(claim: allocation.Claim, command: list[str]) -> None:
         try:
             jobs.wait_unreaped(process, TIMEOUT)
         except subprocess.TimeoutExpired as error:
-            raise SlopmeisterError(
-                f"setup exceeded {TIMEOUT} seconds; see {claim.data / LOG}"
-            ) from error
+            raise SlopmeisterError(f"setup exceeded {TIMEOUT} seconds; see {output}") from error
         finally:
             jobs.stop_group(process, anchored=True)
     if process.returncode:
-        raise SlopmeisterError(f"setup exited {process.returncode}; see {claim.data / LOG}")
+        raise SlopmeisterError(f"setup exited {process.returncode}; see {output}")
+    if phase and f"SLOPMEISTER_SLOT_PHASE_OK={phase}" not in output.read_text().splitlines():
+        raise SlopmeisterError(f"setup did not acknowledge slot phase {phase}; see {output}")
+
+
+def phase(claim: allocation.Claim, slots: dict, action: str, root: Path) -> None:
+    """An ignored phase is a failure, even when the old setup command exits zero."""
+    if not (command := slots.get("setup")):
+        raise SlopmeisterError("slot checks require a declared setup lifecycle route")
+    fd, name = tempfile.mkstemp(prefix=f"slot-{action}-", suffix=".log", dir=root / "evidence")
+    os.close(fd)
+    output = Path(name)
+    output.unlink()
+    _execute(claim, command, output=output, phase=action, root=root)
 
 
 def run(claim: allocation.Claim, slots: dict) -> None:
@@ -46,7 +69,9 @@ def run(claim: allocation.Claim, slots: dict) -> None:
     _execute(claim, command)
 
 
-def check_ignored_output(worktree: Path, owned: allocation.Live) -> None:
+def check_ignored_output(
+    worktree: Path, owned: allocation.Live, companions: frozenset[Path] = frozenset()
+) -> None:
     command = ["git", "-C", str(worktree)]
     entries = allocation.run([*command, *IGNORED_ARGS], capture=True).stdout.split("\0")
     names = [entry for entry in entries if entry.startswith(("? ", "S ", "s ", "h "))]
@@ -58,4 +83,5 @@ def check_ignored_output(worktree: Path, owned: allocation.Live) -> None:
         worktree,
         names,
         Path(gitdir.strip()) / "slopmeister-config",
+        companions,
     )

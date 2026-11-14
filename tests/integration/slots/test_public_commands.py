@@ -1,5 +1,6 @@
 """Public Task slot commands allocate, inspect and release one disposable repository."""
 
+import os
 from pathlib import Path
 import shlex
 import shutil
@@ -18,8 +19,14 @@ def _port() -> int:
     return port
 
 
-def _world(tmp_path):
+def _world(tmp_path, *, native=False):
     world = machine(tmp_path)
+    if not native:
+        ps = shlex.quote(shutil.which("ps"))
+        executable(
+            tmp_path / "bin/ps",
+            f'#!/bin/sh\n[ "$*" = "-axo pid=,tty=,comm=" ] && exit 0\nexec {ps} "$@"\n',
+        )
     repository = target(tmp_path / "repo")
     plot = world.root / "plots/slopmeister/plot.toml"
     plot.parent.mkdir(parents=True, exist_ok=True)
@@ -227,3 +234,29 @@ def test_public_down_is_retry_safe_by_explicit_slot_number(tmp_path):
         "1",
     )
     assert result.returncode == 0 and "nothing live for slopmeister-slot1" in result.stdout
+
+
+def test_portable_slot_release_does_not_depend_on_an_unreadable_host_worker(tmp_path, monkeypatch):
+    """Portable slot guards must reach their own state while native clients run elsewhere."""
+    host = tmp_path / "host-bin"
+    marker = tmp_path / "host-census"
+    ps, lsof = shutil.which("ps"), shutil.which("lsof")
+    executable(
+        host / "ps",
+        '#!/bin/sh\nif [ "$*" = "-axo pid=,tty=,comm=" ]; then\n'
+        f'touch {shlex.quote(str(marker))}\nprintf "{os.getpid()} ? codex\\n"\nexit 0\nfi\n'
+        f'exec {shlex.quote(ps)} "$@"\n',
+    )
+    executable(
+        host / "lsof",
+        f'#!/bin/sh\n[ "$*" = "-a -p {os.getpid()} -d cwd -Fn" ] && exit 1\n'
+        f'exec {shlex.quote(lsof)} "$@"\n',
+    )
+    monkeypatch.setenv("PATH", str(host) + os.pathsep + os.environ["PATH"])
+    _, repo, env = _world(tmp_path)
+    arguments = ("--", str(repo), "slopmeister", "slopmeister-one")
+    up = _task(env, "slot:up", *arguments, input_text="Mode: freeform\nslot fixture\n")
+    assert up.returncode == 0, up.stdout + up.stderr
+    released = _task(env, "slot:down", *arguments)
+    assert released.returncode == 0, released.stdout + released.stderr
+    assert not marker.exists() and not (repo / ".worktrees/slopmeister-one").exists()

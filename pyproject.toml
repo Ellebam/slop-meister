@@ -1,6 +1,6 @@
 [project]
 name = "slopmeister"
-version = "0.5.0"
+version = "0.6.0"
 description = "Dispatch and manage agent sessions with fixed configuration, reviews and proof."
 requires-python = ">=3.14"
 dependencies = []
@@ -24,7 +24,7 @@ target-version = "py314"
 line-length = 100
 # The three tool directories are launcher-delivered copies.
 extend-exclude = [
-    "dist", "tests/data", ".venv", ".agents", ".claude", ".codex",
+    "dist", "tests/data", ".venv", ".agents", ".claude", ".codex", ".slopmeister-repos",
 ]
 
 [tool.ruff.lint]
@@ -47,7 +47,10 @@ pythonpath = ["."]
 addopts = "-p no:cacheprovider --strict-markers"
 timeout = 60
 timeout_method = "thread"
+# Passing tests leave no fixture repositories in the session scratch to block its cleanup.
+tmp_path_retention_policy = "failed"
 markers = [
+    "real_home: explicit real-home access for paid live sessions using installed login state",
     "unit: no subprocess, no filesystem outside tmp_path",
     "integration: portable, drives the product through subprocesses with fakes",
     "native: needs macOS, Orca, the real Codex binary or launchd",

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import shutil
 
@@ -23,10 +24,10 @@ def static() -> int:
             print(f"{target}: none")
             continue
         compose = allocation.compose_relative(slots)
+        maximum = allocation.maximum(slots)
         suffix = f", compose {compose}" if compose else ""
-        suffix += f", {allocation.testers(slots)} tester slots" if allocation.testers(slots) else ""
-        print(f"{target}: {allocation.maximum(slots)} slots{suffix}")
-        for number in range(1, allocation.maximum(slots) + allocation.testers(slots) + 1):
+        print(f"{target}: {maximum} slots{suffix}")
+        for number in range(1, maximum + 1):
             ports = allocation.expand(slots, number)
             print(f"  slot {number}: " + " ".join(f"{key}={value}" for key, value in ports.items()))
             for port in ports.values():
@@ -86,6 +87,9 @@ def _slot(item: allocation.Live) -> None:
     ports = allocation.expand(slots, item.slot)
     project = f"{item.target}-slot{item.slot}"
     state, resources = _compose_state(project, bool(allocation.compose_relative(slots)))
+    lease = allocation.state_path() / project / tester.RECORD
+    if lease.exists() or lease.is_symlink():
+        print(f"  {item.name} held by a diff check; lease {lease}")
     values = " ".join(f"{key}={value}" for key, value in ports.items())
     print(f"{item.name} slot {item.slot} {item.target} {values} {state}")
     for resource in resources:
@@ -93,11 +97,25 @@ def _slot(item: allocation.Live) -> None:
         print(f"  {item.name} {resource.kind} {resource.name}{suffix}")
 
 
+def _retained(root: Path, current: list[allocation.Live]) -> None:
+    known = {f"{item.target}-slot{item.slot}" for item in current}
+    for path in sorted(allocation.state_path().glob(f"*-slot*/{tester.RECORD}")):
+        if path.parent.name in known:
+            continue
+        try:
+            record = json.loads(path.read_text())
+            if record.get("repository") == str(root):
+                print(f"retained check record {path}; explicit repair required")
+        except OSError, ValueError, AttributeError:
+            print(f"unreadable check record {path}; preserve for repair")
+
+
 def live(repo: str) -> int:
     root = allocation.main_root(repo)
-    current = [*allocation.live(root), *tester.live(root)]
+    current = allocation.live(root)
     for item in current:
         _slot(item)
+    _retained(root, current)
     if not current:
         print(f"no live slots under {root / '.worktrees'}")
     listeners = allocation.bound_ports()

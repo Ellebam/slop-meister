@@ -20,3 +20,15 @@ The operator runs both in their own terminal on the target machine, where `op` i
 To rotate a token, replace it in the token vault, run `task op:setup` on each machine and revoke the old token in 1Password. 1Password cannot change the vaults or rights of an existing service account, so a changed tier needs a new account and the same steps.
 
 The machine-side program is `~/.local/bin/op` with `~/.local/lib/slopmeister-op`, installed by `task home:install` and checked by `task check`'s drift report.
+
+## Prove the route
+
+Use one throwaway item per tier, an env file naming each and a command that prints a marker only when its variable is set. With operator authorization, use fresh launched sessions of both tools on each configured workstation to verify these results. Static tests use stand-ins and do not access a real account or service.
+
+1. A tier-one `op run` prints the marker with `<concealed by 1Password>` and no phone prompt, and `${OP_SERVICE_ACCOUNT_TOKEN:-absent}` in the command prints `absent`.
+2. A plain tier-two `op run` exits 1 and names `op tier-two`. Under `op tier-two` the tool asks for the operator's word, then the phone shows the references, the command, the reason, the host and the session. Check Approve, Deny, the ten-minute expiry and a second press.
+3. With the Home Assistant route unavailable to the test session, operator-ordered `op desktop -- op run ...` resolves both items through the desktop app. Do not stop a live service for this check.
+4. A device service call with the route's credential is refused.
+5. The value-printing forms are refused in both spellings.
+
+[Testing](testing.md) names the synthetic and native suites. Tests cannot prove real device delivery.

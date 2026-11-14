@@ -138,6 +138,54 @@ def test_transition_refuses_a_name_that_is_missing_or_ambiguous(names):
     assert client.sent == []
 
 
+@pytest.mark.parametrize(
+    ("name", "status", "selector"),
+    [
+        (" Start ", "In Progress", "Start"),
+        ("Begin (2)", " In Progress ", " In Progress "),
+        ("Done", "Done", " Done "),
+    ],
+)
+def test_transition_matches_trimmed_name_or_target_status_once(name, status, selector):
+    found = {"transitions": [{"id": "31", "name": name, "to": {"name": status}}]}
+    client = _jira(gets={"rest/api/2/issue/SBX-1/transitions": found})
+    args = ["--transition", "SBX-1", "--to", selector, "--if-updated", OLD]
+    result = jira_write.write(client, "writer", arguments.parse("jira-write", args))
+    assert result["result"] == "JIRA_WRITE_PASS"
+    assert client.sent == [
+        ("POST", "rest/api/2/issue/SBX-1/transitions", {"transition": {"id": "31"}})
+    ]
+
+
+@pytest.mark.parametrize(
+    ("names", "selector"),
+    [
+        (["Finish", "Finish (2)"], "Done"),
+        (["Done", "Finish"], "Done"),
+        (["Finish"], "done"),
+        (["Finish"], "Unknown"),
+    ],
+)
+def test_later_transition_refusal_sends_nothing_for_any_target(names, selector):
+    first = {"transitions": [{"id": "1", "name": selector, "to": {"name": "Other"}}]}
+    later = {
+        "transitions": [
+            {"id": str(i), "name": name, "to": {"name": " Done "}}
+            for i, name in enumerate(names, 2)
+        ]
+    }
+    client = _jira(
+        gets={
+            "rest/api/2/issue/SBX-1/transitions": first,
+            "rest/api/2/issue/SBX-2/transitions": later,
+        }
+    )
+    args = ["--transition", "SBX-1,SBX-2", "--to", selector, "--if-updated", f"{OLD},{OLD}"]
+    with pytest.raises(ValueError, match="^SELECTOR_UNAVAILABLE$"):
+        jira_write.write(client, "writer", arguments.parse("jira-write", args))
+    assert client.sent == []
+
+
 def test_create_forces_the_named_project_over_the_fields():
     client = _jira(gets={"rest/api/2/issue/SBX-11": _issue("SBX-11")})
     fields = '{"summary":"s","project":{"key":"OTHER"}}'

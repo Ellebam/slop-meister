@@ -1,8 +1,8 @@
 """What the home install places on this machine, and the bytes each entry should hold.
 
 Both tools' global instruction files come from dist/ and are written in the same run, so
-Claude Code and Codex are never on different revisions. settings.json, config.toml and the
-Codex rules file are deliberately absent, they carry machine state the operator owns.
+Claude Code and Codex are never on different revisions. Mixed-owned configuration and global
+restriction files use the selective installers beside these whole-file entries.
 """
 
 from dataclasses import dataclass
@@ -10,7 +10,7 @@ from pathlib import Path
 
 from slopmeister import paths
 from slopmeister.paths import ROOT
-from slopmeister.workstation import orca
+from slopmeister.workstation import orca, rules
 
 EXEC = "exec"
 # A service is reloaded on install, a launchd job on the Mac and a systemd user unit on Linux.
@@ -75,6 +75,7 @@ COMMON = (
         "plots/home/claude/skill-tracker-tool-hook.sh", ".claude/skill-tracker-tool-hook.sh", EXEC
     ),
     Entry("plots/home/claude/statusline-command.sh", ".claude/statusline-command.sh", EXEC),
+    Entry("plots/home/claude/notes-after-compaction.sh", ".claude/notes-after-compaction.sh", EXEC),
     Entry("plots/vault/bin/vaultgit", ".vault-git/bin/vaultgit", EXEC),
     Entry("plots/vault/bin/vault-lock.py", ".vault-git/bin/vault-lock.py", EXEC),
     Entry("plots/vault/bin/slopmeister-vault", ".vault-git/bin/slopmeister-vault", EXEC),
@@ -157,4 +158,4 @@ def mac_only() -> tuple[str, ...]:
 
 
 def names() -> tuple[str, ...]:
-    return (*(entry.destination for entry in entries()), CODEX_CONFIG, *mac_only())
+    return (*(entry.destination for entry in entries()), CODEX_CONFIG, *rules.NAMES, *mac_only())

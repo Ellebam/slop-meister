@@ -22,7 +22,8 @@ The product runs from the checkout through one entry script, `bin/slopmeister <c
 | `slopmeister/session/` | Self-contained delivered session programs | No direct command |
 | `slopmeister/session/service_actions/` | Delivered native read and write actions | No direct command |
 | `slopmeister/slots/` | Target slot allocation, inspection and release | `slots` |
-| `slopmeister/spine/` | Frozen repository candidates | `candidate` |
+| `slopmeister/spine/` | Frozen repository candidates, including the complete session set | `candidate` |
+| `slopmeister/repositories.py` | Same-plot repository attachment, using saved membership from `session/repositories.py` | `repository` |
 | `slopmeister/threads/` | Worker occupancy and startup context | `occupants`, `startup-context` |
 | `slopmeister/threads/timing/` | Spine session timing | `spine-timing` |
 | `slopmeister/vault/` | Self-contained vault runtime boundary | No direct command |
@@ -32,9 +33,39 @@ The product runs from the checkout through one entry script, `bin/slopmeister <c
 
 Operator-specific values stay outside Python and the public sources. Plots under `plots/` contain rules and knowledge pointers. Vault facts, service-action profiles and [private identifier patterns](context-layer.md#private-identifier-patterns) remain in their operator-owned stores.
 
+## Global agent configuration
+
+These are the native global inputs. `CLAUDE_CONFIG_DIR` and `CODEX_HOME` can relocate the respective stores. The home installer targets the normal home locations. [Claude settings](https://code.claude.com/docs/en/settings), [Claude memory](https://code.claude.com/docs/en/memory), [Codex configuration](https://developers.openai.com/codex/config-basic), [instructions](https://developers.openai.com/codex/guides/agents-md) and [rules](https://developers.openai.com/codex/rules) own native discovery and precedence.
+
+| Global input | Writer | Check or ownership boundary |
+|---|---|---|
+| `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md` | Home install from rendered global source | Drift compares bytes |
+| `~/.claude/settings.json` | Home install owns `autoMemoryEnabled = false` and missing central Bash denials and `autoMode.soft_deny` entries | Drift checks these values. Other settings, existing denials, allows and soft-deny entries stay intact |
+| `~/.codex/rules/permissions.rules` | Home install from the central contract, excluding allows | Drift compares the complete owned file |
+| `~/.codex/rules/default.rules`, other `rules/*.rules` | Codex saves approvals, or operator | Native client loads them. Slopmeister leaves private saved commands unread and unchanged |
+| `~/.codex/config.toml` | Home install owns the top-level keys and `[features] memories = false` of `plots/home/codex/config.toml.tmpl` | Drift checks those values. Other keys remain operator-owned |
+| `~/.codex/hooks.json` | Orca and the operator. The operator appends the notes-after-compaction group once, as described below | Codex runs only hooks trusted by hash. `/hooks` reviews them |
+| `~/.codex/AGENTS.override.md`, `~/.claude/rules/**/*.md` | Operator | Native instruction discovery. No managed source to compare |
+| `~/.claude/{skills,commands,agents,plugins}/**`, `~/.agents/skills/**`, `~/.codex/{skills,plugins}/**` | Client, plugin installer or operator | Native discovery. User extensions have no Slopmeister baseline |
+| `~/.claude.json`, `~/.claude/.credentials.json`, `~/.codex/auth.json`, native credential stores | Client | Native login checks only. Credentials and account state are not configuration payloads to print or replace |
+| `~/.claude/projects/*/memory/`, `~/.codex/{memories,memories_v2}/`, `memories_1.sqlite` and its WAL/SHM files | Forbidden private memory | Doctor flags populated stores using metadata, including active relocated roots. Unreadable stores are unknown. General session databases remain untouched |
+| `/etc/claude-code/*`, `/Library/Application Support/ClaudeCode/*`, `/etc/codex/*.toml`, managed device policy | Administrator or native management | Native precedence and diagnostics. Home install has no authority over system policy |
+
+After a compaction, both clients run a `SessionStart` hook with source `compact` and add its output to the model's context. The home install copies `plots/home/claude/notes-after-compaction.sh` to `~/.claude/`. It prints the start of the workspace's root `*-NOTES.md`, marked as the session's own possibly stale notes. Launched Claude sessions receive the registration from `src/claude/settings.json`. Codex runs only hooks the user trusted, so its registration lives in the user layer. Once per machine, append this group to the `hooks.SessionStart` list in `~/.codex/hooks.json`, after Orca's entry, then trust it with `/hooks` in Codex.
+
+```json
+{"matcher": "compact", "hooks": [{"type": "command", "command": "~/.claude/notes-after-compaction.sh", "additionalContextLimit": 4000}]}
+```
+
+Without `additionalContextLimit`, Codex cuts hook output at about 2,500 tokens and passes a preview.
+
+Existing denials and soft-deny strings are kept, including superseded central ones. Drift checks current strings are present and does not identify older retained versions. Removing retained strings requires a separate operator order.
+
+`src/permissions.toml` remains the command-policy source. Global installation copies restrictions only, preserving session-only allow scope. Repair both policy entries with `task home:install -- .claude/settings.json .codex/rules/permissions.rules` on the operator's order. It keeps private backups and leaves saved approvals intact. Start a new client to load newly installed rules. [Workstation](../src/skills/workstation/SKILL.md#read-both-machines) owns the existing peer route and unknown results.
+
 ## Delivered code
 
-A launched session receives fixed copies of what it needs and never follows later source edits. The self-contained subpackage `slopmeister/session/` holds every program a session runs without the checkout: the protected launcher identity, in-session verification, ship helper, selected service-action consumer and vault-todos. The installer copies that directory once per session into the session's private state directory and writes thin entries at the skill script paths. An entry resolves the snapshot relative to itself, never through the checkout, adds it to `sys.path` and calls one `main`. Tracebacks name real module files.
+A launched session receives fixed copies of what it needs and never follows later source edits. The self-contained subpackage `slopmeister/session/` holds every program a session runs without the checkout: the protected launcher identity, in-session verification, ship helper, bounded CI rerun helper, selected service-action consumer and vault-todos. The installer copies that directory once per session into the session's private state directory and writes thin entries at the skill script paths. An entry resolves the snapshot relative to itself, never through the checkout, adds it to `sys.path` and calls one `main`. Tracebacks name real module files.
 
 The same boundary serves vault access from repository worktrees and temporary directory sessions. The installer copies `slopmeister/vault/runtime/` byte-for-byte to `~/.vault-git/lib/slopmeister_vault/` and installs one small launcher at `~/.vault-git/bin/slopmeister-vault`. Markdown bytes and external Git own correctness. Its optional `obsidian` pass-through allows only read-only index and UI operations and bounds their process group. The launcher selects an absolute Python 3.14 path, Homebrew's on the Mac and the system's on Linux, and never imports a checkout. The scheduled whole-vault sweep remains the separate Bash job used by its existing applet.
 

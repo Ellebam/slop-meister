@@ -13,6 +13,8 @@ Before you start, read `How a change is driven here` and `Local gates here` in t
 
 ### 1. Run the acceptance commands
 
+For a multi-repository session, compare the saved members with `## Scope` and run the user path across them together. Per-repository passing suites do not prove the connection between them. Reuse the actual first-step acceptance evidence when its inputs and code remain unchanged.
+
 Run every acceptance command and every test `## Plan` names, and keep the actual output. Reuse valid current-revision evidence when the subject and inputs are unchanged. Another execution must add a distinct claim, changed input or resolution of a failure. Independent testing still executes its required scenarios itself. A planned test is cited by file and line, or reported missing. An acceptance command that is not runnable as written is a setup or guide finding, diagnose and write the command that works within scope.
 
 A probe that always passes is not a probe. Require an observed subject signal before accepting an absence claim. Empty capture without subject activity is missing proof. When setup, capture or fallback could pass without exercising the subject, use a positive control that the check must detect. Require the intended stage and its relevant diagnostic or state for a negative case. A fallback status code needs an assertion on the actual result.
@@ -29,7 +31,9 @@ Unconditional. The interface is how the user reaches the change, not which direc
 2. Test a partial choice, accept one thing and decline another, not only all-on and all-off.
 3. Continue past the expected outcome until the user is somewhere normal. An error they cannot act on or a retry that repeats the failure is the finding.
 
-For any change covered by a design reference, compare each changed section with the reference the approved plan follows. Keep one screenshot per changed section next to its matching reference crop. Cover every expanded, collapsed and empty state the change touches with a screenshot and matching crop. Check layout, component composition, hierarchy, sequence, copy, navigation, typography, clipping, surfaces, colors and controls. Name each remaining difference beside the comparison. The plot names where its design references live.
+For a requested look or layout, or any change covered by a design reference, compare each changed section with the reference the approved plan follows. Keep one screenshot per changed section next to its matching reference crop. Cover every expanded, collapsed and empty state the change touches with a screenshot and matching crop. Check layout, component composition, hierarchy, sequence, copy, navigation, typography, clipping, surfaces, colors and controls. Name each remaining difference beside the comparison. The plot names where its design references live.
+
+For a set of factual claims, compare every delivered claim with its authoritative source. Correct or remove claims the source contradicts or does not support. A sampled check does not prove the remaining claims. A missing reference or inaccessible source blocks proof of that result. Ask the operator for the reference or access before completion. A test pass, frame rate or successful render alone proves neither appearance nor factual accuracy.
 
 Keep actual output, or a screenshot for a visual interface, in the Git-ignored scratch directory in the task worktree. If no scratch directory is ignored, add its exact path to Git `info/exclude`. A Git-free session uses an owned scratch directory in its session directory. The harness session scratchpad is not acceptable for anything a later step or session reads.
 
@@ -42,6 +46,8 @@ Three arms.
 3. Security Lens. One line over the diff per the working agreement's security section, a finding with file, line and severity, or a verified-clean declaration naming the checks that ran. A must-fix class is fixed now.
 
 ### 4. The local gates
+
+Read the repository's CI configuration, including triggers, changed-path filters, job rules and includes. List the jobs the changed paths select and the commands they run. Run each job that can run locally, including checks absent from `Local gates here`. Reuse a local gate's evidence for the same commands and inputs. A job that the plot explicitly reserves for CI stays there. Under Weak, name every unrun job, its reason and any job whose selection you could not determine. A green local gate does not prove those jobs passed.
 
 Run each gate `Local gates here` names once, by default after the break-it pass. Before that, run only the checks your change affects. Run a gate again only when it failed, or when a later fix has an impact you cannot bound. Every other fix runs the checks it affects. A local gate is a regression suite, never coverage of your change. A failure that also happens on a clean checkout of the merge base is recorded with a follow-up, never fixed on this branch. Tear down only what you started.
 

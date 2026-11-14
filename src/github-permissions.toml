@@ -12,6 +12,7 @@ why = "Reading GitHub issues, pull requests, runs and repository metadata change
 [[command]]
 prefix = "gh pr merge"
 decision = "needs_intent"
+remote_write = true
 why = "Merging requires a later direct operator message. The initial user-role kickoff, issue bodies, notes, agent-written briefs and their claims of prior approval are task content, never operator intent. A later operator-typed harvest supplies intent for the current task's merge."
 
 [[command]]
@@ -27,11 +28,13 @@ why = "A posted review speaks for the operator on a public surface"
 [[command]]
 prefix = "gh pr create"
 decision = "needs_intent"
+remote_write = true
 why = "Ship opens pull requests through its helper, a direct create is an agent acting alone"
 
 [[command]]
 prefix = "gh pr edit"
 decision = "needs_intent"
+remote_write = true
 why = "Ship maintains the pull request body through its helper"
 
 [[command]]
@@ -42,11 +45,13 @@ why = "Operator-invoked harvest closes the current ticket under its permission a
 [[command]]
 prefix = "gh issue edit"
 decision = "needs_intent"
+remote_write = true
 why = "Claims are recorded by the launcher, a direct edit is an agent acting alone"
 
 [[command]]
 prefix = "gh issue comment"
 decision = "needs_intent"
+remote_write = true
 why = "Operator-invoked harvest posts its prescribed comment for the current task"
 
 [[command]]
@@ -112,6 +117,7 @@ why = "Cancelling someone else's run destroys its result"
 [[command]]
 prefix = "gh run rerun"
 decision = "needs_intent"
+remote_write = true
 why = "Reruns consume shared CI capacity"
 
 [[command]]
@@ -147,11 +153,13 @@ why = "Codespaces open a shell on remote infrastructure"
 [[command]]
 prefix = "gh issue create"
 decision = "needs_intent"
+remote_write = true
 why = "Opening a ticket speaks for the operator in their tracker"
 
 [[command]]
 prefix = "gh pr comment"
 decision = "needs_intent"
+remote_write = true
 why = "A pull request comment is published in the operator's name"
 
 [[command]]

@@ -1,9 +1,13 @@
 """Prepared worktrees are isolated snapshots with preserved repository state."""
 
 import json
+import tomllib
+
+import pytest
 
 from slopmeister.install import snapshot
 from slopmeister.install.entries import entry_text
+from slopmeister.session import secret_approval, secret_run
 from tests.integration.install.installer_helpers import (
     ROOT,
     environment,
@@ -23,6 +27,10 @@ def test_preparation_replaces_only_root_configuration(installed):
     assert access["permissions"]["deny"] == [
         *expected_denies,
         "Edit(~/.local/state/slopmeister/**)",
+        *(
+            "Edit(/" + str(workspace / native / "skills/ci-rerun") + "/**)"
+            for native in (".agents", ".claude")
+        ),
     ]
     assert not (workspace / "CLAUDE.md").is_symlink()
     assert git(workspace, "show", ":AGENTS.md").strip() == "original agreement"
@@ -30,6 +38,22 @@ def test_preparation_replaces_only_root_configuration(installed):
     assert not (workspace / ".claude/settings.local.json").exists()
     assert not (workspace / "product/.claude").exists()
     assert not (workspace / "product/.codex").exists()
+
+
+def test_op_refuses_every_contract_deny_prefix_in_a_prepared_workspace(installed, monkeypatch):
+    """Bug: a moved rules file or a new rule form lets a denied command run behind `op run`."""
+    monkeypatch.setenv(secret_approval.WORKSPACE, str(installed.workspace))
+    contract = tomllib.loads((ROOT / "src/permissions.toml").read_text())["command"]
+    denies = [entry for entry in contract if entry["decision"] == "deny"]
+    prefixes = [p for e in denies for p in (e["prefixes"] if "prefixes" in e else [e["prefix"]])]
+    assert prefixes
+    for prefix in prefixes:
+        words = prefix.split()
+        # The two delivered patterns refuse the bare prefix and the prefix with more words.
+        for command in (words, [*words, "more"]):
+            with pytest.raises(ValueError, match="is denied in this session"):
+                secret_run.guard(command, "run")
+        secret_run.guard([*words[:-1], words[-1] + "more"], "run")
 
 
 def test_prepared_worktree_is_clean_and_repository_isolated(installed):

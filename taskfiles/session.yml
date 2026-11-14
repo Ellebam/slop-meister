@@ -35,7 +35,7 @@ tasks:
       - bin/slopmeister slots up {{.CLI_ARGS}}
 
   slot:down:
-    desc: Release everything a slot allocated, task slot:down -- <repo> <target> <name> [--force] [--slot <n>] [--self]
+    desc: Release everything a slot allocated, task slot:down -- <repo> <target> <name> [--force] [--slot <n>]
     cmds:
       - bin/slopmeister slots down {{.CLI_ARGS}}
 

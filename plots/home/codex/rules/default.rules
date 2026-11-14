@@ -43,14 +43,3 @@ prefix_rule(pattern=["xcrun", "simctl", "list", "devices", "booted"], decision="
 # spelled out in the live file, Codex reads a ~ or a variable as an opaque script that no rule matches.
 prefix_rule(pattern=["$HOME/dev/slop-meister/bin/slopmeister", "review", "review"], decision="allow", justification="Slopmeister cross-tool review, read-only reviewer with a persisted verdict")
 prefix_rule(pattern=["task", "plot-session"], decision="allow", justification="Slopmeister launcher, needs Orca and process listing")
-
-# Slopmeister secret-value deny baseline.
-prefix_rule(pattern=["op", "read"], decision="forbidden", justification="Slopmeister baseline: do not render secret values")
-prefix_rule(pattern=["op", "item", "get"], decision="forbidden", justification="Slopmeister baseline: do not disclose secret values")
-prefix_rule(pattern=["op", "item", "share"], decision="forbidden", justification="Slopmeister baseline: do not disclose secret values")
-prefix_rule(pattern=["op", "document", "get"], decision="forbidden", justification="Slopmeister baseline: do not render secret values")
-prefix_rule(pattern=["op", "inject"], decision="forbidden", justification="Slopmeister baseline: do not render secret values")
-prefix_rule(pattern=["op", "run", "--no-masking"], decision="forbidden", justification="Slopmeister baseline: do not render secret values")
-prefix_rule(pattern=["op", "items", "get"], decision="forbidden", justification="Slopmeister baseline: do not disclose secret values")
-prefix_rule(pattern=["op", "items", "share"], decision="forbidden", justification="Slopmeister baseline: do not disclose secret values")
-prefix_rule(pattern=["op", "documents", "get"], decision="forbidden", justification="Slopmeister baseline: do not render secret values")

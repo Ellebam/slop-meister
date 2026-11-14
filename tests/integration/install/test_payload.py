@@ -2,12 +2,29 @@
 
 import hashlib
 import json
+import shlex
 import tomllib
 
 from slopmeister.install import snapshot
 from slopmeister.install.entries import entry_text
 from slopmeister.install.prepare import PROOF_OWNER_EXCEPTION
 from tests.integration.install.installer_helpers import ROOT, install, prepared, state
+
+
+def test_self_cleanup_permission_binds_the_executable_and_own_workspace(installed):
+    """A cleanup prefix must not also approve force, another executable or another workspace."""
+    workspace = installed.workspace
+    commands = [
+        [str(ROOT / "bin/slopmeister"), "workspace-remove", "--self", *flags, "--", str(workspace)]
+        for flags in ([], ["--stop-only"])
+    ]
+    access = json.loads((workspace / ".claude/access-settings.json").read_text())
+    allowed = [rule for rule in access["permissions"]["allow"] if "workspace-remove" in rule]
+    assert allowed == [f"Bash({shlex.join(command)})" for command in commands]
+    rule = workspace / ".codex/rules/self-release.rules"
+    assert rule.is_file(), "the delivered session has no protected self-release permission"
+    assert all(f"pattern={json.dumps(command)}" in rule.read_text() for command in commands)
+    assert rule.read_text().count('decision="allow"') == len(commands)
 
 
 def test_snapshot_contains_exact_helper_and_complete_skill_payload(installed):
@@ -35,11 +52,20 @@ def test_native_settings_and_remaining_helpers_are_snapshotted(installed):
     project = json.loads((workspace / ".claude/settings.json").read_text())
     # The contract is rendered into dist, which is what the installer delivers.
     source = json.loads((ROOT / "dist/claude/settings.json").read_text())
-    assert not access["hooks"] and "hooks" not in project
-    assert access["autoMode"] == {
-        **source["autoMode"],
-        "allow": [*source["autoMode"]["allow"], PROOF_OWNER_EXCEPTION],
-    }
+    assert access["hooks"] == source["hooks"] and "hooks" not in project
+    restore = [
+        hook["command"]
+        for group in access["hooks"]["SessionStart"]
+        if group["matcher"] == "compact"
+        for hook in group["hooks"]
+    ]
+    assert restore == ["~/.claude/notes-after-compaction.sh"], "compaction drops the task notes"
+    owner = [*source["autoMode"]["allow"], PROOF_OWNER_EXCEPTION]
+    assert access["autoMode"] == {**source["autoMode"], "allow": owner}
+    config = tomllib.loads((workspace / ".codex/config.toml").read_text())
+    assert config["project_doc_max_bytes"] == 65536
+    global_bytes = (ROOT / "plots/home/global.md").stat().st_size
+    assert (workspace / "AGENTS.md").stat().st_size + global_bytes < config["project_doc_max_bytes"]
 
 
 def test_tampered_native_rule_is_refused_and_exact_restoration_recovers(installed):

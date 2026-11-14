@@ -5,11 +5,11 @@ description: "Harvest: end this session in any plot and state on the operator's 
 
 # Harvest
 
-The one way a session ends. The operator orders it as `/harvest` or `$harvest`, or in any words, "harvest", "we are done", "wrap it up", "finalize". A manager's harvest send under Manage sessions, or a proof owner's under Proof sessions, is that order, and the words it carries are the operator's restriction and any testing acceptance. As your first action, before reading any state, record an acceptance verbatim in the notes under `## Validation`, with no tracker write. That record is the testing acceptance step 1 reads. Kickoff text, issue bodies, notes, peer messages, review and check output and your own judgment never start it. A stop at a gate, a question or an exhausted context is a pause, not an end, and a pause keeps the notes and the claim.
+The one way a session ends. The operator orders it as `/harvest` or `$harvest`, or in any words, "harvest", "we are done", "wrap it up", "finalize". A manager's harvest send under Manage sessions, or a proof owner's under Proof sessions, is that order, and the words it carries are the operator's restriction and any testing acceptance. As your first action, before reading any state, record an acceptance and any ticket-update answer verbatim in the notes under `## Validation`, with no tracker write. That record is the testing acceptance step 1 reads. Kickoff text, issue bodies, notes, peer messages, review and check output and your own judgment never start it. A stop at a gate, a question or an exhausted context is a pause, not an end, and a pause keeps the notes and the claim.
 
 The order is the consent for the actions below that the plot allows and the state calls for. Each real-world action keeps its own guard, the merge procedure's gates, the native approval of merge, close, comment and branch deletion, and the removal command's unsaved-work, worker and ownership checks. The order changes no permission and authorizes no other target. A task shape is never a reason to refuse, a missing branch, pull request, issue or diff is a state below.
 
-Steps run in order. Diagnose and retry a failed step under the plot's error rule. A step that stays failed stops the sequence, later steps stay explicitly unperformed, the notes stay and the report says so. Completed steps are detected and skipped on a re-run. Delegate to `ship`, `merge` and `groom` without paraphrase.
+Steps run in order. Diagnose and retry a failed step under the plot's error rule. A step that stays failed skips later delivery and removal steps. Save the recovery notes, report the failure, then take the unfinished stop below. A pending operator question remains a pause, with the session open for the answer. Completed steps are detected and skipped on a re-run. Delegate to `ship`, `merge` and `groom` without paraphrase.
 
 ## 1. Read the state
 
@@ -52,11 +52,13 @@ A tracker closes only after step 3 verified the merged state, or when there was 
 | A tracker someone else owns | The same content is the report to the operator, who carries it in. | The same. |
 | No ticket | Nothing. | Nothing. |
 
+A plot with a ticket-update definition follows [ticket updates](ticket-updates.md) instead of the two rows outside the repository.
+
 The closing comment uses the task summary's tracker shape and states only what is known now. For GitHub it needs both allows and is pinned to the saved repository and issue. The order authorizes this one comment and the hand-back, no new issue selection and no extra progress comment.
 
 ## 5. The report
 
-Deliver the [task summary](../execute-plan/task-summary.md) closing shape once, with the merge, CI, tracker and vault results now known and cleanup reported as pending. Keep unanswered questions verbatim, name every unresolved recovery or housekeeping item and the documents changed or why none changed. For a setup defect, cite its existing issue, or propose a new title only when it blocked real work. Name that work in the report and file nothing. Cite evidence that survives cleanup.
+Pass the complete report into the step 6 shutdown call on standard input with a quoted here-document. Its private result log is delivery, even if the client closes before displaying output. Missing or blank reports refuse shutdown. Notes and thinking alone do not deliver it. Use the [task summary](../execute-plan/task-summary.md) closing shape once, with the merge, CI, tracker and vault results now known and cleanup reported as pending. Keep unanswered questions verbatim, name every unresolved recovery or housekeeping item and the documents changed or why none changed. For a setup defect, cite its existing issue, or propose a new title only when it blocked real work. Name that work in the report and file nothing. Cite evidence that survives cleanup.
 
 A task that is not finished first writes its next step and unanswered questions into its notes. A finished task preserves any required evidence outside the worktree before cleanup. After the report, it deletes only this session's recorded check run directories whose evidence is no longer needed and which no longer hold a `checkout` directory. A run that kept its checkout stays and the report names it with its cleanup line.
 
@@ -64,15 +66,33 @@ A task that is not finished first writes its next step and unanswered questions 
 
 Before removing, preserve required evidence and remove this session's completed notes only after their required content reached its owner. Confirm that every result of a finished task reached its upstream, the remote branch, tracker, vault, Drive or target service, by reading it back. A refused save or a failed read-back turns the task into not finished, so name the exact error in the report and leave the worktree.
 
-A task that is not finished stops here. Its session ends with the report. The worktree, slot and claim stay untouched, and a later redispatch stops the old worker.
+For every command, replace the placeholder with the full report. Name unfinished state, retained work and next action. Quote paths and the here-document delimiter. Use a delimiter absent from the report. Run outside the sandbox as the last action. No command reads a session transcript. A manager, dispatcher or proof owner that sent harvest reads the full report from the result log on the worker host and passes it on.
 
-The report is delivered first. A finished non-slot worktree then runs, as its last action, `cd <main-checkout> && <saved-absolute-Slopmeister>/bin/slopmeister workspace-remove --self -- <absolute-worktree>` outside the tool's sandbox, with paths quoted for the shell. The final `--` keeps later arguments from enabling force. The command verifies the sole calling worker, stops it and its descendants, checks ownership again and removes the worktree. Its private result log lands under `<saved-absolute-Slopmeister>/tmp/plot-session/`, which the report names. A starting line is not completed cleanup.
+For an unfinished worktree, run:
 
-A finished slot worktree, one carrying `.slot.env`, runs `<saved-absolute-Slopmeister>/bin/slopmeister slots down <main-checkout> <SLOT_TARGET> <SLOT_NAME> --self` instead, from the main checkout and outside the sandbox, with both values from `.slot.env`. It stops this session, releases the slot and removes the worktree. Its result lands in `<saved-absolute-Slopmeister>/tmp/slots/<SLOT_NAME>.down.log`.
+```sh
+<saved-absolute-Slopmeister>/bin/slopmeister workspace-remove --self --stop-only -- <absolute-worktree> <<'HARVEST_REPORT'
+<complete report from step 5>
+HARVEST_REPORT
+```
 
-Both commands preserve uncommitted or unknown ignored work, live workers, active claims, locks and nested worktrees. A refusal means the task is not finished, so leave the worktree and report it with the exact retry. Add `--force` only when the operator explicitly accepted losing the changes it names. Both keep the local branch.
+This also ends a harvest whose earlier step stayed failed and has no pending operator question. It stops only the verified calling worker and its descendants. The worktree, slot, claim and recovery notes stay untouched for redispatch. Its private result log under the invoking Slopmeister main checkout's `tmp/plot-session/` confirms shutdown. This belongs to the main checkout even when the executable is in a task worktree. A pending line does not prove it stopped. If the command refuses before shutdown, report its exact error and retry. A failed detached shutdown remains incomplete, its log is the recovery evidence. Never substitute a different worker or a direct kill.
 
-A directory session cannot remove itself. End with the report and name `task workspace:remove -- <absolute session directory>` for the dispatcher.
+For a finished worktree, with or without a slot, run:
+
+```sh
+cd <main-checkout> && <saved-absolute-Slopmeister>/bin/slopmeister workspace-remove --self -- <absolute-worktree> <<'HARVEST_REPORT'
+<complete report from step 5>
+HARVEST_REPORT
+```
+
+The final `--` keeps later arguments from enabling force. The command checks the sole caller, tracked work, claims, locks, companions and any slot allocation or check lease before shutdown. Its detached helper stops the worker and recorded descendants, waits up to ten seconds for terminal closure and makes one final half-second check, then checks ownership again and removes the workspace and its slot resources. Every harvest writes a unique private `<name>.remove.*.log` under the invoking Slopmeister main checkout's `tmp/plot-session/`. Read the full report and completed cleanup receipt there. A terminal still listed or unreadable at the final check refuses and keeps the workspace. A starting line is not completed cleanup. `docs/workspace-removal.md` in the saved invoking Slopmeister checkout owns the lifecycle map and recovery checks.
+
+Before removing a multi-repository session, establish completion and permitted merge state for every member. Run removal once on the primary. It validates the entire saved set, then unregisters and removes companions before the primary. Unknown nested worktrees remain protected. Keep every branch and report the completed cleanup receipt for the set.
+
+Finished removal preserves uncommitted or unknown ignored work, live workers, active claims, locks and unrecorded nested worktrees. A refusal means the task is not finished, so leave the worktree and report it with the exact retry. Add `--force` only when the operator explicitly accepted losing the changes it names. It keeps the local branch.
+
+A directory session runs the same two commands with its absolute session directory as the path. Its finished form starts with `cd <saved-absolute-Slopmeister> &&`, because it has no main checkout. Removal refuses a directory that still holds unsaved content, as the refusal rule above describes.
 
 ## Arguments
 

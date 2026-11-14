@@ -1,5 +1,10 @@
-"""Resolve session secrets and project approved item metadata without exposing values."""
+"""Resolve session secrets and project approved item metadata without exposing values.
 
+A marked session also refuses a command its deny list refuses when it follows `op run` or a
+route word.
+"""
+
+import json
 import os
 from pathlib import Path
 import sys
@@ -20,6 +25,8 @@ ROUTE = "SLOPMEISTER_OP_ROUTE"
 TIER_TWO, DESKTOP = "tier-two", "desktop"
 # Set for the command of an `op run`, where a route word could ride the allowed `op run` prefix.
 INSIDE = "SLOPMEISTER_OP_RUN"
+# The client rules the launcher writes into every workspace, for each tool.
+RULES = ".claude/access-settings.json"
 TOKEN = "OP_SERVICE_ACCOUNT_TOKEN"
 # The real op obeys these: one prints values, two replace the chosen token's account.
 OVERRIDES = ("OP_RUN_NO_MASKING", "OP_CONNECT_HOST", "OP_CONNECT_TOKEN")
@@ -113,12 +120,45 @@ def token_for(asked: dict) -> str:
         raise Refusal(f"{error}. {ORDER_DESKTOP}") from None
 
 
+def guard(command: list[str], name: str) -> None:
+    """Raise for a command the session's deny list refuses, which the allowed op prefix hides."""
+    workspace = os.environ.get(secret_approval.WORKSPACE)
+    if not workspace:
+        return
+    path = Path(workspace) / RULES
+    try:
+        rules = json.loads(path.read_text())["permissions"]["deny"]
+        if not isinstance(rules, list):
+            raise TypeError
+        # The renderer writes each denied prefix as `Bash(<prefix>)` and `Bash(<prefix> *)`.
+        prefixes = [r[5:-1].removesuffix(" *").split() for r in rules if r.startswith("Bash(")]
+    except OSError, ValueError, LookupError, TypeError, AttributeError:
+        # A shell without launcher state gets that diagnostic, which names the supported route.
+        secret_approval.origin()
+        raise ValueError(f"{path} holds no readable deny list, relaunch the session") from None
+    for words in prefixes:
+        if command[: len(words)] == words:
+            raise ValueError(f"{' '.join(words)} is denied in this session, also inside op {name}")
+
+
 def run_desktop(args: list[str]) -> int:
     """The operator ordered the desktop app: the real `op` reads the line itself."""
     flags = args[: args.index("--") if "--" in args else len(args)]
     if any(flag.partition("=")[0] == NO_MASKING for flag in flags):
         print(f"op run: {NO_MASKING} is refused, values stay masked", file=sys.stderr)
         return 2
+    try:
+        for index, word in enumerate(args):
+            if word != "--":
+                continue
+            guard(args[index + 1 :], "run")
+            # The real `op` reads `--` as a value only right behind an option without `=`.
+            before = args[index - 1] if index else ""
+            if not before.startswith("-") or before == "--" or "=" in before:
+                break
+    except ValueError as error:
+        print(f"op run: {error}", file=sys.stderr)
+        return 1
     return execute(["run", *args], normalized())
 
 
@@ -126,6 +166,7 @@ def resolved(args: list[str]) -> tuple[list[str], dict[str, str]]:
     """The command and its environment for the real `op`, the tier's token included."""
     try:
         files, command = parse(args)
+        guard(command, "run")
         if any(not path.isprintable() for path in files):
             raise ValueError("each env-file path must contain only printable characters")
         literals, references = environment(files)
@@ -162,14 +203,23 @@ def direct(command: list[str], env: dict[str, str]) -> int:
 
 def choose(argv: list[str]) -> int:
     """`op tier-two -- <command>` or `op desktop -- <command>`: the operator's word, then run."""
-    name, command = argv[0], argv[2:]
-    if argv[1:2] != ["--"] or not command:
+    name, rest, reason = argv[0], argv[1:], {}
+    # The reason is an option because a rule cannot match a command behind a variable assignment.
+    if name == TIER_TWO and rest[:1] == ["--reason"]:
+        reason, rest = {"SECRET_ASK_REASON": "".join(rest[1:2])}, rest[2:]
+    command = rest[1:]
+    if rest[:1] != ["--"] or not command:
         print(f"op {name}: put -- and the command after it", file=sys.stderr)
         return 2
     if os.environ.get(INSIDE) or os.environ.get(ROUTE):
         print(f"op {name} must be the outermost command, here it is refused", file=sys.stderr)
         return 1
-    return direct(command, {**os.environ, ROUTE: name})
+    try:
+        guard(command, name)
+    except ValueError as error:
+        print(f"op {name}: {error}", file=sys.stderr)
+        return 1
+    return direct(command, {**os.environ, **reason, ROUTE: name})
 
 
 def spoken(argv: list[str]) -> list[str]:

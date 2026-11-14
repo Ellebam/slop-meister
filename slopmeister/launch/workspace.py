@@ -8,15 +8,18 @@ from pathlib import Path
 import stat
 import subprocess
 
+from slopmeister.errors import SlopmeisterError
 from slopmeister.install.check import state_directory
 from slopmeister.install.models import InstallRequest
 from slopmeister.install.preflight import reject_git_context
 from slopmeister.install.prepare import prepare
 from slopmeister.install.trust import TrustRequest, trust
 from slopmeister.launch.model import REPORT, Launch, Stop, die, plain
+from slopmeister.paths import claude_store as selected_store
 from slopmeister.paths import session_root
 from slopmeister.paths import vault as selected_vault
 from slopmeister.removal import SCRATCH
+from slopmeister.session import repositories
 
 
 def git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -35,17 +38,12 @@ def grants(launch: Launch) -> None:
 
 
 def claude_store(launch: Launch) -> None:
-    """A relative CLAUDE_CONFIG_DIR is relative to the directory the session runs in."""
-    if "CLAUDE_CONFIG_DIR" not in os.environ:
-        launch.claude_root = None
-        return
-    if not os.environ["CLAUDE_CONFIG_DIR"]:
-        raise die(
-            "CLAUDE_CONFIG_DIR is empty, refusing to choose a Claude store; "
-            "unset it or name a store"
-        )
-    joined = os.path.join(launch.claude_wt, os.environ["CLAUDE_CONFIG_DIR"])
-    launch.claude_root = Path(os.path.realpath(joined))
+    """Chosen again at every start, so a redispatch follows a changed account selection."""
+    try:
+        # An abandon starts no Claude session, so an unusable selection must not block it.
+        launch.claude_root, _ = selected_store(launch.claude_wt, switcher=not launch.abandon)
+    except SlopmeisterError as error:
+        raise die(str(error)) from error
 
 
 def _trust_key(launch: Launch) -> str:
@@ -143,6 +141,8 @@ def _install(launch: Launch, action: str) -> None:
     try:
         reject_git_context()
         prepare(request)
+        if action == "--check" and not launch.directory:
+            repositories.members(launch.wt)
     except (ValueError, OSError, KeyError, TypeError) as error:
         raise die(
             f"config-install: {error}; preserve this workspace "

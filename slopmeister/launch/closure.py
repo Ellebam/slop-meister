@@ -17,6 +17,7 @@ POLL_ATTEMPTS, POLL_SECONDS = 20, 0.5
 @dataclass
 class Closure:
     launch: Launch
+    caller: Process | None = None
     attempted: bool = False
     old: Process | None = None
     owned: list[Owned] = field(default_factory=list)
@@ -33,6 +34,11 @@ def fail(closure: Closure, message: str) -> Exception:
     state = "predecessor closure was not attempted"
     if closure.attempted:
         state = "predecessor closure was attempted and may be incomplete"
+    if closure.caller is not None:
+        return plain(
+            f"shutdown: {message}; {state}; workspace kept; "
+            "inspect the worker and terminal before recovery"
+        )
     return plain(
         f"redispatch: {message}, no replacement started; {state}; "
         "resolve the error and retry the same name with --redispatch"
@@ -87,8 +93,15 @@ def _handle(closure: Closure) -> str | None:
 
 def _close_terminal(closure: Closure, handle: str) -> None:
     closure.attempted = True
-    terminal.close(handle)
-    listed = terminal.terminals()
+    deadline = time.monotonic() + POLL_ATTEMPTS * POLL_SECONDS
+    terminal.close(handle, timeout=POLL_ATTEMPTS * POLL_SECONDS)
+    while (remaining := deadline - time.monotonic()) > 0:
+        listed = terminal.terminals(timeout=remaining)
+        if listed is not None and handle not in listed:
+            return
+        time.sleep(min(POLL_SECONDS, max(0, deadline - time.monotonic())))
+    # Closing is asynchronous. Check once more even when the last call used the budget.
+    listed = terminal.terminals(timeout=POLL_SECONDS)
     if listed is None or handle in listed:
         raise fail(closure, f"predecessor terminal {handle} did not close")
 
@@ -190,9 +203,14 @@ def _terminate(closure: Closure, process: Owned) -> None:
     raise fail(closure, f"captured PID {process.pid} did not stop")
 
 
-def close(launch: Launch) -> None:
-    closure = Closure(launch)
+def close(launch: Launch, *, caller: Process | None = None) -> None:
+    closure = Closure(launch, caller=caller)
     _select(closure)
+    if caller is not None and (
+        closure.old is None
+        or (closure.old.pid, closure.old.signature) != (caller.pid, caller.signature)
+    ):
+        raise fail(closure, "calling worker identity changed before shutdown")
     handle = _handle(closure)
     if closure.old and not unchanged(closure):
         raise fail(closure, "predecessor PID identity changed")

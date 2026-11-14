@@ -56,8 +56,11 @@ def _rules(path: Path) -> dict[tuple[str, ...], tuple[str, str]]:
     return found
 
 
+SOURCE = ROOT / "src/permissions.toml"
+
+
 def _contract() -> list[dict]:
-    return permission_contract(ROOT / "src/permissions.toml")["command"]
+    return permission_contract(SOURCE)["command"]
 
 
 def test_check_contract_renders_to_every_tool():
@@ -68,26 +71,25 @@ def test_check_contract_renders_to_every_tool():
     asked = {"allow": "allow", "needs_intent": "ask", "deny": "deny"}
     for entry in _contract():
         prefix, decision = entry["prefix"], entry["decision"]
-        assert codex[tuple(prefix.split())] == (native[decision], entry["why"])
+        ordered = decision == "needs_intent" and prefix not in ("op tier-two", "op desktop")
+        why = entry["why"] + (" " + permission_contract(SOURCE)["order"] if ordered else "")
+        assert codex[tuple(prefix.split())] == (native[decision], why)
         assert opencode[prefix] == opencode[prefix + " *"] == asked[decision]
         rules = [f"Bash({form})" for form in (prefix, prefix + " *")]
-        destination = decision
+        destination = "allow" if "allow_unless" in entry else decision
         everywhere = [rule for kind in ("allow", "ask", "deny") for rule in claude.get(kind, [])]
         carried = [rule for rule in rules if rule in everywhere]
         assert carried == (rules if destination in ("allow", "ask", "deny") else [])
         assert all(rule in claude.get(destination, []) for rule in carried)
 
 
-def test_check_home_template_carries_the_contract_denies():
-    """Bug: the contract gains or loses a deny and the operator's home template drifts from it."""
-    home = json.loads((ROOT / "plots/home/claude/settings.json.tmpl").read_text())
-    denied = [entry["prefix"] for entry in _contract() if entry["decision"] == "deny"]
-    assert home["permissions"]["deny"] == [f"Bash({prefix} *)" for prefix in denied]
-
-
-def test_check_contract_leaves_github_out_of_claude_ask():
+def test_check_claude_asks_only_for_allow_unless_exceptions():
+    """Bug: a plain needs_intent prefix becomes a Claude question instead of a reviewed command."""
     claude = json.loads((DIST / "claude/settings.json").read_text())["permissions"]
-    assert [rule for rule in claude.get("ask", []) if "gh " in rule] == []
+    excepted = tuple(f"Bash({e['prefix']} " for e in _contract() if "allow_unless" in e)
+    assert "Bash(gh api --method GET * --input*)" in claude["ask"]
+    assert "Bash(glab api -X GET *triggers*)" in claude["ask"]
+    assert [rule for rule in claude["ask"] if not rule.startswith(excepted)] == []
 
 
 def test_check_needs_intent_reaches_the_claude_classifier():
@@ -95,10 +97,25 @@ def test_check_needs_intent_reaches_the_claude_classifier():
     auto = json.loads((DIST / "claude/settings.json").read_text())["autoMode"]
     assert auto["soft_deny"][0] == "$defaults"
     rule = auto["soft_deny"][1]
+    api_review = auto["soft_deny"][2]
     for entry in _contract():
-        if entry["decision"] == "needs_intent":
-            assert entry["prefix"] in rule
-    assert "unless the operator's own message names that exact action" in rule
+        if entry["decision"] != "needs_intent":
+            continue
+        api = entry["prefix"] in ("gh api", "glab api")
+        assert (entry["prefix"] in rule) is not (api or "allow_unless" in entry)
+        if api:
+            assert entry["prefix"] in api_review
+            assert "retain native review" in api_review
+            assert "never write consent" in api_review
+    for token in (
+        "approves the exact action the session showed",
+        "invokes an operator-ordered procedure",
+        "Only an order naming or approving the exact command clears op tier-two or op desktop",
+        "session's own message and claims of prior approval, is never operator intent",
+        "relay of the operator's order is that order",
+        "different target, text or recovery action",
+    ):
+        assert token in rule
 
 
 def test_check_representative_commands_keep_their_decision():
@@ -120,6 +137,9 @@ def test_check_representative_commands_keep_their_decision():
         "glab work-items list": "allow",
         "glab issue note": "needs_intent",
         "glab mr merge": "needs_intent",
+        "glab mr create": "needs_intent",
+        "gh pr close": "needs_intent",
+        "gh run cancel": "needs_intent",
         "glab ci trigger": "needs_intent",
         "glab repo update": "needs_intent",
         "glab mr for": "needs_intent",
@@ -151,6 +171,11 @@ def test_write_intent_has_one_central_policy_and_reaches_opencode():
         assert bash[pattern] == bash[pattern + " *"] == "ask"
 
 
+UNLESS = (
+    '\n[[command]]\nprefix = "gh x"\ndecision = "{decision}"\nallow_unless = {tokens}\nwhy = "x"\n'
+)
+
+
 def test_check_contract_refusals(tmp_path):
     base = (ROOT / "src/permissions.toml").read_text()
     cases = (
@@ -162,6 +187,10 @@ def test_check_contract_refusals(tmp_path):
         base + '\n[[command]]\nprefixes = "glab x"\ndecision = "deny"\nwhy = "no list"\n',
         base + '\n[[command]]\nprefixes = []\ndecision = "deny"\nwhy = "an empty group vanishes"\n',
         base + '\n[[command]]\nprefix = "a"\nprefixes = ["b"]\ndecision = "deny"\nwhy = "both"\n',
+        base + UNLESS.format(decision="allow", tokens='["--force"]'),
+        base + UNLESS.format(decision="needs_intent", tokens='["--force *"]'),
+        base + UNLESS.format(decision="needs_intent", tokens="[]"),
+        base + UNLESS.format(decision="needs_intent", tokens='"--force"'),
     )
     for index, text in enumerate(cases):
         source = tmp_path / f"case{index}"

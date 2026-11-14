@@ -1,5 +1,7 @@
 """Closing a predecessor signals only what its workspace owns, or stops with its closure state."""
 
+from dataclasses import replace
+
 import pytest
 
 from slopmeister.launch import closure
@@ -32,7 +34,7 @@ ROWS = {
         ["term", *POLLED],
     ),
     "codex-standalone": (([CODEX], True, ""), CLOSED, TERM),
-    "terminal-error": (([CLAUDE], True, "close"), "old-terminal did not close", TERM),
+    "terminal-error": (([CLAUDE], True, "close"), "old-terminal did not close", [*TERM, *POLLED]),
     "already-closed": (([CLAUDE], False, ""), CLOSED, ["term"]),
 }
 
@@ -53,6 +55,40 @@ def test_closure_decisions(tmp_path, monkeypatch, capsys, case):
     assert outcome in said
     assert box.events == events
     assert "other" in box.terminals
+
+
+@pytest.mark.parametrize("delay", [1, 10])
+def test_delayed_terminal_closure_finishes_without_a_retry(tmp_path, monkeypatch, delay):
+    """A normally closing terminal can remain listed until the final deadline check."""
+    box = make_box(tmp_path, monkeypatch, ([CODEX], True, "close"))
+
+    def listing(**_):
+        if box.clock >= delay:
+            box.terminals.pop("old-terminal", None)
+        return dict(box.terminals)
+
+    monkeypatch.setattr(closure.terminal, "terminals", listing)
+    closure.close(box_launch(box))
+    assert box.clock == delay and box.signals == [4000]
+    assert box.events.count("close") == 1 and "other" in box.terminals
+    assert not (tmp_path / "state/example-client-old.orca").exists()
+
+
+def test_slow_unknown_terminal_checks_have_one_deadline(tmp_path, monkeypatch):
+    """An unresponsive Orca must not multiply its subprocess timeout by the poll count."""
+    box = make_box(tmp_path, monkeypatch, ([CODEX], True, "close"))
+    budgets = []
+
+    def listing(*, timeout=30):
+        budgets.append(timeout)
+        box.clock += timeout
+        return None
+
+    monkeypatch.setattr(closure.terminal, "terminals", listing)
+    with pytest.raises(Stop, match="old-terminal did not close"):
+        closure._close_terminal(closure.Closure(box_launch(box)), "old-terminal")
+    assert budgets == [10, 0.5] and box.clock == 10.5
+    assert (tmp_path / "state/example-client-old.orca").is_file()
 
 
 def test_descendants_are_recorded_then_stopped_deepest_first(tmp_path, monkeypatch):
@@ -161,3 +197,39 @@ def test_tab_without_a_live_predecessor_is_left_open(tmp_path, monkeypatch):
     closure.close(box_launch(box))
     assert box.events == [] and "old-terminal" in box.terminals
     assert not (tmp_path / "state/example-client-old.orca").exists()
+
+
+@pytest.mark.parametrize("changed", ["none", "pid", "birth", "absent"])
+def test_self_shutdown_requires_the_caller_captured_before_detachment(
+    tmp_path, monkeypatch, changed
+):
+    """A replacement must not inherit a prior worker's permission to stop itself."""
+    box = make_box(tmp_path, monkeypatch, ([CLAUDE], True, ""))
+    launch = box_launch(box)
+    caller = closure.census(closure.Closure(launch))[0]
+    if changed == "pid":
+        caller = replace(caller, pid=3999)
+    elif changed == "birth":
+        caller = replace(caller, signature="earlier process")
+    elif changed == "absent":
+        box.alive.clear()
+    if changed == "none":
+        closure.close(launch, caller=caller)
+        assert box.signals == [caller.pid]
+    else:
+        with pytest.raises(Stop, match="calling worker identity changed before shutdown"):
+            closure.close(launch, caller=caller)
+        assert box.signals == [] and "old-terminal" in box.terminals
+
+
+def test_self_shutdown_failure_keeps_workspace_without_a_redispatch_retry(tmp_path, monkeypatch):
+    """A harvest failure must not instruct its sender to start a replacement worker."""
+    box = make_box(tmp_path, monkeypatch, ([CODEX], True, "close"))
+    box.wt.mkdir()
+    launch = box_launch(box)
+    caller = closure.census(closure.Closure(launch))[0]
+    with pytest.raises(Stop, match="old-terminal did not close") as refusal:
+        closure.close(launch, caller=caller)
+    assert "workspace kept" in refusal.value.text
+    assert "inspect" in refusal.value.text and "--redispatch" not in refusal.value.text
+    assert box.wt.is_dir() and "old-terminal" in box.terminals

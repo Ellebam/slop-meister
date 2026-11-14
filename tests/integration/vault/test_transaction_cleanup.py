@@ -135,10 +135,27 @@ def test_timed_out_named_commit_keeps_notes_and_cleans_git_lock(lease_repository
     env = dict(original)
     env.pop("SLOPMEISTER_VAULT_LOCKED")
     holder = Path(env["VAULT_LOCK"])
-    holder.write_text(f"#!{sys.executable}\n" + LOAD.replace("0.2", "5"))
-    holder.chmod(0o755)
+    original_holder = holder.read_text()
     env["VAULT_LOCK"] = str(holder)
     entered = tmp_path / "hook-entered"
+    # This arm needs an active Git hook, independently of cold process startup time.
+    synchronized = f"""from pathlib import Path
+watch = lease.watch
+def after_hook(process, seconds, cancelled):
+    deadline = lease.time.monotonic() + 30
+    while not Path({str(entered)!r}).exists():
+        if lease.exit_status(process) is not None or lease.time.monotonic() >= deadline:
+            raise RuntimeError('fixture Git hook did not start')
+        lease.time.sleep(0.01)
+    return watch(process, seconds, cancelled)
+lease.watch = after_hook
+raise SystemExit(lease.main())
+"""
+    fixture = LOAD.replace("lease.COMMAND_TIMEOUT = 0.2", "lease.COMMAND_TIMEOUT = 5")
+    holder.write_text(
+        f"#!{sys.executable}\n" + fixture.replace("raise SystemExit(lease.main())", synchronized)
+    )
+    holder.chmod(0o755)
     hook = Path(env["VAULT_GIT_DIR"]) / "hooks/pre-commit"
     hook.write_text(
         f"#!{sys.executable}\nfrom pathlib import Path\nimport time\n"
@@ -153,5 +170,6 @@ def test_timed_out_named_commit_keeps_notes_and_cleans_git_lock(lease_repository
     assert (vault / "timeout.md").read_text() == "keep this note\n"
     assert vaultgit(env, "rev-parse", "HEAD").stdout == before
     assert not (Path(env["VAULT_GIT_DIR"]) / "index.lock").exists()
+    holder.write_text(original_holder)
     hook.write_text("#!/bin/sh\nexit 0\n")
     assert run("commit", "Recovered", "--", "timeout.md", env=env).returncode == 0

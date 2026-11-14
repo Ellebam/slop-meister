@@ -137,3 +137,29 @@ def test_failed_launch_is_unknown_and_never_retried_locally(remote_world, comman
     assert result.returncode == 255 and request.exists()
     assert "worker may be live" in result.stderr and "--host remote-box" in result.stderr
     assert len(Path(remote_world[1]["SSH_CALLS"]).read_text().splitlines()) == 2
+
+
+@pytest.mark.parametrize("directory", [False, True])
+def test_remote_abandon_forwards_handoff_without_local_recovery(remote_world, directory):
+    """The stop request must reach the host unchanged, including its remote-only handoff path."""
+    handoff = "/remote/worker notes/$(touch BAD).md"
+    extra = ["--abandon", "--handoff", handoff]
+    args = (
+        ["example-client", "example-client-one", "--directory"]
+        if directory
+        else ["~/repo with space", "example-client", "example-client-one"]
+    )
+    checkout, env = remote_world
+    result = subprocess.run(
+        [str(CLI), "plot-session", *args, "--host", "remote-box", *extra],
+        cwd=ROOT,
+        env=env,
+        input="",
+        text=True,
+        capture_output=True,
+    )
+    request = checkout / "request.json"
+    assert result.returncode == 0, result.stderr
+    received = json.loads(request.read_text())
+    assert received["argv"] == ["plot-session", *args, *extra]
+    assert not (request.parent / "BAD").exists()

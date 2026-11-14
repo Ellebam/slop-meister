@@ -176,7 +176,7 @@ def test_checkout_symlink_is_never_followed_by_cleanup(workspace, tmp_path, monk
         cwd.symlink_to(cwd.parent / "evidence", target_is_directory=True)
 
     monkeypatch.setattr(check.Check, "verify", lambda self: None)
-    assert run(workspace, Checker(act=replace), monkeypatch) == 0
+    assert run(workspace, Checker(act=replace), monkeypatch) == 1
     [root] = runs(tmp_path)
     assert (root / "evidence/kept.txt").read_text() == "retained proof"
     assert "checkout is a symlink, not removed" in capsys.readouterr().out

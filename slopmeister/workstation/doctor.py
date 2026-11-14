@@ -10,7 +10,7 @@ import stat
 
 from slopmeister import paths
 from slopmeister.session.service_actions import runtime
-from slopmeister.workstation import host, manifest, orca, rules, state
+from slopmeister.workstation import host, manifest, memory, orca, state
 from slopmeister.workstation.host import INSTALL, Result
 
 TOOLS = (
@@ -48,7 +48,6 @@ HISTORY_FIX = (
     "read ~/.vault-git/vault-commit.log for the cause, then follow "
     "docs/vault-version-control.md, When the job stops"
 )
-RULES_FIX = "ask the operator to bring the live rule file in line with the template in plots/home/"
 ONLINE_ONLY_FIX = "set the sync client to mirror the vault, see docs/vault-version-control.md"
 # On Linux the operator installs a package that needs root, an agent never does.
 SYSTEM_TOOLS = ("git", "gh", "glab", "rg", "op", "zsh", "lsof", "rclone", "shellcheck", "jq")
@@ -151,15 +150,6 @@ def _home_install(home: Path, optional: set[str]) -> Result:
     return Result("home-install", "ok", "every required home entry matches its source", "none")
 
 
-def _rules(home: Path) -> Result:
-    """Template lines only, the live files hold approvals that must not reach agent output."""
-    lines = [line.strip() for line in rules.report(home)]
-    stale = [line for line in lines if not line.startswith(rules.PRESENT)]
-    if stale:
-        return Result("rules", "problem", "; ".join(stale), RULES_FIX)
-    return Result("rules", "ok", "every template rule is in the live rule files", "none")
-
-
 def vault_path(given: str | None, home: Path) -> Path:
     """The command line wins over SLOPMEISTER_VAULT, which wins over the per-machine link."""
     return Path(given).expanduser() if given else paths.vault(home)
@@ -240,7 +230,7 @@ def doctor(home: Path, vault_arg: str | None = None) -> list[Result]:
         _service_actions(),
         *_orca(),
         _home_install(home, optional),
-        _rules(home),
+        *(memory.check(home, tool) for tool in ("claude", "codex")),
         *_vault(home, vault_arg, history),
         *(host.vault_rows(history, drive) if paths.platform() == "linux" else []),
     ]

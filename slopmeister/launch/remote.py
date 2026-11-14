@@ -12,6 +12,12 @@ from slopmeister.session import remote_ssh
 PREFLIGHT_TIMEOUT = 45
 # The remote shell supplies its own tool paths and desktop runtime, never the Mac's environment.
 CHECKOUT = 'export XDG_RUNTIME_DIR="/run/user/$(id -u)"; cd "$HOME/dev/slop-meister"'
+# An SSH command runs in no Orca terminal, so the launch is told where the host's Orca keeps
+# its Claude account selection.
+ACCOUNT = (
+    "export ORCA_CLAUDE_PROFILE_POINTER="
+    '"${XDG_CONFIG_HOME:-$HOME/.config}/orca/claude-profiles/selected-host"; '
+)
 CHECK = (
     CHECKOUT + ' || { echo "remote checkout is unavailable" >&2; exit 78; }; '
     'test -x bin/slopmeister || { echo "remote launcher is unavailable" >&2; exit 78; }; '
@@ -75,7 +81,8 @@ def launch(argv: Sequence[str], entry: Sequence[str]) -> int | None:
     preflight(host)
     print(f"remote host: {host}", flush=True)
     command = (
-        CHECKOUT
+        ACCOUNT
+        + CHECKOUT
         + " && exec "
         + " ".join(shq(value) for value in ["bin/slopmeister", *entry, *args])
     )

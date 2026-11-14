@@ -14,7 +14,7 @@ import threading
 
 import pytest
 
-from slopmeister.session import launch_identity, secret_approval, secret_tier
+from slopmeister.session import launch_identity, secret_approval, secret_run, secret_tier
 from slopmeister.workstation import manifest
 from tests.support.fakes import fake_binary
 
@@ -111,7 +111,8 @@ def machine(tmp_path, monkeypatch):
     server.home, server.path = installed(tmp_path)
     machine_files(server.home, server.server_port)
     workspace = tmp_path / "example-task"
-    workspace.mkdir()
+    (workspace / ".claude").mkdir(parents=True)
+    shutil.copy(ROOT / "dist/claude/settings.json", workspace / secret_run.RULES)
     with monkeypatch.context() as patch:
         patch.setattr(Path, "home", classmethod(lambda cls: server.home))
         launch_identity.write(

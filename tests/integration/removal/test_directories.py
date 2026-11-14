@@ -71,10 +71,11 @@ def test_session_root_cannot_bypass_git_workspace_checks(workspace, invoke, snap
     assert str(target) in git(repo, "worktree", "list")
 
 
-def test_example_app_cannot_stop_a_dispatcher_or_remove_a_forgotten_tree(workspace, invoke):
+def test_self_without_its_calling_worker_removes_nothing(workspace, invoke):
+    """Bug: an outside caller ends a directory session, or --self deletes a forgotten tree."""
     _, worktree, env = workspace
     for target in (Path(env["PLOT_SESSION_ROOT"]) / "retired", worktree.parent / "forgotten"):
         target.mkdir(parents=True)
         result = invoke(target, "--self", "--force")
-        assert result.returncode != 0 and "registered worktree" in result.stderr
-        assert target.is_dir()
+        assert result.returncode != 0 and target.is_dir()
+    assert "registered worktree or a session directory" in result.stderr

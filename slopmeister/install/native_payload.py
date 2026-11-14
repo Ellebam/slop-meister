@@ -42,7 +42,7 @@ def add_native_payload(context: InstallContext) -> None:
     permissions.setdefault("additionalDirectories", []).extend([*context.grants, *writable])
     hooks = settings.pop("hooks", {})
     root = context.state_dir / session_snapshot.DIRECTORY
-    session_snapshot.bake(context.files, root)
+    session_snapshot.bake(context.files, root, companion=bool(context.request.session))
     _add_settings(context, (permissions, hooks, writable, review))
 
 
@@ -84,19 +84,49 @@ def _session_temporary(candidate: Path) -> bool:
 
 
 def _codex_rules(context: InstallContext, permissions: dict) -> None:
-    review = [str(context.root / "bin/slopmeister"), "review", "review"]
-    policy = permission_contract(context.root / "src/permissions.toml")["self_release"]
-    release = [review[0], *policy["prefix"].split(), str(context.repo)]
-    permissions.setdefault("allow", []).append(f"Bash({shlex.join(release)})")
-    for name, command, why in (
-        ("review.rules", review, "Slopmeister read-only cross-tool review"),
-        ("vault-commit.rules", VAULT_COMMIT.split(), "Slopmeister named-path vault commit"),
-        ("self-release.rules", release, policy["why"]),
+    binary = str(context.root / "bin/slopmeister")
+    review = [binary, "review", "review"]
+    add = [binary, "repository", "add"]
+    vault = VAULT_COMMIT.split()
+    policies = permission_contract(context.root / "src/permissions.toml")["self_release"]
+    releases = [[binary, *policy["prefix"].split(), str(context.repo)] for policy in policies]
+    permissions.setdefault("allow", []).extend(f"Bash({shlex.join(item)})" for item in releases)
+    permissions.setdefault("ask", []).append(f"Bash({shlex.join(add)} *)")
+    for name, command, decision, why in (
+        ("review.rules", review, "allow", "Slopmeister read-only cross-tool review"),
+        ("vault-commit.rules", vault, "allow", "Slopmeister named-path vault commit"),
+        *(
+            ("self-release.rules", release, "allow", policy["why"])
+            for release, policy in zip(releases, policies, strict=True)
+        ),
+        (
+            "repository-add.rules",
+            add,
+            "prompt",
+            "Add only the exact repository the operator approved for this session.",
+        ),
     ):
-        rule = (
-            f'prefix_rule(pattern={json.dumps(command)}, decision="allow", justification="{why}")\n'
-        )
-        context.files[f".codex/rules/{name}"] = (rule.encode(), 0o644)
+        rule = f"prefix_rule(pattern={json.dumps(command)}, "
+        rule += f'decision="{decision}", justification={json.dumps(why)})\n'
+        path = f".codex/rules/{name}"
+        previous = context.files.get(path, (b"", 0o644))[0]
+        context.files[path] = (previous + rule.encode(), 0o644)
+
+
+def _ci_rerun_rules(context: InstallContext, permissions: dict) -> None:
+    policy = permission_contract(context.root / "src/permissions.toml")["ci_rerun"]
+    rules = []
+    for native in (".agents", ".claude"):
+        directory = context.repo / native / "skills/ci-rerun"
+        permissions.setdefault("deny", []).append("Edit(/" + str(directory) + "/**)")
+        if not context.directory and not context.request.proof_owner:
+            command = ["python3", str(directory / "scripts" / "ci_rerun.py")]
+            permissions.setdefault("allow", []).append("Bash(" + shlex.join(command) + " *)")
+            rules.append(
+                f'prefix_rule(pattern={json.dumps(command)}, decision="allow", '
+                f"justification={json.dumps(policy['why'])})"
+            )
+    context.files[".codex/rules/ci-rerun.rules"] = (("\n".join(rules) + "\n").encode(), 0o644)
 
 
 def _add_settings(context: InstallContext, values: tuple[dict, dict, list[str], str]) -> None:
@@ -104,6 +134,7 @@ def _add_settings(context: InstallContext, values: tuple[dict, dict, list[str], 
     # Launched Claude sessions run without the Bash sandbox, see docs/plot-shape.md. Stated
     # explicitly because --settings wins over a home setting that would otherwise re-enable it.
     _codex_rules(context, permissions)
+    _ci_rerun_rules(context, permissions)
     access = {"permissions": permissions, "hooks": hooks, "sandbox": {"enabled": False}}
     if "autoMode" in context.settings:
         access["autoMode"] = context.settings.pop("autoMode")
@@ -126,12 +157,10 @@ def _add_git_approval(context: InstallContext) -> None:
         patterns.extend(
             ["python3", str(context.repo / tree / ship)] for tree in (".agents", ".claude")
         )
-    rules = [
-        "prefix_rule(pattern="
-        + json.dumps(pattern)
-        + ', decision="prompt", justification="Explicit operator intent required")'
-        for pattern in patterns
-    ]
+    order = permission_contract(context.root / "src/permissions.toml")["order"]
+    why = json.dumps("Explicit operator intent required. " + order)
+    tail = f', decision="prompt", justification={why})'
+    rules = ["prefix_rule(pattern=" + json.dumps(pattern) + tail for pattern in patterns]
     asks = ["Bash(" + " ".join(pattern) + " *)" for pattern in patterns]
     context.files[".codex/rules/git-permission.rules"] = (
         ("\n".join(rules) + "\n").encode(),

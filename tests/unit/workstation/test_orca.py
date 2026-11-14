@@ -205,10 +205,13 @@ def test_template_uses_manual_agent_defaults_and_safe_quick_commands():
     assert settings["agentDefaultArgs"]
     assert set(settings["agentDefaultArgs"].values()) == {""}
     commands = settings["terminalQuickCommands"]
-    assert len(commands) == 2
+    assert len(commands) == 3
     for item in commands:
         assert item["action"] == "terminal-command" and item["appendEnter"] is True
         assert item["scope"] == {"type": "global"}
+    for item in commands[:2]:
         assert item["command"].startswith("/bin/zsh -lc 'cd ")
         assert "task dispatch --" in item["command"]
+    # Typed into the terminal itself, where Orca's `claude` function applies the selected account.
+    assert commands[2]["command"] == "claude auth login --claudeai"
     assert 'CODEX_HOME="$HOME/.codex"' in commands[1]["command"]

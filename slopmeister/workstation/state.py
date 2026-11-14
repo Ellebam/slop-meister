@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-from slopmeister.workstation import codex_config, manifest, orca
+from slopmeister.workstation import codex_config, manifest, orca, rules
 from slopmeister.workstation.manifest import APPLET, CODEX_CONFIG, VAULT_REPOSITORY, Entry
 
 UNCHANGED = "unchanged"
@@ -52,6 +52,10 @@ def items(home: Path) -> list[Item]:
     found = [Item(entry.destination, _status(entry, home), entry) for entry in manifest.entries()]
     found.append(
         Item(CODEX_CONFIG, UNSAFE if link_in(home, CODEX_CONFIG) else codex_config.status(home))
+    )
+    found.extend(
+        Item(name, UNSAFE if link_in(home, name) else rules.status(home, name))
+        for name in rules.NAMES
     )
     if manifest.mac_only():
         found.append(Item(orca.NAME, UNSAFE if link_in(home, orca.NAME) else orca.status(home)))

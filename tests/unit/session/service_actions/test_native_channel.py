@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 import sys
+from types import ModuleType
 
 import pytest
 
@@ -80,6 +81,14 @@ def test_native_client_refuses_unprompted_write_configuration(tmp_path, decision
         )
 
 
+def _stdin(monkeypatch, mode):
+    """Only the gate sees the fake fstat, so pytest's own temp cleanup keeps the real one."""
+    view = ModuleType("os")
+    view.__dict__.update(vars(native_gate.os))
+    view.fstat = lambda _fd: type("Info", (), {"st_mode": mode})()
+    monkeypatch.setattr(native_gate, "os", view)
+
+
 def test_native_consumer_refuses_an_unrelated_python_parent(tmp_path, monkeypatch):
     """Bug: any Python parent can impersonate the approved native writer adapter."""
     monkeypatch.setattr(native_gate, "_host", lambda *_args: None)
@@ -95,9 +104,7 @@ def test_native_consumer_refuses_an_unrelated_python_parent(tmp_path, monkeypatc
 
 def test_codex_adapter_refuses_a_pipe_not_owned_by_the_native_host(tmp_path, monkeypatch):
     """Bug: shell process substitution preserves a native parent and forges MCP stdin."""
-    monkeypatch.setattr(
-        native_gate.os, "fstat", lambda _fd: type("Info", (), {"st_mode": 0o010000})()
-    )
+    _stdin(monkeypatch, 0o010000)
     monkeypatch.setattr(native_gate, "_owned_pipe", lambda _pid: False)
     monkeypatch.setattr(
         native_gate, "_host", lambda *_args: pytest.fail("untrusted pipe reached host")
@@ -108,9 +115,7 @@ def test_codex_adapter_refuses_a_pipe_not_owned_by_the_native_host(tmp_path, mon
 
 def test_claude_adapter_refuses_a_socket_not_owned_by_the_native_host(tmp_path, monkeypatch):
     """Bug: a shell tool makes its own socket and impersonates native MCP input."""
-    monkeypatch.setattr(
-        native_gate.os, "fstat", lambda _fd: type("Info", (), {"st_mode": 0o140000})()
-    )
+    _stdin(monkeypatch, 0o140000)
     monkeypatch.setattr(native_gate, "_owned_socket", lambda _pid: False, raising=False)
     monkeypatch.setattr(
         native_gate, "_host", lambda *_args: pytest.fail("untrusted socket reached host")
@@ -147,9 +152,7 @@ def test_native_host_refuses_a_different_executable(tmp_path, monkeypatch):
     monkeypatch.setattr(native_gate, "_claude", lambda *_args: None)
     with pytest.raises(ValueError, match="NATIVE_APPROVAL_REQUIRED: client"):
         native_gate._host({"cli": str(tmp_path / "claude"), "tool": "claude"}, "jira_write", 1)
-    monkeypatch.setattr(
-        native_gate.os, "fstat", lambda _fd: type("Info", (), {"st_mode": 0o010000})()
-    )
+    _stdin(monkeypatch, 0o010000)
     monkeypatch.setattr(native_gate, "_owned_pipe", lambda _pid: True)
     with pytest.raises(ValueError, match="NATIVE_APPROVAL_REQUIRED: client"):
         native_gate.require_host(tmp_path, {"cli": str(tmp_path / "codex"), "tool": "codex"})
@@ -200,9 +203,7 @@ def test_claude_caller_keeps_its_explicit_write_ask(tmp_path, change, reason):
 
 def test_native_adapter_refuses_an_ordinary_input_file(tmp_path, monkeypatch):
     """Bug: shell redirection is accepted as the native client's private RPC channel."""
-    monkeypatch.setattr(
-        native_gate.os, "fstat", lambda _fd: type("Info", (), {"st_mode": 0o100000})()
-    )
+    _stdin(monkeypatch, 0o100000)
     monkeypatch.setattr(native_gate, "_owned_pipe", lambda _pid: True)
     monkeypatch.setattr(native_gate, "_host", lambda *_args: None)
     with pytest.raises(ValueError, match="NATIVE_APPROVAL_REQUIRED"):

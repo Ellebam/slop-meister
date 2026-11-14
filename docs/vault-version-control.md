@@ -72,7 +72,7 @@ The command commits only those literal paths, preserving another session's stage
 |---|---|
 | `0` | Named changes committed. |
 | `1` | Nothing to commit, a helper is missing or Git failed. |
-| `2` | Missing message, paths or `--` separator. |
+| `2` | Invalid message, paths or separator. |
 | `75` | The commit lease is busy. |
 
 Manual named commits, the scheduled sweep and explicit legacy-log commits share `~/.vault-git/obsidian.git/slopmeister-coordination/commit.lock`. The holder keeps the lock until its owned writer processes stop, including cancellation and the default 300-second execution deadline. A timeout returns `124`; cancellation reports a nonzero status. Inspect partial writes before retrying. Ordinary reading and editing stay outside the lock. Busy manual commits refuse immediately, the scheduled job skips that run. Explicit legacy append holds the lock across read, replay, append and commit.

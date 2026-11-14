@@ -53,7 +53,7 @@ def claim(launch: Launch) -> None:
 
 
 def require_managed_abandon(launch: Launch) -> None:
-    if launch.abandon and not launch.claim_managed:
+    if launch.abandon and launch.issue_id and not launch.claim_managed:
         raise die("abandon requires a saved issue in an eligible project")
 
 
@@ -68,6 +68,12 @@ def initialize(launch: Launch) -> None:
 
 
 def abandon(launch: Launch, close: Callable[[Launch], None]) -> None:
+    if not launch.claim_managed:
+        handoff = evidence.safe_path(launch.handoff).resolve()
+        if not handoff.is_relative_to(launch.wt) or not handoff.read_text().strip():
+            raise die("abandon requires a nonempty handoff inside the worker workspace")
+        close(launch)
+        return
     run = lifecycle.resolve(launch.wt)
     handoff = Path(launch.handoff)
     with lifecycle.locked(run, launch.wt, launch.lock_fd) as current:

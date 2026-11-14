@@ -13,15 +13,16 @@ Every session gets the same shared skills, rendered from [src/skills/](../src/sk
 | [execute-plan](../src/skills/execute-plan/SKILL.md) | Runs the plan through implement, proof, ship, the combined diff check and its fix pass. | After the plan review | Agent |
 | [implement](../src/skills/implement/SKILL.md) | Builds the plan test-first, or applies the fixes you approved. | Spine steps 4 and 7 | Agent |
 | [local-qa](../src/skills/local-qa/SKILL.md) | Runs the acceptance, drives the change as its user and tries to break it. | Spine step 5 | Agent |
-| [ripe](../src/skills/ripe/SKILL.md) | Checks whether the work does what was meant and whether more is overdoing it. | Before any question, handoff or done | Agent |
+| [ripe](../src/skills/ripe/SKILL.md) | Checks whether the work does what was meant and whether more is overdoing it. | Before any question, handoff or done, and checks context at every worker turn end | Agent |
 | [groom](../src/skills/groom/SKILL.md) | Keeps affected repository docs and vault knowledge correct, short and in one place. | Before review when required, at direct harvest, or a scoped request | Agent or operator |
 | [prune](../src/skills/prune/SKILL.md) | Reassesses findings, plans or drafts for validity and needless complexity. | After a review, or whenever asked | Agent or operator |
 | [rinse](../src/skills/rinse/SKILL.md) | Checks finished outward drafts for private traces, plain language and the project’s writing rules. | Before showing or sending an outward draft and after each edit | Agent or operator |
+| [ci-rerun](../src/skills/ci-rerun/SKILL.md) | Retries initially failed CI jobs once for the saved task branch or its exact merge and reports the result. | Suspected transient CI failure | Agent |
 | [ship](../src/skills/ship/SKILL.md) | Commits, pushes and opens or updates the pull request. | Before diff review, after its fix pass and during an authorized ending | Agent |
 | [test-guide](../src/skills/test-guide/SKILL.md) | Writes the scenarios the independent diff check and you run. | After proof, before the diff check | Agent |
 | [harvest](../src/skills/harvest/SKILL.md) | Ends a session with document maintenance, permitted closure or hand-back, one report and guarded cleanup. | The operator orders it in any words, in any state | Agent, on your word |
 | [merge](../src/skills/merge/SKILL.md) | Merges the pull request after green checks and updates local main. | Directly or through harvest | Operator |
-| [plot-session](../src/skills/plot-session/SKILL.md) | Launches a worker for a plot with its kickoff and confirms delivery. | When you tell the dispatcher to dispatch | Agent, on your word |
+| [plot-session](../src/skills/plot-session/SKILL.md) | Launches a worker for a plot with its kickoff and confirms delivery. | Ordered dispatch or verified automatic context recovery | Agent, on your word for fresh dispatch |
 | [slot](../src/skills/slot/SKILL.md) | Allocates a worktree with its own ports and resources, then launches into it. | A task that runs its project's stack beside other work | Agent, on your word |
 | [dummy](../src/skills/dummy/SKILL.md) | Explains one decision plainly with options and a recommendation. | When a topic is not landing | Agent or operator |
 | [bloom](../src/skills/bloom/SKILL.md) | Explains work in an isolated-browser-checked HTML page, with private [Grove](agent-hosts.md#grove) hosting when the owning plot permits it. | On request, or one decision page for three or more open operator decisions | Agent or operator |

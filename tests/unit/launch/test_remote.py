@@ -164,3 +164,22 @@ def test_unexpected_failure_after_open_reports_that_a_worker_may_be_live(monkeyp
     )
     with pytest.raises(RuntimeError, match="before open"):
         cli.run([])
+
+
+def test_remote_launch_names_the_hosts_account_selection(monkeypatch):
+    """Bug: an SSH command has no Orca terminal variable, so the host's selection is ignored."""
+    from slopmeister.launch import remote
+
+    calls = []
+
+    def run(argv, **kwargs):
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    argv = ["example-client", "example-client-one", "--host", "box"]
+    assert remote.launch(argv, ["plot-session"]) == 0
+    pointer = '"${XDG_CONFIG_HOME:-$HOME/.config}/orca/claude-profiles/selected-host"'
+    command = shlex.split(calls[1][-1])[-1]
+    assert command.startswith(f"export ORCA_CLAUDE_PROFILE_POINTER={pointer}; ")
+    assert "ORCA_CLAUDE_PROFILE_POINTER" not in calls[0][-1]

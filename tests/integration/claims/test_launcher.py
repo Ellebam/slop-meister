@@ -7,6 +7,7 @@ import time
 
 import pytest
 
+from slopmeister.claims import evidence
 from tests.integration.claims.helpers import writes
 from tests.support.claims_world import SLOPMEISTER
 
@@ -94,6 +95,39 @@ def test_abandon_preserves_handoff_and_retries_failed_release(world):
     assert remote["state"] == "open" and not remote["labels"]
     report = json.loads(cli("backlog", "--repo", repo, "--plot", "slopmeister", "--json").stdout)
     assert report["recommend"] == [7]
+
+
+@pytest.mark.parametrize("saved", [False, True], ids=["explicit-association", "saved-association"])
+def test_ineligible_associated_abandon_keeps_worker_and_claim(world, saved):
+    root, repo, env, worker, launch, cli = world
+    process, workspace = worker("slopmeister-7-work", "claude")
+    association = ("--issue-id", "7")
+    first = launch("slopmeister-7-work", "claude", *(association if saved else ()))
+    assert first.returncode == 0, first.stdout + first.stderr
+    handoff = workspace / "SLOPMEISTER-7-NOTES.md"
+    handoff.write_text("Saved recovery commands.\n")
+    receipt = evidence.receipt_path(workspace)
+    state_path = receipt.with_name("state.json")
+    state = json.loads(state_path.read_text())
+    state["shipping"] = "deny"
+    state_path.write_text(json.dumps(state))
+    before = receipt.read_bytes() if saved else None
+    tracker = (root / "github.log").read_bytes() if saved else None
+    result = launch(
+        "slopmeister-7-work",
+        "claude",
+        "--abandon",
+        "--handoff",
+        str(handoff),
+        *(association if not saved else ()),
+    )
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert "abandon requires a saved issue in an eligible project" in result.stderr
+    assert process.poll() is None
+    assert (receipt.read_bytes() if saved else None) == before
+    assert ((root / "github.log").read_bytes() if saved else None) == tracker
+    if not saved:
+        assert not receipt.exists() and not (root / "github.log").exists()
 
 
 def test_concurrent_fresh_dispatch_has_one_worker_and_one_refusal(world):

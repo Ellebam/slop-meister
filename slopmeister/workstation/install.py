@@ -9,7 +9,7 @@ import subprocess
 
 from slopmeister import paths
 from slopmeister.errors import SlopmeisterError, UsageError
-from slopmeister.workstation import codex_config, manifest, orca, state
+from slopmeister.workstation import codex_config, manifest, orca, rules, state
 from slopmeister.workstation.manifest import APPLET, CODEX_CONFIG, EXEC, RELOAD, Entry
 
 BACKUP_ROOT = ".slopmeister-backup"
@@ -99,8 +99,10 @@ def _apply(item: state.Item, home: Path, backups: Path) -> tuple[int, str]:
     if line:
         print(line)
         return 0, ""
-    if item.name in (CODEX_CONFIG, orca.NAME):
-        if item.name == CODEX_CONFIG:
+    if item.name in (CODEX_CONFIG, orca.NAME, *rules.NAMES):
+        if item.name in rules.NAMES:
+            rules.install(home, backups, item.name)
+        elif item.name == CODEX_CONFIG:
             codex_config.install(home, backups)
         else:
             orca.install(home, backups)
@@ -133,6 +135,7 @@ def install(home: Path, chosen: set[str]) -> int:
         orca.require_closed()
     if any(item.name == orca.NAME and item.pending for item in items):
         orca.validate(home)
+    rules.validate(home, {item.name for item in items if item.name in rules.NAMES and item.pending})
     applied = [_apply(item, home, backups) for item in items]
     written = sum(count for count, _ in applied)
     stopped = [label for _, label in applied if label]

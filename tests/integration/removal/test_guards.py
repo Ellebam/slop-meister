@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+from slopmeister import workspace_removal
+from slopmeister.errors import SlopmeisterError
 from tests.support.repos import git
 
 
@@ -119,15 +121,27 @@ def test_unrelated_slot_state_cannot_block_a_plain_workspace(workspace, invoke, 
     assert state.exists()
 
 
-def test_saved_slot_allocation_refuses_when_its_local_file_is_lost(workspace, invoke, snapshot):
+@pytest.mark.parametrize("flag", ["--force", "--self"])
+def test_saved_slot_allocation_refuses_when_its_local_file_is_lost(
+    workspace, invoke, snapshot, flag, monkeypatch
+):
     """Bug: losing the local allocation let plain removal strand the saved slot resources."""
     repo, worktree, _ = workspace
     state = repo / ".git/worktrees/scratch/slopmeister-config/state.json"
     state.parent.mkdir(exist_ok=True)
     state.write_text(json.dumps({"allocation": ".slot.env", "plot": "slopmeister"}))
     before = snapshot(worktree)
-    result = invoke(worktree, "--force")
-    assert result.returncode != 0 and "slot:down" in result.stderr
+    if flag == "--self":
+        monkeypatch.setattr(workspace_removal.down, "_calling_worker", lambda *_: None)
+        monkeypatch.setattr(
+            workspace_removal.down, "_detach", lambda *_: pytest.fail("shutdown was reached")
+        )
+        with pytest.raises(SlopmeisterError) as refusal:
+            workspace_removal.main(["--self", "--", str(worktree)])
+        assert "slot:down" in str(refusal.value)
+    else:
+        result = invoke(worktree, flag)
+        assert result.returncode != 0 and "slot:down" in result.stderr
     assert snapshot(worktree) == before and state.exists()
 
 

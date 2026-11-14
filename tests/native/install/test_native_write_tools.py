@@ -120,7 +120,8 @@ def test_shell_cannot_send_a_forged_native_write_request(tmp_path, tool, route):
         if tool == "claude":
             argv[-2:-2] = ["--settings", str(world.client.cwd / ".claude/access-settings.json")]
         run(replace(world.client, argv=argv))
-        assert "NATIVE_APPROVAL_REQUIRED" in main_results(world)
+        result = main_results(world)
+        assert "NATIVE_APPROVAL_REQUIRED" in result, result
         assert world.output.read_text() == ""
     finally:
         close(world)

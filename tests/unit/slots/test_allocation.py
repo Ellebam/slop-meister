@@ -3,12 +3,15 @@ import subprocess
 
 import pytest
 
+from slopmeister import repositories
 from slopmeister.errors import SlopmeisterError
 from slopmeister.slots import allocation, down, status, up
 from slopmeister.threads import occupants
 
 
 def slot_identity(tmp_path, monkeypatch, worktree_slot=1):
+    monkeypatch.setattr(repositories, "check_companions", lambda *_: [])
+    monkeypatch.setattr(repositories, "remove_companions", lambda *_: None)
     text = f"SLOT={worktree_slot}\nSLOT_TARGET=scratch\nSLOT_NAME=scratch-one\n"
     worktree = tmp_path / "repo/.worktrees/scratch-one"
     state = tmp_path / "slots/scratch-slot1"
@@ -172,11 +175,13 @@ def test_down_requires_force_for_dirty_worktree_then_accepts_it(tmp_path, monkey
     """Bug: ordinary down deleted uncommitted work, or --force could not confirm it."""
     worktree = slot_identity(tmp_path, monkeypatch)
     monkeypatch.setattr(down, "_occupied", lambda worktree, project: None)
-    monkeypatch.setattr(
-        allocation,
-        "run",
-        lambda argv, **kwargs: subprocess.CompletedProcess(argv, 0, "?? local.txt\n", ""),
-    )
+
+    # A Git setting can hide untracked files from a status call that does not ask for them.
+    def status(argv, **kwargs):
+        shown = "?? local.txt\n" if "--untracked-files=all" in argv else ""
+        return subprocess.CompletedProcess(argv, 0, shown, "")
+
+    monkeypatch.setattr(allocation, "run", status)
     with pytest.raises(SlopmeisterError, match="uncommitted work"):
         down._worktree_slot(down.Request("/repo", "scratch", "scratch-one", False, ""), worktree)
     forced = down.Request("/repo", "scratch", "scratch-one", True, "")

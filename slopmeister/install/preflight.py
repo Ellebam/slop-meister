@@ -133,11 +133,12 @@ def directory_parent(repo: Path) -> None:
 
 def _global_configuration_roots() -> set[Path]:
     home = Path.home()
-    return {
-        Path(os.environ.get("CLAUDE_CONFIG_DIR", str(home / ".claude"))).resolve(),
-        codex_home().resolve(),
-        (home / ".agents").resolve(),
-    }
+    selected = os.environ.get("CLAUDE_CONFIG_DIR", str(home / ".claude"))
+    roots = {Path(selected).resolve(), codex_home().resolve(), (home / ".agents").resolve()}
+    if selected == os.environ.get("ORCA_CLAUDE_INJECTED_CONFIG_DIR"):
+        # An Orca account home links its configuration into the normal store, which stays global.
+        roots.add((home / ".claude").resolve())
+    return roots
 
 
 def _reject_ancestor_configuration(parent: Path, globals_: set[Path]) -> None:
