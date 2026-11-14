@@ -10,6 +10,7 @@ from slopmeister.slots import leftover
 from tests.support.standin import Command, run
 
 ROOT = Path(__file__).resolve().parents[2]
+pytestmark = pytest.mark.real_home
 CLAUDE = shutil.which("claude")
 CODEX = Path.home() / ".local/bin/codex"
 TASK = (
