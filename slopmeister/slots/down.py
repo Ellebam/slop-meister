@@ -127,7 +127,8 @@ def _worktree_slot(request: Request, worktree: Path) -> int:
         )
     (_calling_worker if request.own else _occupied)(worktree, f"{request.target}-slot{owned.slot}")
     dirty = allocation.run(
-        ["git", "-C", str(worktree), "status", "--porcelain"], capture=True
+        ["git", "-C", str(worktree), "status", "--porcelain", "--untracked-files=all"],
+        capture=True,
     ).stdout.strip()
     if dirty and not request.force:
         raise SlopmeisterError(f"uncommitted work in {worktree}; pass --force to confirm deletion")
