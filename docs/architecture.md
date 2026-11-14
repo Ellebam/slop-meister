@@ -40,7 +40,7 @@ These are the native global inputs. `CLAUDE_CONFIG_DIR` and `CODEX_HOME` can rel
 | Global input | Writer | Check or ownership boundary |
 |---|---|---|
 | `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md` | Home install from rendered global source | Drift compares bytes |
-| `~/.claude/settings.json` | Home install owns `autoMemoryEnabled = false`, Bash denials and missing central `autoMode.soft_deny` entries | Drift checks these values. Other settings, non-Bash denials, allows and existing soft-deny entries stay intact |
+| `~/.claude/settings.json` | Home install owns `autoMemoryEnabled = false` and missing central Bash denials and `autoMode.soft_deny` entries | Drift checks these values. Other settings, existing denials, allows and soft-deny entries stay intact |
 | `~/.codex/rules/permissions.rules` | Home install from the central contract, excluding allows | Drift compares the complete owned file |
 | `~/.codex/rules/default.rules`, other `rules/*.rules` | Codex saves approvals, or operator | Native client loads them. Slopmeister leaves private saved commands unread and unchanged |
 | `~/.codex/config.toml` | Home install owns the top-level keys and `[features] memories = false` of `plots/home/codex/config.toml.tmpl` | Drift checks those values. Other keys remain operator-owned |
@@ -59,7 +59,7 @@ After a compaction, both clients run a `SessionStart` hook with source `compact`
 
 Without `additionalContextLimit`, Codex cuts hook output at about 2,500 tokens and passes a preview.
 
-Existing soft-deny strings are kept, including superseded central strings. Drift checks current strings are present and does not identify older retained versions. Removing retained strings requires a separate operator order.
+Existing denials and soft-deny strings are kept, including superseded central ones. Drift checks current strings are present and does not identify older retained versions. Removing retained strings requires a separate operator order.
 
 `src/permissions.toml` remains the command-policy source. Global installation copies restrictions only, preserving session-only allow scope. Repair both policy entries with `task home:install -- .claude/settings.json .codex/rules/permissions.rules` on the operator's order. It keeps private backups and leaves saved approvals intact. Start a new client to load newly installed rules. [Workstation](../src/skills/workstation/SKILL.md#read-both-machines) owns the existing peer route and unknown results.
 

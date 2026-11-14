@@ -50,11 +50,7 @@ def _claude(original: bytes | None, root: Path) -> bytes:
         previous = current.get(key, [])
         if not isinstance(previous, list) or any(not isinstance(rule, str) for rule in previous):
             raise ValueError("invalid policy list")
-        if section == "permissions":
-            value = [rule for rule in previous if not rule.startswith("Bash(")] + value
-        else:
-            value = [*previous, *(rule for rule in value if rule not in previous)]
-        current[key] = value
+        current[key] = [*previous, *(rule for rule in value if rule not in previous)]
     return (json.dumps(settings, indent=2, ensure_ascii=False) + "\n").encode()
 
 

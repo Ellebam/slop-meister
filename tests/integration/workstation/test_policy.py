@@ -19,7 +19,7 @@ def test_central_policy_installs_restrictions_without_session_allows(tmp_path, p
         "autoMemoryEnabled": True,
         "permissions": {
             "allow": ["Bash(personal-approval *)"],
-            "deny": ["Read(~/.ssh/**)", "WebFetch", "Bash(retired-rule *)"],
+            "deny": ["Read(~/.ssh/**)", "WebFetch", "Bash(personal-denial *)"],
         },
         "autoMode": {"allow": ["personal classifier rule"]},
         "private_setting": "do-not-print",
@@ -52,8 +52,7 @@ def test_central_policy_installs_restrictions_without_session_allows(tmp_path, p
     assert current["permissions"] == {
         "allow": original["permissions"]["allow"],
         "deny": [
-            "Read(~/.ssh/**)",
-            "WebFetch",
+            *original["permissions"]["deny"],
             *[rule for rule in generated["permissions"]["deny"] if rule.startswith("Bash(")],
         ],
     }
