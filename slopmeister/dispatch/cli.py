@@ -98,19 +98,19 @@ def _kickoff(path: Path, tool: str, name: str) -> str:
 
 
 def _trust(tool: str, workspace: Path) -> tuple[Path, dict[str, str]]:
-    env = dict(os.environ)
     if tool == "codex":
-        home = paths.codex_home()
-        return home / "config.toml", env
-    value = env.get("CLAUDE_CONFIG_DIR")
-    if value == "":
-        raise SlopmeisterError("CLAUDE_CONFIG_DIR is empty, refusing to choose a Claude store")
-    if value is None:
-        return Path.home() / ".claude.json", env
-    root = Path(os.path.realpath(workspace / value))
-    env["CLAUDE_CONFIG_DIR"] = str(root)
+        return paths.codex_home() / "config.toml", dict(os.environ)
+    root, switched = paths.claude_store(workspace)
+    if root is None:
+        # System default in Orca leaves the previous account's store variable behind.
+        os.environ.pop("CLAUDE_CONFIG_DIR", None)
+        return Path.home() / ".claude.json", dict(os.environ)
     os.environ["CLAUDE_CONFIG_DIR"] = str(root)
-    return root / ".claude.json", env
+    if switched:
+        # Orca's mark for a store it chose. Without it this dispatcher's workers would take
+        # the account for the operator's own store and ignore every later switch.
+        os.environ["ORCA_CLAUDE_INJECTED_CONFIG_DIR"] = str(root)
+    return root / ".claude.json", dict(os.environ)
 
 
 def _report(line: str, paths: tuple[Path, Path], skipped: bool = False) -> None:

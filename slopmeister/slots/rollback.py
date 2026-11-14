@@ -8,6 +8,7 @@ import shutil
 import sys
 import tempfile
 
+from slopmeister.removal import remove_tree
 from slopmeister.slots import allocation
 
 
@@ -46,7 +47,8 @@ def run(claim: allocation.Claim, start: str) -> None:
             ["git", "-C", str(root), "worktree", "remove", "--force", str(worktree)],
             ok=False,
         )
-        shutil.rmtree(worktree, ignore_errors=True)
+        if worktree.exists():
+            remove_tree(worktree)
         allocation.run(["git", "-C", str(root), "worktree", "prune"])
     if own:
         # Git deletes the branch only while it still points at the commit it was created from.

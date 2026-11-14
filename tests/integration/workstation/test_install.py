@@ -1,11 +1,12 @@
-"""The home install, its diff and the rule report under a scratch home. Nothing live is touched."""
+"""The home install and its diff under a scratch home. Nothing live is touched."""
 
-import json
 import os
 from pathlib import Path
 import subprocess
 import sys
 import tomllib
+
+import pytest
 
 from slopmeister.workstation import manifest, orca
 from tests.support.fakes import fake_binary
@@ -54,14 +55,17 @@ def workstation(
 
 
 def test_install_loads_the_vault_agent_and_sets_the_codex_window(tmp_path):
-    """Escaping bug, the vault job never loads or Codex keeps its default context window."""
+    """Escaping bug, the vault job never loads or Codex keeps its default window and compaction."""
     home, bin_dir = machine(tmp_path)
     assert workstation(home, bin_dir, "install", "--all").returncode == 0
     calls = (tmp_path / "launchctl.log").read_text()
     assert f"bootstrap gui/{os.getuid()} {home / VAULT_AGENT}" in calls
-    assert (
-        tomllib.loads((home / ".codex/config.toml").read_text())["model_context_window"] == 872000
-    )
+    assert tomllib.loads((home / ".codex/config.toml").read_text()) == {
+        "model_auto_compact_token_limit": 300000,
+        "model_post_turn_compact_threshold_percent": 30,
+        "model_context_window": 872000,
+        "features": {"memories": False},
+    }
 
 
 def test_install_loads_the_claude_agent_with_a_substituted_home(tmp_path):
@@ -119,10 +123,18 @@ def test_install_backs_up_a_replaced_file(tmp_path):
     assert result.returncode == 0 and [b.read_text() for b in backups] == [original]
     assert all((backup.stat().st_mode & 0o777) == 0o600 for backup in backups)
     assert tomllib.loads(live.read_text()) == {
+        "model_auto_compact_token_limit": 300000,
+        "model_post_turn_compact_threshold_percent": 30,
         "model_context_window": 872000,
         "foreign": "keep-this-secret",
+        "features": {"memories": False},
     }
-    assert live.read_text() == 'model_context_window = 872000\nforeign = "keep-this-secret"\n'
+    assert live.read_text() == (
+        "model_post_turn_compact_threshold_percent = 30\n"
+        "model_auto_compact_token_limit = 300000\n"
+        'model_context_window = 872000\nforeign = "keep-this-secret"\n\n'
+        "[features]\nmemories = false\n"
+    )
 
 
 def test_only_named_entries_are_written(tmp_path):
@@ -133,6 +145,55 @@ def test_only_named_entries_are_written(tmp_path):
     assert not (home / ".codex/config.toml").exists()
     result = workstation(home, bin_dir, "install", APPLET)
     assert (home / APPLET).is_dir() and f"built: {APPLET}" in result.stdout
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        'model = "keep"\n',
+        "[features]\nother = true\n",
+        "[features] # keep\nmemories = true\nother = true\n"
+        '[projects."/example"]\ntrust_level = "trusted"\n',
+        "[features]\nmemories = false\nother = true\n",
+        '[features.other]\nvalue = "keep"\n',
+    ],
+)
+def test_codex_install_disables_memory_and_preserves_other_toml(tmp_path, text):
+    home, bin_dir = machine(tmp_path)
+    path = home / ".codex/config.toml"
+    path.parent.mkdir()
+    path.write_text(text)
+    expected = tomllib.loads(text)
+    expected["model_context_window"] = 872000
+    expected["model_auto_compact_token_limit"] = 300000
+    expected["model_post_turn_compact_threshold_percent"] = 30
+    expected.setdefault("features", {})["memories"] = False
+    installed = workstation(home, bin_dir, "install", ".codex/config.toml")
+    assert installed.returncode == 0, installed.stderr
+    assert tomllib.loads(path.read_text()) == expected
+    before = path.stat().st_mtime_ns
+    repeat = workstation(home, bin_dir, "install", ".codex/config.toml")
+    assert repeat.returncode == 0 and "Everything already up to date" in repeat.stdout
+    assert path.stat().st_mtime_ns == before
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "features = {memories = true}\n",
+        "features.memories = true\n",
+        '[features]\n"memories" = true\n',
+    ],
+)
+def test_unsupported_codex_spelling_preserves_the_original(tmp_path, text):
+    home, bin_dir = machine(tmp_path)
+    path = home / ".codex/config.toml"
+    path.parent.mkdir()
+    path.write_text(text)
+    result = workstation(home, bin_dir, "install", ".codex/config.toml")
+    assert result.returncode == 1 and "unsupported" in result.stderr
+    assert "nothing written" in result.stderr and path.read_text() == text
+    assert not (home / ".slopmeister-backup").exists()
 
 
 def test_install_without_names_writes_nothing(tmp_path):
@@ -157,59 +218,6 @@ def test_exclude_waits_for_the_vault_repository(tmp_path):
     assert not (home / ".vault-git/obsidian.git").exists()
 
 
-RULES = {
-    "permissions": {
-        "allow": ["Bash(task plot-session *)", "Bash(op read *)"],
-        "deny": ["Bash(unrelated-field-host-probe *)"],
-    }
-}
-
-
-def _assert_rule_status(output: str, home: Path) -> None:
-    assert "  present: claude allow Bash(task plot-session *)" in output
-    assert "  present: claude allow Bash($HOME/" in output
-    assert "  decision differs: claude deny Bash(op read *)" in output
-    assert "  absent: claude deny Bash(op inject *)" in output
-    assert "  present: codex allow task plot-session" in output
-    assert "  decision differs: codex forbidden op read" in output
-    assert "unrelated-field-host-probe" not in output and "unrelated-secret-value" not in output
-    assert str(home) not in output.split("=== allow rules")[1]
-
-
-def test_rule_report_names_status_and_never_echoes_live_content(tmp_path):
-    """Escaping bug, the report prints the live file's field approvals into agent output."""
-    home, bin_dir = machine(tmp_path)
-    (home / ".claude").mkdir()
-    launcher = f"{home}/dev/slop-meister/bin/slopmeister"
-    review = f"Bash({launcher} review review *)"
-    rules = {
-        "permissions": {**RULES["permissions"], "allow": [*RULES["permissions"]["allow"], review]}
-    }
-    (home / ".claude/settings.json").write_text(json.dumps(rules))
-    (home / ".codex/rules").mkdir(parents=True)
-    live = (
-        'prefix_rule(pattern=["task", "plot-session"], decision="allow")\n'
-        'prefix_rule(pattern=["op", "read"], decision="allow")\n'
-        'prefix_rule(pattern=["unrelated-field-host-probe"], decision="allow")\n'
-    )
-    (home / ".codex/rules/default.rules").write_text(live)
-    (home / ".codex/config.toml").write_text(
-        'model_context_window = 272000\napi_token = "unrelated-secret-value"\n'
-    )
-    output = workstation(home, bin_dir, "diff").stdout
-    assert "differs: .codex/config.toml model_context_window" in output
-    _assert_rule_status(output, home)
-
-
-def test_unreadable_rule_file_names_the_file_and_nothing_in_it(tmp_path):
-    home, bin_dir = machine(tmp_path)
-    (home / ".codex/rules").mkdir(parents=True)
-    (home / ".codex/rules/default.rules").write_text('prefix_rule(pattern=["unrelated-probe" \n')
-    output = workstation(home, bin_dir, "diff").stdout
-    assert "  unreadable: ~/.codex/rules/default.rules, compared nothing" in output
-    assert "unrelated-probe" not in output
-
-
 def test_diff_shows_a_changed_file_as_a_unified_diff(tmp_path, monkeypatch):
     """Escaping bug, diff names a drifted file but hides what install would change in it."""
     monkeypatch.setenv("SLOPMEISTER_PLATFORM", "darwin")
@@ -223,16 +231,15 @@ def test_diff_shows_a_changed_file_as_a_unified_diff(tmp_path, monkeypatch):
     assert f"{len(manifest.names()) - 1} file(s) differ. Nothing written." in output
 
 
-def test_oddly_typed_rule_file_is_unreadable_not_a_traceback(tmp_path):
-    """Escaping bug, a numeric allow bucket crashes diff and prints local paths in a traceback."""
+def test_malformed_configuration_is_reported_without_live_content(tmp_path):
     home, bin_dir = machine(tmp_path)
     (home / ".claude").mkdir()
-    (home / ".claude/settings.json").write_text('{"permissions": {"allow": 5}}\n')
+    (home / ".claude/settings.json").write_text('{"permissions": 5}\n')
     (home / ".codex").mkdir()
     (home / ".codex/config.toml").write_text('private_value = "do-not-print"\n[broken\n')
     result = workstation(home, bin_dir, "diff")
     assert result.returncode == 0 and "Traceback" not in result.stderr
-    assert "  unreadable: ~/.claude/settings.json, compared nothing" in result.stdout
+    assert "differs: .claude/settings.json central restrictions" in result.stdout
     assert "unreadable: .codex/config.toml, compared nothing" in result.stdout
     assert "do-not-print" not in result.stdout + result.stderr
     unusual = '"model_context_window" = 272000\nprivate_value = "do-not-print"\n'

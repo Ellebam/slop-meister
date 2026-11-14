@@ -35,8 +35,8 @@ def worktree_relative(repo: Path, path: Path) -> str:
 
 def prepare_repository(context: InstallContext) -> bool:
     common, gitdir = repository_paths(context.repo)
-    baseline = git(context.repo, ("rev-parse", "HEAD")).decode().strip()
-    entries = git(context.repo, ("ls-tree", "-rz", "HEAD")).split(b"\0")
+    baseline = git(context.repo, ("rev-parse", "--revs-only", "HEAD^{commit}")).decode().strip()
+    entries = git(context.repo, ("ls-tree", "-rz", baseline)).split(b"\0") if baseline else []
     roots = configuration_roots(entries)
     if git(context.repo, ("ls-files", "--", ":(literal)" + SCRATCH)):
         refuse("session scratch basename is tracked in the repository")
@@ -54,7 +54,7 @@ def prepare_repository(context: InstallContext) -> bool:
     context.state_dir = gitdir / "slopmeister-config"
     _pristine(context)
     context.state.update(
-        baseline=baseline,
+        baseline=baseline or git(context.repo, ("mktree",), GitOptions(data=b"")).decode().strip(),
         ship_target=_ship_target(context.repo),
     )
     return True
@@ -186,7 +186,12 @@ def _excludes(context: InstallContext) -> None:
     exclude = context.state_dir / "exclude"
     rules = "".join("/" + path + "\n" for path in context.roots).encode()
     exclude.write_bytes(
-        context.ignore_bytes + b"\n" + rules + b"/*-NOTES.md\n/" + SCRATCH.encode() + b"/\n"
+        context.ignore_bytes
+        + b"\n"
+        + rules
+        + b"/*-NOTES.md\n/.slopmeister-repos/\n/"
+        + SCRATCH.encode()
+        + b"/\n"
     )
     context.state["exclude_sha256"] = hashlib.sha256(exclude.read_bytes()).hexdigest()
     tracked = [

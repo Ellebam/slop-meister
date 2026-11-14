@@ -58,6 +58,37 @@ def test_real_or_symlinked_ancestor_configuration_still_refuses_preparation(tmp_
     assert "ancestor project configuration" in result.stderr and not workspace.exists()
 
 
+def _populated_normal_store(env: dict[str, str]) -> Path:
+    machine = Path(env["HOME"])
+    write(machine / ".claude", "settings.json", "{}\n")
+    return machine
+
+
+def test_orca_account_home_keeps_the_normal_claude_folder_global(tmp_path):
+    """Bug: with an Orca account selected, no session starts below the home folder."""
+    env = environment(tmp_path)
+    machine = _populated_normal_store(env)
+    account = tmp_path / "account/home"
+    account.mkdir(parents=True)
+    env.update(CLAUDE_CONFIG_DIR=str(account), ORCA_CLAUDE_INJECTED_CONFIG_DIR=str(account))
+    workspace = machine / "sessions/worker"
+    install(env, "--directory", "example-notes", str(workspace))
+    assert workspace.is_dir()
+
+
+@pytest.mark.parametrize("injected", [None, "{tmp}/account/other"])
+def test_operator_set_store_still_refuses_the_normal_claude_folder(tmp_path, injected):
+    """Bug: the account rule also admits ancestor settings beside a store the operator set."""
+    env = environment(tmp_path)
+    machine = _populated_normal_store(env)
+    env["CLAUDE_CONFIG_DIR"] = str(tmp_path / "account/home")
+    if injected:
+        env["ORCA_CLAUDE_INJECTED_CONFIG_DIR"] = injected.format(tmp=tmp_path)
+    workspace = machine / "sessions/worker"
+    result = install(env, "--directory", "example-notes", str(workspace), ok=False)
+    assert "ancestor project configuration" in result.stderr and not workspace.exists()
+
+
 def test_disappearing_empty_control_does_not_fail_ancestor_validation(tmp_path, monkeypatch):
     """Bug: another sandbox command ending removes its empty control during inspection."""
     control = tmp_path / ".codex"

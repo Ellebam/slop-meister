@@ -99,7 +99,10 @@ def test_alternate_write_invocation_cannot_reach_credentials(tmp_path, tool, var
         else:
             argv[2:2] = ["--approve-for-me"]
         run(replace(client, argv=argv))
-        assert json.loads(world.output.read_text())["result"] == "NATIVE_APPROVAL_REQUIRED"
+        result = main_results(world)
+        saved = world.output.read_text()
+        assert saved, result
+        assert json.loads(saved)["result"] == "NATIVE_APPROVAL_REQUIRED", result
     finally:
         close(world)
 

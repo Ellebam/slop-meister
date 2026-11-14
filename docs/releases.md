@@ -1,5 +1,19 @@
 # Releases
 
+## Upgrading to 0.6.0
+
+Start fresh workers for the changed fixed instructions. A session can now span several repositories of one plot, with one worktree per repository. Pass `--repository` at [launch](launcher.md#repositories) or add one later with `bin/slopmeister repository add`. Every planned task starts with a thin runnable path that is proved before later steps. A Night mode grant now lasts until the operator returns or revokes it.
+
+Review the home install before you run it. `task home:diff` shows the pending changes and the central policy status and writes nothing. `task home:install` now adds the central denials and ask-first rules to the live `~/.claude/settings.json` and `~/.codex/rules/permissions.rules`. It keeps saved approvals and existing soft-deny entries and makes private backups. It also switches off the private memory of both tools, so the vault stays the one memory. See [global agent configuration](architecture.md#global-agent-configuration).
+
+The [permission contract](permissions.md) now runs explicit `GET` API reads and the Orca mailbox, terminal read and terminal list commands by rule. Merges, tracker and review posts, raw CI reruns and `op tier-two` still need the operator's order. Write API reads as `gh api --method GET` or `glab api --method GET`. A denied command behind `op run` is refused. The new [ci-rerun](../src/skills/ci-rerun/SKILL.md) procedure retries initially failed jobs once for the task branch or its exact merge.
+
+Remove the retired `slots.testers` key from local plot definitions. The independent check now uses the worker slot under a [check lease](slots.md). `task slot:down` no longer accepts `--self`. A worker ends itself only through harvest, whose `workspace-remove --self` call needs the harvest report on standard input. Directory sessions end the same way. See [slot release](slot-release.md) and [workspace removal](workspace-removal.md). Public cleanup still refuses unknown ignored work and uncommitted changes without `--force`.
+
+Sessions compact earlier and receive their task notes again after each compaction. A worker asks for [automatic replacement](launcher-recovery.md) after three compactions, and its dispatcher or manager checks the request independently. `bin/slopmeister context-census` aggregates recorded context and usage. Orca reads the selected [Claude account](claude-accounts.md) at every launch. Jira moves match a transition name or a target status. Browser login works on a Linux desktop with no monitor. Harvest proposes ticket updates at handoff and sends only the approved ones.
+
+The host checks use Node 24.22.1.
+
 ## Upgrading to 0.5.0
 
 Start fresh workers for the changed fixed instructions. The independent diff check now runs the test guide in a clean copy. It replaces the separate tester command. Rinse replaces leak-check for outward drafts. Night mode requires an explicit bounded operator grant.

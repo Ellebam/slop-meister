@@ -15,6 +15,8 @@ from slopmeister.launch import terminal
 from slopmeister.launch.model import BROKER_MARK, INBOX_NOTICE, NOTICE_VARIABLE, Launch, shq
 from slopmeister.opencode import launch as opencode
 
+RUN = r"run_[A-Za-z0-9_-]{1,128}"
+RUN_FILE_LIMIT = 200
 CODEX_APPROVAL = " -c 'approval_policy=\"on-request\"' -c 'approvals_reviewer=\"auto_review\"'"
 CODEX_ROOTS = " -c 'project_root_markers=[\"AGENTS.md\"]' -c 'project_doc_fallback_filenames=[]'"
 # The session's op starts the real op, which reaches 1Password and Home Assistant over the
@@ -42,7 +44,7 @@ def _mailbox_handle() -> str:
 def _mailbox_id(run: object, handle: str, objective: str) -> str:
     if not isinstance(run, dict) or not isinstance(run.get("id"), str):
         raise SlopmeisterError("unsupported inbox binding")
-    if not re.fullmatch(r"run_[A-Za-z0-9_-]{1,128}", run["id"]):
+    if not re.fullmatch(RUN, run["id"]):
         raise SlopmeisterError("unsupported inbox identity")
     if run.get("coordinator_handle") != handle or run.get("legacy") != 0:
         raise SlopmeisterError("inbox does not belong to the inherited terminal")
@@ -51,48 +53,73 @@ def _mailbox_id(run: object, handle: str, objective: str) -> str:
     return run["id"]
 
 
-def initialize_mailbox(workspace: Path) -> str:
+def _saved_run(saved: Path) -> str | None:
+    try:
+        descriptor = os.open(saved, os.O_RDONLY | os.O_NOFOLLOW)
+    except FileNotFoundError:
+        return None
+    with os.fdopen(descriptor) as stream:
+        identity = stream.read(RUN_FILE_LIMIT).strip()
+    if not re.fullmatch(RUN, identity):
+        raise SlopmeisterError("saved inbox identity is unreadable")
+    return identity
+
+
+def _save_run(saved: Path, identity: str) -> None:
+    saved.unlink(missing_ok=True)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+    with os.fdopen(os.open(saved, flags, 0o600), "w") as stream:
+        stream.write(identity + "\n")
+
+
+def _run(handle: str, objective: str, previous: str | None) -> object:
+    """The terminal's own Run, else the saved one of its predecessor, else a new one."""
+    # Newer Orca prints the binding's owner only with --full, older Orca refuses the flag.
+    full: tuple[str, ...] = ("--full",)
+    lookup = ("orchestration", "run-current", "--from", handle)
+    try:
+        current = terminal._orca(*lookup, *full, checked=True)
+    except SlopmeisterError as error:
+        if str(error) != "invalid_argument":
+            raise
+        full = ()
+        current = terminal._orca(*lookup, checked=True)
+    if "run" not in current:
+        raise SlopmeisterError("unsupported inbox lookup")
+    if current["run"] is not None:
+        return current["run"]
+    if previous:
+        change = ("run-use", "--id", previous, "--from", handle)
+    else:
+        change = ("run-create", "--from", handle, "--objective", objective)
+    return terminal._orca("orchestration", *change, *full, checked=True).get("run")
+
+
+def initialize_mailbox(workspace: Path, saved: Path | None = None, adopt: bool = False) -> str:
     """The native terminal owns setup, before a model can omit the inbox instruction. The
     returned notice reaches the model's first prompt, because the pane's output is hidden."""
     try:
+        # Senders keep the address of the replaced session, so a redispatch takes over its Run.
+        # A failed takeover creates no second Run, which would leave their mail unread.
+        previous = _saved_run(saved) if saved and adopt else None
+        if saved and not adopt:
+            saved.unlink(missing_ok=True)
         handle = _mailbox_handle()
-        # Newer Orca prints the binding's owner only with --full, older Orca refuses the flag.
-        full: tuple[str, ...] = ("--full",)
-        lookup = ("orchestration", "run-current", "--from", handle)
-        try:
-            current = terminal._orca(*lookup, *full, checked=True)
-        except SlopmeisterError as error:
-            if str(error) != "invalid_argument":
-                raise
-            full = ()
-            current = terminal._orca(*lookup, checked=True)
-        if "run" not in current:
-            raise SlopmeisterError("unsupported inbox lookup")
-        run = current["run"]
-        if run is None:
-            created = terminal._orca(
-                "orchestration",
-                "run-create",
-                "--from",
-                handle,
-                "--objective",
-                workspace.name,
-                *full,
-                checked=True,
-            )
-            run = created.get("run")
-        identity = _mailbox_id(run, handle, workspace.name)
+        identity = _mailbox_id(_run(handle, workspace.name, previous), handle, workspace.name)
+        if saved:
+            _save_run(saved, identity)
         print(f"task inbox ready: {identity}", file=sys.stderr)
         return ""
-    except SlopmeisterError as error:
+    except (SlopmeisterError, OSError) as error:
         print(f"task inbox unavailable: {error}", file=sys.stderr)
         return INBOX_NOTICE
 
 
-def mailbox_line(workspace: Path) -> str:
+def mailbox_line(workspace: Path, saved: Path | None = None, adopt: bool = False) -> str:
     """Run setup inside the new pane, never under the launching agent's identity. The unexported
     variable carries the failure notice into the prompt and nowhere else."""
-    args = (sys.executable, "-E", "-s", "-m", "slopmeister.launch.command", str(workspace))
+    module = (sys.executable, "-E", "-s", "-m", "slopmeister.launch.command", str(workspace))
+    args = (*module, *([str(saved)] if saved else []), *(["adopt"] * adopt))
     run = f"cd {shq(str(paths.ROOT))} && " + " ".join(shq(value) for value in args)
     return f'{NOTICE_VARIABLE}="$({run})"'
 
@@ -169,9 +196,12 @@ def line(launch: Launch) -> str:
 def write(launch: Launch) -> None:
     """The first && of the launch line becomes the exec."""
     first, rest = launch.line.split(" && ", 1)
+    if not launch.redispatch:
+        # The pane may never start, and a later redispatch must not find an earlier session's Run.
+        launch.run_file.unlink(missing_ok=True)
     lines = [
         "#!/bin/zsh -l",
-        mailbox_line(launch.wt),
+        mailbox_line(launch.wt, launch.run_file, launch.redispatch),
         f"export SLOPMEISTER_SESSION_WORKSPACE={shq(str(launch.wt))}",
     ]
     if launch.scratch is not None:
@@ -184,4 +214,4 @@ def write(launch: Launch) -> None:
 
 
 if __name__ == "__main__":
-    print(initialize_mailbox(Path(sys.argv[1])), end="")
+    print(initialize_mailbox(*map(Path, sys.argv[1:3]), adopt=sys.argv[3:] == ["adopt"]), end="")

@@ -49,6 +49,14 @@
         "action": "terminal-command",
         "command": "/bin/zsh -lc 'cd \"$HOME/dev/slop-meister\" && env CODEX_HOME=\"$HOME/.codex\" task dispatch -- codex phone-codex'",
         "appendEnter": true
+      },
+      {
+        "id": "slopmeister-claude-sign-in",
+        "label": "Claude sign-in",
+        "scope": {"type": "global"},
+        "action": "terminal-command",
+        "command": "claude auth login --claudeai",
+        "appendEnter": true
       }
     ]
   }

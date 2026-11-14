@@ -1,11 +1,11 @@
 """Read one Claude Code session log into a Session."""
 
 from dataclasses import dataclass, field
-import json
 import os
 import re
 
 from slopmeister.threads.timing.events import REPORT, Session, Turn, User, epoch
+from slopmeister.threads.timing.records import records
 
 TASK_ID = re.compile(r"<task-id>([^<]+)</task-id>")
 EDIT_TOOLS = ("Edit", "Write", "NotebookEdit")
@@ -24,6 +24,7 @@ class _Reader:
     background: dict[str, tuple[float, str]] = field(default_factory=dict)
     counted: set[str] = field(default_factory=set)
     said: list[str] = field(default_factory=list)
+    live: bool = False
 
     def record(self, record: dict) -> None:
         kind, stamp = record.get("type"), record.get("timestamp")
@@ -78,6 +79,8 @@ class _Reader:
         self.opened[block.get("id")] = (when, read(data) if read else "")
         if name == "Skill":
             self.session.skills.append((when, (data.get("skill") or "").split(":")[-1]))
+        if name == "Bash" and self.live:
+            self.session.start_command(when, data.get("command") or "")
         if name in EDIT_TOOLS:
             body = (data.get("new_string") or "") + (data.get("content") or "")
             self.session.add_edit(when, data.get("file_path") or "", body)
@@ -119,13 +122,22 @@ def _text(content: list) -> str:
     return "".join(block.get("text") or "" for block in content if block.get("type") == "text")
 
 
-def read(path: str) -> Session:
-    reader = _Reader(Session("claude", os.path.basename(path).removesuffix(".jsonl")))
-    with open(path, encoding="utf-8", errors="replace") as handle:
-        for line in handle:
-            try:
-                record = json.loads(line)
-            except ValueError:
-                continue
-            reader.record(record)
+def read(
+    path: str, now: float | None = None, *, strict: bool = False, deadline: float | None = None
+) -> Session:
+    reader = _Reader(
+        Session("claude", os.path.basename(path).removesuffix(".jsonl")), live=now is not None
+    )
+    named = False
+    for record in records(path, strict=strict, deadline=deadline):
+        identity = record.get("sessionId")
+        if strict and identity is not None and identity != reader.session.session_id:
+            raise ValueError("native identity mismatch")
+        named = named or identity == reader.session.session_id
+        reader.record(record)
+    if strict and not named:
+        raise ValueError("native identity unavailable")
+    if now is not None:
+        for start, text in (*reader.opened.values(), *reader.background.values()):
+            reader.session.add_command((start, now), text, False)
     return reader.session

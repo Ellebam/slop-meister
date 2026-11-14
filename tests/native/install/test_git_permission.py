@@ -1,10 +1,10 @@
 """Installed Codex Git policy keeps agent writes behind native approval."""
 
 import json
-from pathlib import Path
 import subprocess
 
 from tests.integration.install.installer_helpers import prepared
+from tests.native.install.discovery_fixture import CODEX
 
 
 def _decision(base, argv):
@@ -18,7 +18,7 @@ def test_deny_prompt_wins_over_saved_allow_without_prompting_read_only_git(tmp_p
     saved = tmp_path / "saved.rules"
     saved.write_text('prefix_rule(pattern=["git"], decision="allow")\n')
     base = [
-        str(Path.home() / ".local/bin/codex"),
+        str(CODEX),
         "execpolicy",
         "check",
         "--rules",

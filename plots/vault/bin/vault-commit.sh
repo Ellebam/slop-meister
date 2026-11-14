@@ -18,7 +18,11 @@ g() { git --git-dir="$G" --work-tree="$V" "$@"; }
 log() { printf '%s %s\n' "$(date '+%F %T')" "$*" >> "$LOG"; }
 notify() {
   [ "${VAULT_NOTIFY:-1}" = 0 ] && return 0
-  osascript -e "display notification \"$1\" with title \"Vault commit\"" >/dev/null 2>&1 || true
+  if [ "$(uname -s)" = Linux ]; then
+    notify-send --urgency=critical "Vault commit" "$1" >/dev/null 2>&1 || true
+  else
+    osascript -e "display notification \"$1\" with title \"Vault commit\"" >/dev/null 2>&1 || true
+  fi
 }
 
 # Launchd keeps no output of this job, so Git's own words and the lock helper's go to the log.

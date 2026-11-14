@@ -7,21 +7,29 @@ from tests.support.fakes import fake_binary
 
 
 def test_orca_install_merges_managed_keys_without_losing_live_state(tmp_path):
-    """Bug: a template replacement deletes unrelated settings and Quick Commands."""
+    """Bug: installing managed commands leaves the old entry or deletes unrelated state."""
     home, bin_dir = machine(tmp_path)
     path = home / ORCA_DATA
     original = {
         "settings": {
             "telemetry": {"optedIn": True, "installId": "private-value"},
             "terminalQuickCommands": [
-                {"id": "operator-command", "label": "Keep", "command": "echo keep"}
+                {"id": "operator-command", "label": "Keep", "command": "echo keep"},
+                {
+                    "id": "slopmeister-claude-sign-in",
+                    "label": "Claude sign in",
+                    "scope": {"type": "repo", "repoId": "old-repository"},
+                    "action": "terminal-command",
+                    "command": "claude auth login --claudeai",
+                    "appendEnter": True,
+                },
             ],
             "unmanaged": {"badge": "blue"},
         },
         "liveAppState": {"private": "keep-this-secret"},
     }
     path.write_text(json.dumps(original))
-    result = workstation(home, bin_dir, "install", ORCA_DATA)
+    result = workstation(home, bin_dir, "install", "--all")
     assert result.returncode == 0, result.stderr
     updated = json.loads(path.read_text())
     assert updated["liveAppState"] == original["liveAppState"]
@@ -31,8 +39,26 @@ def test_orca_install_merges_managed_keys_without_losing_live_state(tmp_path):
         updated["settings"]["terminalQuickCommands"][0]
         == original["settings"]["terminalQuickCommands"][0]
     )
-    assert len(updated["settings"]["terminalQuickCommands"]) == 3
+    commands = updated["settings"]["terminalQuickCommands"]
+    assert [
+        item
+        for item in commands
+        if item["id"] == original["settings"]["terminalQuickCommands"][1]["id"]
+    ] == [
+        {
+            **original["settings"]["terminalQuickCommands"][1],
+            "label": "Claude sign-in",
+            "scope": {"type": "global"},
+        }
+    ]
+    assert len(commands) == 4
+    assert "Claude sign in" not in {item["label"] for item in commands}
     assert "private-value" not in result.stdout + result.stderr
+    before = path.read_bytes()
+    assert "0 file(s) differ. Nothing written." in workstation(home, bin_dir, "diff").stdout
+    assert workstation(home, bin_dir, "install", "--all").returncode == 0
+    assert path.read_bytes() == before
+    assert "0 file(s) differ. Nothing written." in workstation(home, bin_dir, "diff").stdout
 
 
 def test_orca_diff_never_prints_live_state(tmp_path):

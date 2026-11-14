@@ -8,7 +8,7 @@ Orca hosts Slopmeister's agent terminals and phone view. Slopmeister owns dispat
 2. Run `task home:diff` to see managed-key status without printing Orca's other state. Run `task home:install` only when you intend to update installed configuration. Named installs that exclude Orca settings can run while Orca is open. `task check` reports a managed key changed in the Orca UI as drift.
 3. Reopen Orca after installing its settings. `bin/slopmeister workstation doctor` reports in its `orca:runtime` and `orca:hooks` results whether its CLI is missing, the app is closed, its runtime is unreachable, or Claude and Codex status hooks are off or unverified. It reads only `orca status --json` and `orca agent hooks status --json` for Orca health and never starts the app.
 
-The managed settings disable telemetry and agent hibernation, enable agent status hooks and desktop notifications, set Orca's own agent launch defaults to Manual, select the Kanagawa dark terminal theme, and add global Claude and Codex dispatcher Quick Commands. The Quick Commands use `task dispatch` in a new Orca terminal. The Codex command pins the normal `~/.codex` home and starts a standalone dispatcher.
+The managed settings disable telemetry and agent hibernation, enable agent status hooks and desktop notifications, set Orca's own agent launch defaults to Manual, select the Kanagawa dark terminal theme, and add global Claude and Codex dispatcher Quick Commands. The Quick Commands use `task dispatch` in a new Orca terminal. The Codex command pins the normal `~/.codex` home and starts a standalone dispatcher. A **Claude sign-in** Quick Command signs the selected [Claude account](claude-accounts.md) in again.
 
 On Linux, apply the same managed choices from the linked JSON in Orca's UI, including Manual agent launch and the two dispatcher Quick Commands. The installer does not merge a Linux Orca profile.
 
@@ -48,9 +48,9 @@ Terminal input can carry the operator's authority into a worker. Keep these limi
 | `orca terminal read --terminal <worker> --screen` | use with limits | The current frame only, for a question or dialog that the status row does not explain |
 | `orca terminal list` | use with limits | Liveness and handles only |
 | `orca terminal wait --for tui-idle` | do not use | Not a completion or attention signal |
-| `orca terminal send` into an agent | only on operator request | Injected text carries operator authority on both tools |
+| `orca terminal send` into an agent, `orca terminal close` | only on operator request, dispatcher or manager | Injected text carries operator authority on both tools. A [role rule](permissions.md) runs them for a dispatcher or manager. A proof session is denied and every other session keeps the reviewer. |
 | `orca orchestration dispatch --inject`, `worker-start` | do not use | The preamble is injected text and moves operator gates to an agent |
-| `orca orchestration run-current`, `run-create`, `send`, `check` | approved task-specific peers only | Follow the mailbox procedure. Creation, sending and acknowledgment write shared state. |
+| `orca orchestration run-current`, `run-create`, `run-use`, `send`, `check`, `request-show` | approved task-specific peers only | Follow the mailbox procedure. Creation, sending and acknowledgment write shared state. `run-use` takes over only the session's own saved Run after a redispatch. All except `run-use` run by rule when typed with the absolute Orca path. |
 | `orca orchestration ask`, `reply` | do not use | Operator decisions stay in each participant conversation. |
 | `orca orchestration gate-create`, `gate-resolve` | do not use | Coordinator-owned task decisions, while Slopmeister's gates belong to the operator |
 

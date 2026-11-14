@@ -9,7 +9,7 @@ from pathlib import Path
 import socket
 import sys
 
-from slopmeister.threads.timing import claude, codex
+from slopmeister.threads.timing import claude, codex, live
 from slopmeister.threads.timing.events import Command, Session, epoch
 from slopmeister.threads.timing.report import row, summary, table
 
@@ -30,6 +30,48 @@ an edit made through the shell is in neither.
 Table columns: G full gates, T tester verdicts, M checksum commands as a sign of
 mutation passes, A approval reviews, I interrupts, R operator replies, E replies before
 go that ask for an explanation, H halts.
+"""
+
+LIVE_LIMITS = """\
+Live JSON contract (--live).
+One line per connected local Claude Code or Codex session, including idle sessions
+waiting for an answer. Closed and orphaned terminals are excluded. Inventory failure
+exits nonzero with a generic diagnostic, never a successful empty reading.
+
+session is an opaque identifier for one local terminal and workspace/tool task.
+name, host, plot and tool identify the session. --host keeps its existing label
+meaning. manager_host and manager group workers by an explicit manager host/Run in
+their initial kickoff. Unsupported or conflicting routes stay null. Rows sort by
+manager then session. No relationship is inferred from similar session names.
+
+state is known or unknown. stage is one of resume, frame, answer, plan-review,
+implement, proof, test-guide, tester, ship, diff-review, fix-pass, accept, finalize.
+Unreadable identities/records and non-spine sessions remain present with null stage.
+started_at and total_seconds cover the earliest readable same-workspace/tool record
+in the 30-day history window. step_started_at and step_seconds cover the current
+stage. observed_at is this reading's time. last_activity_at is the native record's
+last timestamp. Times are UTC epoch seconds. Durations are seconds.
+
+extra_rounds counts repeated observed review/ship rounds, retries after failed
+checks, and resumptions after reported halts. Ordinary tool calls are not rounds.
+It is null when records are unknown. Historical stage detection remains approximate.
+
+expected_finish_at = step_started_at + median historical seconds from the same
+plot/stage to the acceptance-ready delivery handoff. An overdue estimate is not
+clamped. It is null with no samples or at/after handoff. estimate_sessions counts
+distinct earlier workspace/tool tasks, excluding every live task. Redispatch
+fragments count once. Only handoffs from the last 30 days contribute. History is
+preselected by declared plot, worker metadata and spine kickoff, then bounded to
+10 seconds and 10,000 eligible worker records. Unavailable history gives null
+estimate_sessions and unknown state before handoff. Sessions at/after handoff
+remain known. No usable completed samples gives zero. Native reads have a
+10-second deadline and 8 MiB line limit. Finished records do not parse live call
+starts or decode unused duplicate tool payloads. Their timestamps are retained.
+
+Names matching the local private identifier patterns are null. Missing or invalid
+patterns withhold all free labels. Opaque session identifiers still distinguish
+lines. No paths, note text, commands, customer names or terminal content are emitted.
+The command reads existing state only. It creates no cache and contacts no agent.
 """
 
 
@@ -102,7 +144,7 @@ def _arguments(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="slopmeister spine-timing",
         description=__doc__,
-        epilog=LIMITS,
+        epilog=LIMITS + LIVE_LIMITS,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     mode = parser.add_mutually_exclusive_group(required=True)
@@ -111,6 +153,9 @@ def _arguments(argv: Sequence[str]) -> argparse.Namespace:
     )
     mode.add_argument(
         "--table", action="store_true", help="read such lines on stdin, print table and summary"
+    )
+    mode.add_argument(
+        "--live", action="store_true", help="print local running session progress as JSON lines"
     )
     show = "with --table, a repository whose session names are printed, repeatable"
     parser.add_argument("--show", action="append", default=[], metavar="REPOSITORY", help=show)
@@ -129,6 +174,10 @@ def _tester_runs_home() -> Path:
 
 def main(argv: Sequence[str]) -> int:
     arguments = _arguments(argv)
+    if arguments.live:
+        for measured in live.rows(arguments.host):
+            print(json.dumps(measured, sort_keys=True))
+        return 0
     if arguments.table:
         rows = [json.loads(line) for line in sys.stdin if line.strip()]
         sys.stdout.write(table(rows, set(arguments.show)) + "\n" + summary(rows))

@@ -8,7 +8,7 @@ tasks:
       - bin/slopmeister workstation install {{.CLI_ARGS | default "--all"}}
 
   home:diff:
-    desc: Show what home:install would change and the allow-rule status, write nothing
+    desc: Show pending home changes and central policy status, write nothing
     cmds:
       - bin/slopmeister workstation diff
 

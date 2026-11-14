@@ -23,18 +23,22 @@ from slopmeister.workstation import (
 
 
 def _change(item: state.Item, home: Path) -> str:
+    if item.name in rules.NAMES:
+        return rules.change(home, item.name)
     if item.name in (manifest.CODEX_CONFIG, orca.NAME):
         change = codex_config.change if item.name == manifest.CODEX_CONFIG else orca.change
         return change(home)
     if item.entry is None:
         return f"  would build: {item.name} (osacompile)"
     live = home / item.name
-    if not live.is_file():
-        return f"--- {item.name} ---\n  (new file)"
-    expected = item.entry.expected(home).decode(errors="replace").splitlines(keepends=True)
-    current = live.read_text(errors="replace").splitlines(keepends=True)
-    lines = difflib.unified_diff(current, expected, f"~/{item.name}", item.entry.source)
-    return f"--- {item.name} ---\n" + "".join(lines).rstrip("\n")
+    if live.is_file():
+        expected = item.entry.expected(home).decode(errors="replace").splitlines(keepends=True)
+        current = live.read_text(errors="replace").splitlines(keepends=True)
+        lines = difflib.unified_diff(current, expected, f"~/{item.name}", item.entry.source)
+        output = f"--- {item.name} ---\n" + "".join(lines).rstrip("\n")
+    else:
+        output = f"--- {item.name} ---\n  (new file)"
+    return output
 
 
 def _diff(home: Path) -> int:
@@ -42,8 +46,6 @@ def _diff(home: Path) -> int:
     pending = state.pending(home)
     for item in state.items(home):
         print(state.skipped(item) or _change(item, home))
-    print("=== allow rules, reported by status only, edited by the operator ===")
-    print("\n".join(rules.report(home)))
     print(f"\n{len(pending)} file(s) differ. Nothing written.")
     return 0
 

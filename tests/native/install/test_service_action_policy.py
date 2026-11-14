@@ -12,8 +12,12 @@ import pytest
 from slopmeister.install.service_actions import action_payload
 from slopmeister.session.service_actions.constants import PYTHON, PYTHON_FLAGS
 from tests.integration.install.helpers import ROOT, profile, selected_context, unlock_deliveries
+from tests.native.install.discovery_fixture import CODEX
+from tests.native.install.intent_fixture import claude_host
+from tests.native.install.test_permission_intent import _cleanup_world
 from tests.native.install.test_permissions import client_command
-from tests.support.standin import capture_server, run, tool_results
+from tests.support import standin
+from tests.support.standin import capture_server, require_claude_safety, run
 
 
 def _policy_command(tmp_path, namespaced=False):
@@ -28,7 +32,7 @@ def _policy_command(tmp_path, namespaced=False):
         'prefix_rule(pattern=["python3"], decision="allow")\n'
     )
     return [
-        str(Path.home() / ".local/bin/codex"),
+        str(CODEX),
         "execpolicy",
         "check",
         "--rules",
@@ -132,35 +136,105 @@ def _claude_read(tmp_path, namespaced, shape):
         server.script = [("Bash", {"command": shape(command)})]
         argv = ["auto" if arg == "bypassPermissions" else arg for arg in client.argv]
         argv[argv.index("--") : argv.index("--")] = ["--settings", str(access)]
-        run(replace(client, argv=argv, env={**client.env, "SLOPMEISTER_PROOF": str(proof)}))
+        output = run(
+            replace(client, argv=argv, env={**client.env, "SLOPMEISTER_PROOF": str(proof)})
+        )
+        frames = [json.loads(line) for line in output.splitlines()]
+        require_claude_safety(frames)
     finally:
         server.shutdown()
         server.server_close()
-    return proof, json.dumps(tool_results(server.requests[-1]))
+    return proof, frames
+
+
+@pytest.fixture
+def flagged_classifier(monkeypatch):
+    original = standin.messages_events
+
+    def flagged_events(call, body, turn):
+        events = original(call, body, turn)
+        for event in events:
+            for result in event.get("delta", {}).get("safeguard_results", []):
+                for verdict in result["status"]["tool_uses"].values():
+                    verdict["outcome"] = "flagged"
+        return events
+
+    monkeypatch.setattr(standin, "messages_events", flagged_events)
 
 
 @pytest.mark.xdist_group("native-standin")
 @pytest.mark.parametrize("namespaced", [False, True])
-def test_real_claude_runs_the_exact_read_with_no_ask(tmp_path, namespaced):
+def test_real_claude_runs_the_exact_read_with_no_ask(tmp_path, namespaced, flagged_classifier):
     """Bug: a selected read stops at an ask or the auto mode classifier."""
     proof, results = _claude_read(tmp_path, namespaced, lambda command: command)
-    assert proof.read_text() == "RAN" and "requested permissions" not in results
+    assert proof.exists(), json.dumps(results)
+    assert proof.read_text() == "RAN" and "requested permissions" not in json.dumps(results)
 
 
 @pytest.mark.xdist_group("native-standin")
-def test_real_claude_runs_a_read_from_a_workspace_with_a_space(tmp_path):
+def test_real_claude_runs_a_read_from_a_workspace_with_a_space(tmp_path, flagged_classifier):
     """Bug: the delivered command quotes the entry and the unquoted allow entry misses it."""
     root = tmp_path / "with space"
     root.mkdir()
     proof, results = _claude_read(root, False, lambda command: command)
-    assert proof.read_text() == "RAN" and "requested permissions" not in results
+    assert proof.exists(), json.dumps(results)
+    assert proof.read_text() == "RAN" and "requested permissions" not in json.dumps(results)
 
 
 @pytest.mark.xdist_group("native-standin")
-def test_real_claude_keeps_a_piped_read_out_of_the_allow_rule(tmp_path):
+def test_real_claude_keeps_a_piped_read_out_of_the_allow_rule(tmp_path, flagged_classifier):
     """Bug: the allow rule carries an added command past the auto mode classifier."""
-    proof, _ = _claude_read(tmp_path, False, lambda command: f"{command} | /usr/bin/tee /tmp/x")
+    proof, frames = _claude_read(
+        tmp_path, False, lambda command: f"{command} | /usr/bin/tee {tmp_path}/piped"
+    )
+    assert any(
+        item.get("non_execution_kind") == "automode-blocked"
+        for frame in frames
+        for item in frame.get("tool_result_meta", [])
+    ), json.dumps(frames)
     assert not proof.exists()
+    assert not (tmp_path / "piped").exists()
+
+
+@pytest.mark.xdist_group("native-standin")
+@pytest.mark.parametrize("fault", ["missing", "unavailable"])
+@pytest.mark.parametrize("channel", ["stdout", "host"])
+def test_claude_safety_service_failure_cannot_prove_a_permission_refusal(
+    tmp_path, monkeypatch, fault, channel
+):
+    """A broken classifier must fail proof rather than pass because nothing ran."""
+    original = standin.messages_events
+
+    def broken_events(call, body, turn):
+        events = original(call, body, turn)
+        delta = next(event["delta"] for event in events if event["type"] == "message_delta")
+        if fault == "missing":
+            delta.pop("safeguard_results", None)
+        else:
+            delta["safeguard_results"] = [
+                dict(type="dangerous_tool_use", status=dict(type="unavailable", reason="error"))
+            ]
+        return events
+
+    monkeypatch.setattr(standin, "messages_events", broken_events)
+    monkeypatch.setattr("tests.native.install.intent_fixture.messages_events", broken_events)
+    with pytest.raises(RuntimeError, match="automode-unavailable") as failure:
+        if channel == "host":
+            # A session may enter the temporary roots by rule, so its own cleanup needs no
+            # classifier here. Another workspace's path does.
+            world = _cleanup_world(tmp_path, "claude", True, "path")
+            try:
+                claude_host(world, approved=False)
+            finally:
+                world.server.shutdown()
+                world.server.server_close()
+        else:
+            _claude_read(
+                tmp_path, False, lambda command: f"{command} | /usr/bin/tee {tmp_path}/piped"
+            )
+    result = json.loads(str(failure.value))["message"]["content"][0]
+    assert result["is_error"] and result["content"]
+    assert not (tmp_path / "outside/ran").exists() and not (tmp_path / "piped").exists()
 
 
 def _declaration(tmp_path, enabled):
@@ -179,7 +253,7 @@ def _launcher_fixture(tmp_path, enabled):
     home = tmp_path / "home"
     (home / ".local/bin").mkdir(parents=True)
     (home / ".codex").mkdir()
-    (home / ".local/bin/codex").symlink_to(Path.home() / ".local/bin/codex")
+    (home / ".local/bin/codex").symlink_to(CODEX)
     declarations = _declaration(tmp_path, enabled)
     config = home / ".config/slopmeister/access/example-app/jira-read.json"
     config.parent.mkdir(parents=True)

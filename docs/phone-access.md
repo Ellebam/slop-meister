@@ -79,7 +79,7 @@ Keep the machine awake while agents work. The [agent-machine contract](agent-hos
 
 The two tools hold separate logins and separate routes to the phone, so either one recovers the other.
 
-- Claude's login is dead: run the **Codex dispatcher** Quick Command from Orca Mobile and have it run `claude auth login`. Open the printed URL on the phone and paste the code back.
+- Claude's login is dead: run the **Codex dispatcher** Quick Command from Orca Mobile and have it run `claude auth login`. Open the printed URL on the phone and paste the code back. An account added in Orca signs in again by its own steps in [Orca](claude-accounts.md), with no agent.
 - Codex's login is dead: from a Claude session, run `codex login --device-auth` and enter the short code on the phone.
 
 Log a tool out only when no session of that tool is running here, because a logout cuts all of them at once.

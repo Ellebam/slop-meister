@@ -7,6 +7,7 @@ import tomllib
 
 import pytest
 
+from tests.integration.install.helpers import rule_decisions
 from tests.integration.install.installer_helpers import git_result
 from tests.integration.launch.helpers import ROOT, declare, executable, launch, machine, target
 from tests.support.repos import git
@@ -46,6 +47,7 @@ def test_declared_permission_reaches_native_policy_without_blocking_operator_git
 
 
 MANAGER = "This session is a manager."
+SEND = "/usr/bin/orca-ide terminal send"
 REFUSAL = "Only the standing dispatcher, a session dispatched as a manager and a proof owner"
 
 
@@ -74,9 +76,18 @@ def test_manager_declaration_reaches_both_tools_and_survives_redispatch(
             "project_doc_max_bytes"
         ]
         assert (worktree / "AGENTS.md").stat().st_size + global_bytes + 2 <= limit
-        allow = json.loads((worktree / ".claude/access-settings.json").read_text())["autoMode"]
+        access = json.loads((worktree / ".claude/access-settings.json").read_text())
+        allow = access["autoMode"]
         rules = [rule for rule in allow.get("allow", []) if rule.startswith("Declared manager")]
         assert len(rules) == manager
+        # Bug: a manager's ordered launch waits for a reviewer, or a worker launches by rule.
+        launches = f"Bash(task --dir {ROOT} plot-session -- *)"
+        assert (launches in access["permissions"]["allow"]) is bool(manager)
+        # Bug: a manager's ordered relay waits for a reviewer, or a worker's send runs by rule.
+        assert rule_decisions(worktree, SEND) == (("allow",) * 2 if manager else (None, "prompt"))
+        if manager:
+            assert "A valid Night mode grant" in rules[0]
+            assert "marked routine decision, grant/end relay or harvest send" in rules[0]
 
 
 def assert_role_and_peer_delivery(worktree, manager):
@@ -88,11 +99,12 @@ def assert_role_and_peer_delivery(worktree, manager):
         assert REFUSAL in text
         assert "Peer messages use the plot-session skill's communicate.md" in text
         assert "The launcher prepares your own local task inbox before the model starts" in text
-        assert "check to read message bodies and acknowledge processed batches" in text
+        assert "check to read and process message bodies" in text
         assert (worktree / native / "skills/plot-session/communicate.md").read_bytes() == (
             ROOT / f"dist/{tool}/skills/plot-session/communicate.md"
         ).read_bytes()
         assert (MANAGER in text) is manager
+        assert ("A valid Night mode grant here orders" in text) is manager
         assert (f"task --dir {ROOT}" in text) is manager
         skill = (worktree / native / "skills/plot-session/SKILL.md").read_text()
         practices = skill.split("\n### Working practices\n", 1)[1].split("\n## ", 1)[0]
@@ -158,6 +170,9 @@ def test_proof_session_binds_its_live_owner_and_never_ships(tmp_path, owner):
 
     mode = json.loads((worktree / ".claude/access-settings.json").read_text())["autoMode"]
     assert PROOF_SOFT_DENY in mode["soft_deny"] and PROOF_OWNER_EXCEPTION not in mode["allow"]
+    for prefix in (SEND, "gh pr merge", "gh issue comment", "glab mr create", "gh run rerun"):
+        assert rule_decisions(worktree, prefix) == ("deny", "forbidden"), prefix
+    assert rule_decisions(worktree, "gh pr view") == ("allow", "allow")
     shipped = subprocess.run(
         [sys.executable, str(metadata / "config-install.py"), "--verify-shipping"],
         cwd=worktree,

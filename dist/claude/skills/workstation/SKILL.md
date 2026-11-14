@@ -55,54 +55,7 @@ Run `bin/slopmeister workstation doctor --vault <absolute-vault>`. A plain vault
 
 ## Install the chosen home entries
 
-Run `task home:diff`. Read the current entry names in `slopmeister/workstation/manifest.py`. Prepare `task home:install -- <entry>...` with the common runtime entries and the chosen platform entries. Use explicit names so declined integrations stay off. Do not use the no-argument form or `--all` during selective onboarding. The installer backs up replacements.
-
-The common install includes agent instructions, hooks, the Codex context setting, vault runtime and masked `op` runtime:
-
-```bash
-task home:install -- \
-  .claude/CLAUDE.md .codex/AGENTS.md .codex/config.toml \
-  .claude/skill-tracker-hook.sh .claude/skill-tracker-tool-hook.sh \
-  .claude/statusline-command.sh \
-  .vault-git/bin/vaultgit .vault-git/bin/vault-lock.py \
-  .vault-git/bin/slopmeister-vault .local/bin/slopmeister-vault \
-  .local/bin/op \
-  .local/lib/slopmeister-op/slopmeister/__init__.py \
-  .local/lib/slopmeister-op/slopmeister/session/__init__.py \
-  .local/lib/slopmeister-op/slopmeister/session/secret_run.py \
-  .local/lib/slopmeister-op/slopmeister/session/secret_env.py \
-  .local/lib/slopmeister-op/slopmeister/session/secret_tier.py \
-  .local/lib/slopmeister-op/slopmeister/session/secret_approval.py \
-  .vault-git/lib/slopmeister_vault/__init__.py \
-  .vault-git/lib/slopmeister_vault/__main__.py \
-  .vault-git/lib/slopmeister_vault/repository.py \
-  .vault-git/lib/slopmeister_vault/environment.py \
-  .vault-git/lib/slopmeister_vault/initialization.py \
-  .vault-git/lib/slopmeister_vault/links.py \
-  .vault-git/lib/slopmeister_vault/lint.py \
-  .vault-git/lib/slopmeister_vault/conflicts.py \
-  .vault-git/lib/slopmeister_vault/obsidian.py \
-  .vault-git/lib/slopmeister_vault/retro.py \
-  .vault-git/lib/slopmeister_vault/retro_legacy.py \
-  .vault-git/lib/slopmeister_vault/exclude
-```
-
-Add these groups only at their setup step through the same named-entry command. Paths are relative to the home directory.
-
-| Group | Entries |
-|---|---|
-| History after initialization | `.vault-git/bin/vault-commit.sh`, `.vault-git/obsidian.git/info/exclude` |
-| History on macOS | `.vault-git/VaultCommit.app`, `Library/LaunchAgents/local.vault-commit.plist` |
-| History on Linux | `.config/systemd/user/vault-commit.service`, `.config/systemd/user/vault-commit.timer` |
-| Drive on Linux, only when selected | `.local/bin/slopmeister-drive-sync`, `.config/systemd/user/drive-sync-vault.service`, `.config/systemd/user/drive-sync-vault.timer`, `.config/systemd/user/drive-sync-documents.service`, `.config/systemd/user/drive-sync-documents.timer` |
-| Claude phone route on macOS | `Library/LaunchAgents/local.claude-remote-control.plist` |
-| Claude phone route on Linux | `.config/systemd/user/claude-remote-control.service` |
-
-With Drive declined, omit all five Drive entries and rclone. With the Claude phone route declined, omit its platform entry. The doctor checks configured services and keeps both choices optional. Keep configured but broken integrations visible and repair them. Do not remove installed integration files to make the doctor green. Initialize history before its installation group. Verify the first scheduled history bundle through the history document, including an explicitly authorized first run if needed.
-
-Orca's managed settings are a separate choice. Follow `docs/orca.md` for the exact entry, hooks, repository registration and phone pairing. Installing its macOS settings requires Orca closed, which ends its sessions. Arrange that install from outside Orca. Linux settings are applied in Orca's UI. Install other named entries while Orca remains open. Do not reload the phone service from a session that depends on it.
-
-The live allow rules in `~/.claude/settings.json` and `~/.codex/rules/default.rules` belong to the operator. Report missing rules from the templates under `plots/home/` and have the operator apply them. Never print their whole live files. Preserve `~/.codex/config.toml` except the installer's managed context setting.
+Read `docs/home-install.md` and follow it in full. It owns the entry names, the optional groups, the central policy install and the memory switch-off.
 
 ## Secrets and optional Linux services
 
@@ -133,6 +86,10 @@ Use `codex` instead of `claude` for a Codex dispatcher. From another terminal or
 Run `bin/slopmeister workstation doctor`, `codex doctor --json` and `claude doctor`. For a failed Codex launch, run its doctor in the affected workspace. Slopmeister reports `name`, `status`, `evidence` and `fix`. Explain each non-`ok` result with its evidence. `unknown` means the check could not answer. Do not manufacture account state to clear a result. Rechecking and `task tools` need no additional permission.
 
 If the doctor errors or contradicts observed behavior, read `slopmeister/workstation/doctor.py`, repeat its reads and diagnose the actual error. Propose the smallest corrected check or owning-document repair. After any fix, rerun the checks and report changed results and remaining operator checks.
+
+## Read both machines
+
+A local doctor or drift result covers only its own machine. When the operator asks a dispatcher or manager to check both, use peer mail, as the plot-session skill's `communicate.md` describes, to request the other machine's read. Name the exact read-only command, checkout commit and required clean state. Use `bin/slopmeister workstation drift` for installed configuration and project its result to counts, central-declared rule names and pass or fail. Never return live settings or saved approvals. A failed command, unavailable or unreadable input, missing reply or checkout mismatch is unknown, never a pass. Keep each host's result separate. The peer read grants no install, restart or connection setup. Ask for the one named policy install only when the operator wants that machine repaired.
 
 ## Updates
 

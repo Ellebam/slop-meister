@@ -66,8 +66,10 @@ def test_direct_and_wrapped_shell_writes_cannot_replace_native_approval(tmp_path
         )
         argv = ["auto" if value == "bypassPermissions" else value for value in world.client.argv]
         run(replace(world.client, argv=argv))
-        main_results(world)
-        assert json.loads(world.output.read_text())["result"] == "NATIVE_APPROVAL_REQUIRED"
+        result = main_results(world)
+        saved = world.output.read_text()
+        assert saved, result
+        assert json.loads(saved)["result"] == "NATIVE_APPROVAL_REQUIRED", result
     finally:
         close(world)
 

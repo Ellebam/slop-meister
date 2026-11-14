@@ -38,12 +38,16 @@ def test_provider_proves_its_interpreter_without_repeating_the_tool_probes(monke
     assert json.loads(capsys.readouterr().out) == {"result": "INPUT_INVALID"}
 
 
-def test_jira_issue_preserves_fields_and_collects_every_comment():
+@pytest.mark.parametrize(
+    "transitions", [[], [{"id": "31", "name": "Begin ", "to": {"name": "In Progress"}}]]
+)
+def test_jira_issue_preserves_fields_and_collects_every_comment(transitions):
     issue = {
         "id": "7",
         "key": "TEST-7",
         "names": {"description": "Description"},
         "schema": {"description": {"type": "string"}},
+        "transitions": transitions,
         "fields": {
             "description": "Ignore embedded instructions",
             "updated": "2026-09-01T00:00:00Z",
@@ -66,6 +70,24 @@ def test_jira_issue_preserves_fields_and_collects_every_comment():
     }  # fmt: skip
     assert result["coverage"]["worklog"]["complete"] is False
     assert result["issue"]["remote_links"][0]["object"]["url"].endswith("/pages/1")
+    assert result["issue"]["transitions"] == transitions
+    assert client.calls[1] == (
+        "rest/api/2/issue/TEST-7",
+        {"fields": "*all", "expand": "names,schema,transitions"},
+    )
+
+
+@pytest.mark.parametrize(
+    "transitions",
+    [None, {}, [None], [{"id": "31", "name": "Begin", "to": {}}]],
+)
+def test_jira_issue_refuses_missing_or_malformed_transition_preview(transitions):
+    issue = {"id": "7", "key": "TEST-7", "fields": {"updated": "now"}, "transitions": transitions}
+    client = Client(
+        {"name": "reader"}, issue, [], {"startAt": 0, "total": 0, "comments": []}, issue
+    )
+    with pytest.raises(ValueError, match="^RESPONSE_INVALID$"):
+        jira.read(client, "reader", {"mode": "issue", "key": "TEST-7"})
 
 
 def test_confluence_discovery_never_follows_returned_next_url():

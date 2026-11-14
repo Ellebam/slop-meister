@@ -25,7 +25,7 @@ python3 <entry> run <state> snapshot
 python3 <entry> run <state> eval '() => location.href'
 ```
 
-The token file is an owner-only file outside Git holding `PLAYWRIGHT_MCP_EXTENSION_TOKEN=<reference>`. The machine's private setup note names its reference and vault tier. Follow that tier's approval route for `start`. Keep the state path. Parallel jobs each get their own state. `BROWSER_READY` gives the address the page reached as `url`. `BROWSER_EXTENSION_UNAVAILABLE` means Chrome is closed, the extension is missing or the token does not match. Report it, because there is no other browser route. Run `start` at most twice for one login. The same error twice means stop and report it. Call a cause you have not proven a hypothesis. The page starts at 1280 by 800 pixels. `run <state> <command> [arguments]` passes one Playwright command to the task page and prints its result. References such as `e12` and CSS selectors name elements. Clicks scroll them into view. Actions save snapshots inside the state. Snapshot after navigation, because references change.
+The token file is an owner-only file outside Git holding `PLAYWRIGHT_MCP_EXTENSION_TOKEN=<reference>`. The machine's private setup note names its reference and vault tier. Follow that tier's approval route for `start`. Keep the state path. Parallel jobs each get their own state. `BROWSER_READY` gives the address the page reached as `url`. `BROWSER_EXTENSION_UNAVAILABLE` means Chrome is closed, the extension is missing or the token does not match. Report it, because there is no other browser route. On a Linux desktop with no monitor, `start` returns `BROWSER_NO_MONITOR` instead, and [recovery](recover.md) gives its private-display route. Run `start` at most twice for one login. The same error twice means stop and report it. Call a cause you have not proven a hypothesis. The page starts at 1280 by 800 pixels. `run <state> <command> [arguments]` passes one Playwright command to the task page and prints its result. Its output shows every page address without its query and fragment. Read one non-secret parameter by name through `eval`. References such as `e12` and CSS selectors name elements. Clicks scroll them into view. Actions save snapshots inside the state. Snapshot after navigation, because references change.
 
 | Need | Command |
 |---|---|
@@ -51,8 +51,8 @@ Start at the service's address in the login file. If the page is already signed 
 Create an owner-only env file outside Git with the references of the whole login, using `BROWSER_LOGIN_USERNAME`, `BROWSER_LOGIN_PASSWORD` or `BROWSER_LOGIN_OTP`. Never put resolved values in a command, file, message or model tool argument. One `fill` takes up to four `--step` values in page order, so one approval covers the whole login. Each step names that page's exact URL, up to two fields and the control to press.
 
 ```sh
-SECRET_ASK_REASON="Log into the authorized service for the requested browser task" \
-  op tier-two -- op run --env-file=<reference-file> -- python3 <entry> fill <state> \
+op tier-two --reason "Log into the authorized service for the requested browser task" -- \
+  op run --env-file=<reference-file> -- python3 <entry> fill <state> \
   --step '{"url": "https://service.example/login", "fields": [["<username-selector>", "BROWSER_LOGIN_USERNAME"]], "submit": "<continue-selector>"}' \
   --step '{"url": "https://service.example/password", "fields": [["<password-selector>", "BROWSER_LOGIN_PASSWORD"]], "submit": "<submit-selector>"}'
 ```
@@ -65,7 +65,7 @@ python3 <entry> check <state> --step '<the first step>' --step '<the next step>'
 
 `check` tests the session and the page in front of it. `BROWSER_FILL_READY` means `fill` can start. Any other result cost no approval, so resolve it and never request approval over it.
 
-The operator's "log into <service>" is the order for the `fill` command. For a tier-one item, drop the `op tier-two --` prefix. Allow ten minutes for approval plus the browser operation. If needed, use native managed background execution and collect that same process. Never duplicate a pending request.
+The operator's "log into <service>" is the order for the `fill` command. For a tier-one item, drop the `op tier-two --reason "<one line>" --` prefix. Allow ten minutes for approval plus the browser operation. If needed, use native managed background execution and collect that same process. Never duplicate a pending request.
 
 Passkeys are not supported yet. Use the service's password and code when offered, otherwise report the login as operator only. Never create, register or remove a passkey.
 
@@ -97,4 +97,4 @@ Never read credential values or print account credentials. A cached dashboard do
 python3 <entry> close <state>
 ```
 
-Close the exact state on success, refusal and error, and at the deadline as the time limit above says. Expect `BROWSER_CLOSED` and absence of that state directory. `tabs_left` names a tab the route lost, so pass it to the operator. If closure is unconfirmed, retain its path and report it. Close closes the tabs of this state, ends its connection and deletes its screenshots and page tool files. It leaves Chrome and the operator's other tabs alone. Sessions stay signed in, so op approval gates new credential retrieval rather than every use of an existing session. Login authority never authorizes an outward change. Record requested and observed model, host, authenticated result, active elapsed time, approval wait and cleanup. Blocked is not pass.
+Close the exact state on success, refusal and error, and at the deadline as the time limit above says. Expect `BROWSER_CLOSED` and absence of that state directory. `tabs_left` names a tab the route lost, so pass it to the operator. If closure is unconfirmed, retain its path and report it. Close closes the tabs of this state, ends its connection and deletes its screenshots and page tool files. It leaves Chrome and the operator's other tabs alone, but stops a Chrome that `--private-display` started. Sessions stay signed in, so op approval gates new credential retrieval rather than every use of an existing session. Login authority never authorizes an outward change. Record requested and observed model, host, authenticated result, active elapsed time, approval wait and cleanup. Blocked is not pass.

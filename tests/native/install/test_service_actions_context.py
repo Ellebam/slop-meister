@@ -94,6 +94,7 @@ def _jira_context():
         "key": "TEST-7",
         "names": {"description": "Description"},
         "schema": {"description": {"type": "string"}},
+        "transitions": [],
         "fields": {"description": "Visible", "updated": "2026-09-15", "comment": {"total": 1}},
     }
     client = Client(
@@ -149,7 +150,12 @@ def _scenarios():
             {"mode": "issue", "key": "TEST-7"},
             [
                 {"name": "reader"},
-                {"id": "7", "key": "TEST-7", "fields": {"updated": "now", "comment": {"total": 0}}},
+                {
+                    "id": "7",
+                    "key": "TEST-7",
+                    "fields": {"updated": "now", "comment": {"total": 0}},
+                    "transitions": [{"id": "31", "name": "Begin ", "to": {"name": "In Progress"}}],
+                },
                 [],
                 {"startAt": 0, "total": 0, "comments": []},
                 {"id": "7", "key": "TEST-7", "fields": {"updated": "now"}},
@@ -195,7 +201,10 @@ def _run_delivered(tmp_path, tool: str, scenario):
         timeout=15,
     )
     assert result.returncode == 0, result.stderr + result.stdout
-    assert json.loads(result.stdout)["result"] == expected
+    output = json.loads(result.stdout)
+    assert output["result"] == expected
+    if action == "jira-read":
+        assert output["issue"]["transitions"] == responses[1]["transitions"]
 
 
 def test_context_driver_reads_printed_chunks_through_both_delivered_chains(tmp_path):

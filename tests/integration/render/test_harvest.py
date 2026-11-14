@@ -87,10 +87,25 @@ def test_a_tracker_outside_the_repository_uses_the_plot_or_the_report():
 
 def test_unfinished_work_keeps_its_workspace_and_claim():
     branch = _section("## 3. The branch")
-    assert "Nothing" in _row(branch, "Not finished")[0]
-    unfinished = _row(_section("## 4. The ticket"), "Managed GitHub issue, both allows")[1]
-    assert "claim stays" in unfinished and "issue stays open" in unfinished
-    assert "worktree, slot and claim stay untouched" in _section("## 6. Remove yourself")
+    assert "stays in the worktree" in _row(branch, "Not finished")[0]
+    ticket = _section("## 4. The ticket")
+    unfinished = _row(ticket, "Managed GitHub issue, both allows")[1]
+    assert "claim stays" in unfinished and "claims close" not in unfinished
+    remove = _section("## 6. Remove yourself")
+    assert "worktree, slot, claim and recovery notes stay untouched" in remove
+    assert "workspace-remove --self --stop-only -- <absolute-worktree>" in remove
+    assert "A pending operator question remains a pause" in SOURCE
+    assert "overrides" in _section("## 1. Read the state")
+
+
+def test_finished_needs_upstream_read_back_and_a_failed_save_leaves_the_worktree():
+    """Bug: a rejected save is reported as finished, then the worktree holding it goes."""
+    remove = _section("## 6. Remove yourself")
+    assert "every result of a finished task reached its upstream" in remove
+    assert "reading it back" in remove and "A refused save or a failed read-back" in remove
+    assert SOURCE.index("## 3. The branch") < SOURCE.index("reading it back")
+    state = "Commits or uncommitted task changes, commit or shipping deny"
+    assert "counts as not finished" in _row(_section("## 3. The branch"), state)[0]
 
 
 def test_merge_and_close_bind_to_both_allows_and_every_real_action_keeps_its_guard():
@@ -109,12 +124,30 @@ def test_merge_and_close_bind_to_both_allows_and_every_real_action_keeps_its_gua
     assert "unknown ignored work" in remove
     assert "uncommitted" in remove
     assert "`--force` only when" in remove
-    assert "cannot remove itself" in remove
+    assert "A directory session runs the same two commands" in remove
 
 
 def test_the_report_and_recovery_records_precede_cleanup():
     assert SOURCE.index("## 5. The report") < SOURCE.index("## 6. Remove yourself")
     report = _section("## 5. The report")
-    assert "delivered first" in _section("## 6. Remove yourself")
+    assert "private result log is delivery" in report
     assert "evidence" in report and "checkout" in report
     assert "next step and unanswered questions" in report
+
+
+def test_ticket_updates_go_out_only_as_approved_and_never_stop_harvest():
+    """Bug: harvest writes a ticket the operator did not approve, or a ticket write blocks it."""
+    summary = (ROOT / "src/skills/execute-plan/task-summary.md").read_text()
+    proposal = summary.split("## Ticket updates", 1)[1].split("\n## ", 1)[0]
+    assert "No answer means none." in proposal and "A proposal is not consent." in proposal
+    assert "last-update time" in proposal and "unverified" in proposal
+    assert "[ticket updates](ticket-updates.md)" in _section("## 4. The ticket")
+    rule = (ROOT / "src/skills/harvest/ticket-updates.md").read_text()
+    assert "exactly as approved" in rule and "read it fresh" in rule
+    assert "or its items record none, send nothing to that ticket" in rule
+    assert "never asks a ticket question" in rule and "never pauses harvest or fails a step" in rule
+    assert "Night mode grant approves no ticket update" in rule
+    assert "goes into the report as a draft" in rule
+    for tool in ("claude", "codex"):
+        rendered = ROOT / "dist" / tool / "skills/harvest/ticket-updates.md"
+        assert rendered.read_text() == rule, tool

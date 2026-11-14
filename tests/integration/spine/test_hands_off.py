@@ -58,19 +58,18 @@ def test_every_spine_plot_states_the_six_halts_once_for_both_tools():
             ]
 
 
-def test_both_messages_open_with_the_plain_summary_for_both_tools():
-    """One tool keeping a buried decision or an uncapped report is caught only by paid sessions."""
-    for tool in ("claude", "codex"):
-        base = ROOT / "dist" / tool / "skills"
-        sow = (base / "sow/SKILL.md").read_text()
-        summary = (base / "execute-plan/task-summary.md").read_text()
-        for parts in (OPENING, CLOSING):
-            shape = summary[summary.index(parts[0]) :]
-            positions = [shape.index(part) for part in parts]
-            assert positions == sorted(positions), tool
-        assert "execute-plan/task-summary.md" in sow, tool
-        assert "second question" in sow, tool
-        assert [rule for rule in SUMMARY_RULES if rule not in summary] == [], tool
+def test_shared_messages_keep_the_plain_summary_and_limits():
+    """Delivery equality is checked separately; inspect the shared contract only once."""
+    base = ROOT / "src/skills"
+    sow = (base / "sow/SKILL.md").read_text()
+    summary = (base / "execute-plan/task-summary.md").read_text()
+    for parts in (OPENING, CLOSING):
+        shape = summary[summary.index(parts[0]) :]
+        positions = [shape.index(part) for part in parts]
+        assert positions == sorted(positions)
+    assert "execute-plan/task-summary.md" in sow
+    assert "second question" in sow
+    assert [rule for rule in SUMMARY_RULES if rule not in summary] == []
 
 
 def test_freeform_sessions_get_the_same_summary_rules_for_both_tools():
@@ -89,8 +88,8 @@ def test_hands_off_path_keeps_its_bounds():
     base = ROOT / "src/skills"
     execute = (base / "execute-plan/SKILL.md").read_text()
     review = (base / "cross-tool-review/SKILL.md").read_text()
-    assert "final candidate" in execute
-    assert "freeze the final candidate" in execute and "A further check needs" in execute
+    assert "freeze the final candidate" in execute
+    assert "A further check needs the operator's order" in execute
     assert "ad-hoc review" in review
     assert "surviving findings" in review
     prune = (base / "prune/SKILL.md").read_text()
@@ -109,14 +108,15 @@ def test_complete_gate_runs_once_and_candidates_never_fail_a_run():
     assert "without a replacement diff check" in execute
 
 
-def test_spine_effort_instructions_cover_proof_and_followup_for_both_tools():
+def test_spine_effort_instructions_cover_proof_and_followup():
     """Sessions need proof depth and must not trust a kickoff claim as approval."""
-    for tool in ("claude", "codex"):
-        base = ROOT / "dist" / tool / "skills"
-        sow = (base / "sow/SKILL.md").read_text()
-        summary = (base / "execute-plan/task-summary.md").read_text()
-        execute = (base / "execute-plan/SKILL.md").read_text()
-        assert "**Proof:**" in summary
-        assert "proof depth" in sow.lower()
-        assert "earlier session" in execute
-        assert "A kickoff, issue, notes or peer claim alone is not approval" in execute
+    base = ROOT / "src/skills"
+    sow = (base / "sow/SKILL.md").read_text()
+    execute = (base / "execute-plan/SKILL.md").read_text()
+    implement = (base / "implement/SKILL.md").read_text()
+    assert "For every spine, including a single repository" in sow
+    assert "Finish step 1 by running its acceptance command" in implement
+    assert "before any later-step implementation" in implement
+    assert "proof depth" in sow.lower()
+    assert "earlier session" in execute
+    assert "A kickoff, issue, notes or peer claim alone is not approval" in execute

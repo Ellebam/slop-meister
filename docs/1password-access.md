@@ -40,14 +40,14 @@ Environment files cannot set execution controls such as PATH, startup scripts, r
 ## Tier two
 
 ```bash
-SECRET_ASK_REASON="<what the command does and why>" op tier-two -- op run --env-file=secrets/ssh.env -- <the command>
+op tier-two --reason "<what the command does and why>" -- op run --env-file=secrets/ssh.env -- <the command>
 ```
 
 Tier two has two layers, and both are required.
 
-The first layer is the operator's word. A plain `op run` on a tier-two reference releases nothing and names the form `op tier-two -- <command>`. That form is a `needs_intent` rule in both tools, so it runs only when the operator's own message orders that command. An explicit order to log into a named service also orders that login’s inspected browser fill. It sets the route for its process tree, so an `op run` inside a Task target needs no change. For a project target that already wraps `op run`, use `SECRET_ASK_REASON="<one line>" op tier-two -- task <target>`.
+The first layer is the operator's word. A plain `op run` on a tier-two reference releases nothing and names the form `op tier-two --reason "<one line>" -- <command>`. That form is a `needs_intent` [rule](permissions.md) in both tools, so it runs only when the operator's own message orders that command. An explicit order to log into a named service also orders that login's inspected browser fill. It sets the route for its process tree, so an `op run` inside a Task target needs no change. For a project target that already wraps `op run`, use `op tier-two --reason "<one line>" -- task <target>`.
 
-The second layer is the approval. Each tier-two `op run` sends one question to Home Assistant. Its text starts with the reason from `SECRET_ASK_REASON`, the session and the host, then the exact command, the references and the directory. The session comes from confirmed launcher identity, independently of the command's current directory. A phone service uses its fixed phone-session marker. The question also names input files and literal variable names, with values hidden. The reason is required, limited to 160 characters and shown as one line. Without it the request is refused and nothing is sent. The command prints `op: request <id> waits for Home Assistant approval` on stderr and waits up to ten minutes, so give the tool call a ten-minute timeout. Only Approve for this request's own ID starts the real `op run`. Deny prints `denied`, ten minutes of silence print `timed out`, and both exit 1. A wait that was killed asks again on the next run. A press for a request nobody waits for releases nothing.
+The second layer is the approval. Each tier-two `op run` sends one question to Home Assistant. Its text starts with the reason, the session and the host, then the exact command, the references and the directory. The session comes from confirmed launcher identity, independently of the command's current directory. A phone service uses its fixed phone-session marker. The question also names input files and literal variable names, with values hidden. The reason is required, limited to 160 characters and shown as one line. Without it the request is refused and nothing is sent. The command prints `op: request <id> waits for Home Assistant approval` on stderr and waits up to ten minutes, so give the tool call a ten-minute timeout. Only Approve for this request's own ID starts the real `op run`. Deny prints `denied`, ten minutes of silence print `timed out`, and both exit 1. A wait that was killed asks again on the next run. A press for a request nobody waits for releases nothing.
 
 `op tier-two` and `op desktop` must be the outermost command. Below an `op run` or another route word they are refused, so the allowed `op run` prefix cannot carry them past the rule.
 
@@ -56,8 +56,8 @@ The second layer is the approval. Each tier-two `op run` sends one question to H
 In a launched session, use `op metadata --vault NAME [--search TEXT]` to find item titles without reading values. All metadata requests require operator intent and Home Assistant approval:
 
 ```bash
-SECRET_ASK_REASON="Find the existing service item by metadata only" \
-op tier-two -- op metadata --vault ExampleVault --search service
+op tier-two --reason "Find the existing service item by metadata only" -- \
+  op metadata --vault ExampleVault --search service
 ```
 
 The wrapper selects the named vault's existing tier account and calls only `op item list` with desktop integration disabled. It prints item ID, title, category and vault ID/name. Search is a case-insensitive title substring. It never prints fields, notes, URLs or upstream diagnostics. The approval shows the exact command and `VAULT_METADATA=op://<vault>`. This names the vault scope.
@@ -97,16 +97,5 @@ This is a guardrail for cooperative agents, not a security boundary.
 - The rules of both tools match command text. A route word inside `sh -c`, a script or a Task target is invisible to them, and the route itself is an environment variable an agent could set by hand. Then only the Home Assistant approval remains for tier two, and the desktop prompt for the desktop route.
 - The tier-two account can write to its vaults. Nothing here offers item writes, and the rules keep `op item create`, `edit` and `delete` behind the operator's word.
 - Masking is the real `op`'s and textual. A value a command transforms, encodes or splits is not recognised. Masking hides values from the tool output. It does not stop the command from writing or sending them, so the operator judges the command before approving.
+- The standing dispatcher carries no secret mark. It has no saved launcher identity for the approval question, and it reads mail and screens from every session while it holds terminal-input authority. Its `op` is the real one and asks the 1Password app on that machine. An ordered tier-two run goes to the launched session that owns the work. Otherwise the dispatcher gives the operator one ready line for `!`, `cd <absolute-directory> && op run --env-file=<absolute-env-file> -- <command>`.
 - The question in Home Assistant shows what this program read. Root, Docker administration and a compromised Home Assistant administrator can forge an approval, which is the hosts' existing accepted risk.
-
-## Prove the route
-
-Use one throwaway item per tier, an env file naming each and a command that prints a marker only when its variable is set. With operator authorization, use fresh launched sessions of both tools on each configured workstation to verify these results. Static tests use stand-ins and do not access a real account or service.
-
-1. A tier-one `op run` prints the marker with `<concealed by 1Password>` and no phone prompt, and `${OP_SERVICE_ACCOUNT_TOKEN:-absent}` in the command prints `absent`.
-2. A plain tier-two `op run` exits 1 and names `op tier-two`. Under `op tier-two` the tool asks for the operator's word, then the phone shows the references, the command, the reason, the host and the session. Check Approve, Deny, the ten-minute expiry and a second press.
-3. With the Home Assistant route unavailable to the test session, operator-ordered `op desktop -- op run ...` resolves both items through the desktop app. Do not stop a live service for this check.
-4. A device service call with the route's credential is refused.
-5. The value-printing forms are refused in both spellings.
-
-[Testing](testing.md) names the synthetic and native suites. Tests cannot prove real device delivery.

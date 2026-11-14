@@ -57,6 +57,20 @@ def _body(path: Path) -> bytes:
     return parts[2].lstrip(b"\n")
 
 
+def test_harvest_names_safe_self_removal_for_both_tools():
+    """Bug: the end silently returned to plain Git and left locked delivery on disk."""
+    for tool in ("claude", "codex"):
+        text = (ROOT / f"dist/{tool}/skills/harvest/SKILL.md").read_text()
+        assert (
+            "cd <main-checkout> && <saved-absolute-Slopmeister>/bin/slopmeister "
+            "workspace-remove --self -- <absolute-worktree>" in text
+        )
+        assert "For a finished worktree, with or without a slot" in text
+        assert "workspace-remove --self -- <absolute-worktree>" in text
+        assert "Remove the worktree if this session ran in one" not in text
+        assert "cleanup reported as pending" in text and "It keeps the local branch" in text
+
+
 def test_target_tree_holds_exactly_the_folders_the_target_declares():
     """A target renders only what it varies. Without this the tree regrows the duplicate copies
     the manifest used to force, 13 of which were byte-identical to the shared render."""

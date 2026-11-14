@@ -13,8 +13,9 @@ import tomllib
 
 import pytest
 
-from slopmeister.launch import command
-from slopmeister.launch.model import Launch
+from slopmeister.errors import SlopmeisterError
+from slopmeister.launch import cli, command
+from slopmeister.launch.model import INBOX_NOTICE, Launch
 
 WT = "/r/.worktrees/example-client-wt1"
 
@@ -104,17 +105,38 @@ def test_codex_explicit_manual_reviewer_wins(tmp_path, monkeypatch):
     assert line.index('approvals_reviewer="auto_review"') < line.index('approvals_reviewer="user"')
 
 
+@pytest.mark.parametrize("redispatch", [False, True])
+def test_failed_preparation_leaves_no_earlier_inbox(tmp_path, monkeypatch, redispatch):
+    """Bug: a fresh launch of a reused name fails before its command file, and the redispatch
+    that follows reads the mail of the earlier session."""
+    launch = _launch(tmp_path, "claude", monkeypatch)
+    launch.redispatch = redispatch
+    launch.run_file.write_text("run_old\n")
+
+    def fail(_: Launch) -> None:
+        raise OSError("issue claim failed")
+
+    monkeypatch.setattr(cli, "_prepare", fail)
+    with pytest.raises(OSError, match="issue claim failed"):
+        cli._launch(launch)
+    assert launch.run_file.exists() is redispatch
+
+
 @pytest.mark.parametrize("tool", ["claude", "codex"])
-def test_command_file_execs_the_tool(tmp_path, monkeypatch, tool):
-    """Bug: the exec is lost and the terminal runs a login shell only."""
+@pytest.mark.parametrize("redispatch", [False, True])
+def test_command_file_execs_the_tool(tmp_path, monkeypatch, tool, redispatch):
+    """Bug: the exec is lost and the terminal runs a login shell only, or a first launch whose
+    pane never starts leaves the inbox of an earlier session of the same name for a redispatch."""
     launch = _launch(tmp_path, tool, monkeypatch)
-    launch.line = f"cd '{WT}' && tool --flag && more"
+    launch.line, launch.redispatch = f"cd '{WT}' && tool --flag && more", redispatch
+    launch.run_file.write_text("run_old\n")
     command.write(launch)
-    assert launch.command_file.read_text() == (
-        f"#!/bin/zsh -l\n{command.mailbox_line(launch.wt)}\n"
-        f"export SLOPMEISTER_SESSION_WORKSPACE='{WT}'\n"
-        f"cd '{WT}' && exec tool --flag && more\n"
-    )
+    assert launch.run_file.exists() is redispatch
+    mailbox, export, tool_line = launch.command_file.read_text().splitlines()[1:]
+    saved = f"'{WT}' '{tmp_path}/example-client-wt1.run'"
+    assert mailbox.endswith(saved + (" 'adopt'" if redispatch else "") + ')"')
+    assert export == f"export SLOPMEISTER_SESSION_WORKSPACE='{WT}'"
+    assert tool_line == f"cd '{WT}' && exec tool --flag && more"
     assert launch.command_file.stat().st_mode & 0o777 == 0o700
 
 
@@ -210,3 +232,100 @@ def test_complete_pins_precede_the_users_optional_server_disable(tmp_path, monke
     words = shlex.split(command.line(launch))
     pin = next(word for word in words if word.startswith("mcp_servers.optional="))
     assert words.index(pin) < words.index("mcp_servers.optional.enabled=false")
+
+
+def _takeover(monkeypatch, adopted: object) -> list[tuple[str, ...]]:
+    """An unbound new terminal, and Orca's answer when it resumes the saved Run."""
+    calls: list[tuple[str, ...]] = []
+
+    def fake(*args: str, checked: bool = False) -> dict:
+        calls.append(args)
+        if args[:2] == ("terminal", "list"):
+            return {"truncated": False, "terminals": [{"handle": "term_fixture"}]}
+        if args[1] == "run-current":
+            return {"run": None}
+        if args[1] == "run-use" and isinstance(adopted, SlopmeisterError):
+            raise adopted
+        owner = {"coordinator_handle": "term_fixture", "legacy": 0, "objective": "wt"}
+        return {"run": {"id": "run_new", **owner} if args[1] == "run-create" else adopted}
+
+    monkeypatch.setenv("ORCA_TERMINAL_HANDLE", "term_fixture")
+    monkeypatch.setattr(command.terminal, "_orca", fake)
+    return calls
+
+
+def test_redispatch_takes_over_the_saved_inbox(tmp_path, monkeypatch, capsys):
+    """Bug: the replacement session creates a new Run, and mail that the dispatcher or a manager
+    sends to the address of the replaced session is never read."""
+    saved = tmp_path / "wt.run"
+    saved.write_text("run_old\n")
+    owner = {"coordinator_handle": "term_fixture", "legacy": 0, "objective": "wt"}
+    calls = _takeover(monkeypatch, {"id": "run_old", **owner})
+    assert command.initialize_mailbox(Path("/r/wt"), saved, adopt=True) == ""
+    assert "task inbox ready: run_old" in capsys.readouterr().err
+    use = ("orchestration", "run-use", "--id", "run_old", "--from", "term_fixture", "--full")
+    assert calls[2:] == [use]
+    assert saved.read_text() == "run_old\n"
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        ("run_old\n", SlopmeisterError("timeout"), "timeout"),
+        (
+            "run_old\n",
+            {"id": "run_old", "coordinator_handle": "term_fixture", "legacy": 0, "objective": "x"},
+            "existing inbox belongs to another task",
+        ),
+        ("run_old --id run_other\n", None, "saved inbox identity is unreadable"),
+    ],
+)
+def test_failed_takeover_creates_no_second_inbox(tmp_path, monkeypatch, capsys, case):
+    """Bug: a fresh Run replaces a takeover that failed or whose outcome is unknown. Senders
+    keep the old address, so the session must learn of the failure in its first prompt."""
+    content, adopted, reason = case
+    saved = tmp_path / "wt.run"
+    saved.write_text(content)
+    calls = _takeover(monkeypatch, adopted)
+    assert command.initialize_mailbox(Path("/r/wt"), saved, adopt=True) == INBOX_NOTICE
+    assert f"task inbox unavailable: {reason}" in capsys.readouterr().err
+    assert not [call for call in calls if call[1] == "run-create"]
+    assert saved.read_text() == content
+
+
+@pytest.mark.parametrize("adopt", [False, True])
+def test_launch_without_a_predecessor_inbox_creates_and_saves_one(tmp_path, monkeypatch, adopt):
+    """Bug: a first launch takes over the inbox of an earlier session of the same name and reads
+    its mail, or a redispatch of a session that predates the saved file starts without an inbox."""
+    saved = tmp_path / "wt.run"
+    if not adopt:
+        saved.write_text("run_old\n")
+    calls = _takeover(monkeypatch, None)
+    assert command.initialize_mailbox(Path("/r/wt"), saved, adopt=adopt) == ""
+    assert [call[1] for call in calls[2:]] == ["run-create"]
+    assert saved.read_text() == "run_new\n"
+    assert saved.stat().st_mode & 0o777 == 0o600
+
+
+def test_fresh_launch_without_an_inbox_leaves_no_earlier_inbox_to_take_over(tmp_path, monkeypatch):
+    """Bug: a first launch that gets no inbox keeps the file of an earlier session of the same
+    name, and its later redispatch takes over that session's Run and reads its mail."""
+    saved = tmp_path / "wt.run"
+    saved.write_text("run_old\n")
+    monkeypatch.delenv("ORCA_TERMINAL_HANDLE", raising=False)
+    assert command.initialize_mailbox(Path("/r/wt"), saved) == INBOX_NOTICE
+    assert not saved.exists()
+
+
+def test_saved_inbox_is_never_read_or_written_through_a_link(tmp_path, monkeypatch):
+    """Bug: a link in the state directory makes the launcher adopt a Run named by another file,
+    or overwrite the file the link points to."""
+    target, saved = tmp_path / "other", tmp_path / "wt.run"
+    target.write_text("run_other\n")
+    saved.symlink_to(target)
+    calls = _takeover(monkeypatch, None)
+    assert command.initialize_mailbox(Path("/r/wt"), saved, adopt=True) == INBOX_NOTICE
+    assert calls == []
+    assert command.initialize_mailbox(Path("/r/wt"), saved) == ""
+    assert target.read_text() == "run_other\n"
+    assert not saved.is_symlink()

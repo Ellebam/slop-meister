@@ -1,5 +1,6 @@
 """The doctor reports each requirement from its own evidence and writes nothing."""
 
+from contextlib import ExitStack, closing
 import json
 import os
 from pathlib import Path
@@ -10,8 +11,8 @@ import pytest
 
 from slopmeister import paths
 from slopmeister.workstation import doctor, manifest, rules
-from tests.integration.workstation.test_install import ROOT, machine, workstation
-from tests.support.fakes import fake_binary
+from tests.integration.workstation.test_install import machine, workstation
+from tests.support.fakes import fake_binary, memory_database
 
 TOOLS = (
     *("task", "uv", "gh", "glab", "claude", "codex"),
@@ -44,12 +45,6 @@ def healthy(tmp_path: Path, platform: str = "darwin") -> tuple[Path, Path]:
     (vault / "note.md").write_text("# note\n")
     (vault.parent / doctor.BUNDLE).parent.mkdir()
     (vault.parent / doctor.BUNDLE).write_bytes(b"bundle")
-    for template, live in (
-        (rules.CLAUDE_TEMPLATE, rules.CLAUDE_LIVE),
-        (rules.CODEX_TEMPLATE, rules.CODEX_LIVE),
-    ):
-        (home / live).parent.mkdir(parents=True, exist_ok=True)
-        (home / live).write_text((ROOT / template).read_text().replace("$HOME", str(home)))
     for tool in TOOLS:
         fake_binary(bin_dir, tool, "exit 0")
     fake_binary(home / ".local/bin", "codex", "exit 0")
@@ -89,7 +84,8 @@ def test_healthy_machine_reports_every_requirement_ok(tmp_path):
         "orca:runtime",
         "orca:hooks",
         "home-install",
-        "rules",
+        "memory:claude",
+        "memory:codex",
         "vault",
         "vault-repository",
         "vault-history",
@@ -104,6 +100,62 @@ def test_doctor_writes_nothing(tmp_path):
     before = tree(home)
     results(home, bin_dir)
     assert tree(home) == before
+
+
+@pytest.mark.parametrize("platform", ["darwin", "linux"])
+@pytest.mark.parametrize(
+    "relative",
+    [
+        ".claude/projects/example/memory/MEMORY.md",
+        ".codex/memories/MEMORY.md",
+        ".codex/memories_v2/summary.md",
+        ".codex/memories_1.sqlite",
+        ".codex/memories_1.sqlite-wal",
+    ],
+)
+def test_doctor_reports_remaining_memory_without_exposing_its_text(tmp_path, platform, relative):
+    home, bin_dir = healthy(tmp_path, platform)
+    store = home / relative
+    store.parent.mkdir(parents=True, exist_ok=True)
+    with ExitStack() as resources:
+        if ".sqlite" in store.name:
+            database = resources.enter_context(
+                closing(memory_database(store.with_name("memories_1.sqlite")))
+            )
+            database.execute(
+                "PRAGMA journal_mode=WAL"
+                if store.name.endswith("-wal")
+                else "PRAGMA journal_mode=DELETE"
+            )
+            database.execute(
+                "INSERT INTO stage1_outputs VALUES(?)", ("private-memory-do-not-print",)
+            )
+            database.commit()
+        else:
+            store.write_bytes(b"private-memory-do-not-print")
+            store.chmod(0)
+        before = store.stat().st_mtime_ns
+        found = results(home, bin_dir, platform)
+        tool = "claude" if ".claude/" in relative else "codex"
+        assert found[f"memory:{tool}"]["status"] == "problem"
+        assert "populated" in found[f"memory:{tool}"]["evidence"]
+        assert "private-memory-do-not-print" not in json.dumps(found)
+        assert store.stat().st_mtime_ns == before
+
+
+@pytest.mark.parametrize("tool", ["claude", "codex"])
+def test_doctor_reports_reenabled_switch_as_home_install_defect(tmp_path, tool):
+    home, bin_dir = healthy(tmp_path)
+    path = home / f".{tool}" / ("settings.json" if tool == "claude" else "config.toml")
+    text = path.read_text()
+    path.write_text(
+        text.replace('"autoMemoryEnabled": false', '"autoMemoryEnabled": true')
+        if tool == "claude"
+        else text.replace("memories = false", "memories = true")
+    )
+    found = results(home, bin_dir)
+    assert found["home-install"]["status"] == "problem"
+    assert str(path.relative_to(home)) in found["home-install"]["evidence"]
 
 
 def _missing_tool(home, bin_dir):
@@ -173,7 +225,7 @@ def _deny_rule_absent(home, bin_dir):
     live = home / rules.CLAUDE_LIVE
     settings = json.loads(live.read_text())
     settings["permissions"]["deny"].remove(DENY)
-    settings["permissions"]["allow"].append(PRIVATE)
+    settings["permissions"].setdefault("allow", []).append(PRIVATE)
     live.write_text(json.dumps(settings))
 
 
@@ -198,8 +250,8 @@ def _live_rules_unreadable(home, bin_dir):
         (_vault_repository_empty, "vault-repository"),
         (_bundle_missing, "vault-history"),
         (_bundle_stale, "vault-history"),
-        (_deny_rule_absent, "rules"),
-        (_live_rules_unreadable, "rules"),
+        (_deny_rule_absent, "home-install"),
+        (_live_rules_unreadable, "home-install"),
     ],
 )
 def test_each_breakage_is_a_problem_with_evidence(tmp_path, breakage, name):
@@ -231,13 +283,13 @@ def test_entries_waiting_for_the_vault_repository_are_not_reported_ok(tmp_path):
     assert f"{manifest.VAULT_REPOSITORY}/info/exclude" in found["evidence"]
 
 
-def test_a_missing_deny_rule_prints_the_template_line_and_no_live_content(tmp_path):
+def test_a_missing_deny_rule_reports_owned_policy_and_no_live_content(tmp_path):
     """Bug: a deny rule missing from the live file stays invisible, or live approvals leak."""
     home, bin_dir = healthy(tmp_path)
     _deny_rule_absent(home, bin_dir)
     run = workstation(home, bin_dir, "doctor")
     found = {item["name"]: item for item in json.loads(run.stdout)}
-    assert f"absent: claude deny {DENY}" in found["rules"]["evidence"]
+    assert "differs: .claude/settings.json" in found["home-install"]["evidence"]
     assert "private-live-approval" not in run.stdout + run.stderr
 
 

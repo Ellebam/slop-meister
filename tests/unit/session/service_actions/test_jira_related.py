@@ -25,7 +25,7 @@ class Client:
 def _body(key, **fields):
     comment = {"total": 1, "comments": [{"id": key + "-c"}]}
     fields = {"summary": key, "updated": "now", "comment": comment, **fields}
-    return {"id": key.split("-")[1], "key": key, "fields": fields}
+    return {"id": key.split("-")[1], "key": key, "fields": fields, "transitions": []}
 
 
 def _search(issues, total=None):

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 import contextlib
 import os
+from pathlib import Path
 import shutil
 import subprocess
 import sys
@@ -12,6 +13,7 @@ import time
 import traceback
 import uuid
 
+from slopmeister import repositories
 from slopmeister.errors import SlopmeisterError
 from slopmeister.launch import (
     arguments,
@@ -47,6 +49,7 @@ def _validate(argv: Sequence[str], worktree_file: str = "") -> Launch:
     target.proof_owner(launch)
     target.declaration(launch)
     target.repository(launch)
+    repositories.preflight(launch)
     target.sources(launch)
     issue.associate(launch)
     issue.claim(launch)
@@ -94,6 +97,8 @@ def _prepare(launch: Launch) -> None:
         workspace.prepare_directory(launch)
     else:
         workspace.prepare_worktree(launch)
+        for repo in launch.repositories:
+            repositories.add(launch.wt, Path(repo))
     if not launch.redispatch:
         workspace.capabilities(launch)
     if launch.wt_file:
@@ -161,6 +166,9 @@ def _launch(launch: Launch, prepared: Prepared | None = None) -> None:
         workspace.adopt(launch)
         issue.abandon(launch, closure.close)
         return
+    if not launch.redispatch:
+        # A launch that fails while it prepares must leave no earlier session's Run to adopt.
+        launch.run_file.unlink(missing_ok=True)
     _prepare(launch)
     if prepared:
         prepared(launch)

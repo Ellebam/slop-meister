@@ -83,7 +83,7 @@ def test_tier_two_without_a_reason_asks_nothing(tmp_path, monkeypatch, capsys, s
     asked = approve(monkeypatch, "approved")
     assert secret_run.main(env_file(tmp_path, "DEMO=op://Production/Item/credential\n")) == 1
     err = capsys.readouterr().err
-    assert 'SECRET_ASK_REASON="<one line>"' in err and "op desktop" not in err
+    assert 'op tier-two --reason "<one line>" -- <command>' in err and "op desktop" not in err
     assert asked == [] and session == []
 
 
@@ -158,6 +158,23 @@ def test_route_word_sets_the_route_for_its_command(session, name):
     assert secret_run.main([name, "--", "task", "deploy"]) is None
     ((argv, env),) = session
     assert argv == ["task", "deploy"] and env[secret_run.ROUTE] == name
+
+
+def test_reason_option_reaches_the_approval_and_only_tier_two_takes_it(monkeypatch, session):
+    """Bug: a reason typed as an option is run as the command, or lost before the question."""
+    monkeypatch.setenv("SECRET_ASK_REASON", "an older reason")
+    assert secret_run.main(["tier-two", "--reason", "Deploy the host", "--", "task", "x"]) is None
+    ((argv, env),) = session
+    assert argv == ["task", "x"] and env[secret_run.ROUTE] == "tier-two"
+    assert env["SECRET_ASK_REASON"] == "Deploy the host"
+    for line in (
+        ["tier-two", "--reason", "--", "task"],
+        ["tier-two", "--reason", "Deploy the host"],
+        ["tier-two", "--reason", "Deploy the host", "task"],
+        ["desktop", "--reason", "Deploy the host", "--", "task"],
+    ):
+        assert secret_run.main(line) == 2
+    assert len(session) == 1
 
 
 @pytest.mark.parametrize("above", [secret_run.INSIDE, secret_run.ROUTE])

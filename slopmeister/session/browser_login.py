@@ -88,6 +88,7 @@ def arguments(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="action", required=True)
     start = sub.add_parser("start")
+    start.add_argument("--private-display", action="store_true")
     start.add_argument("url")
     for name in ("run", "check", "fill", "close"):
         p = sub.add_parser(name)
@@ -105,7 +106,7 @@ def main(argv: list[str]) -> int:
         root = runtime.owned(args.state) if hasattr(args, "state") else None
         match args.action:
             case "start":
-                result = runtime.start(args.url)
+                result = runtime.start(args.url, args.private_display)
             case "check":
                 result = check(root, args)
             case "fill":

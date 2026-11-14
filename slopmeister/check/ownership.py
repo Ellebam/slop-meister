@@ -3,6 +3,7 @@
 import contextlib
 import ctypes
 from datetime import UTC, datetime
+import errno
 import itertools
 import json
 import os
@@ -37,13 +38,19 @@ class _BSDInfo(ctypes.Structure):
 
 def _darwin_process(pid: int) -> tuple[str | None, int | None]:
     info = _BSDInfo()
-    size = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True).proc_pidinfo(
-        pid, 3, 0, ctypes.byref(info), ctypes.sizeof(info)
-    )
-    if size == 0 and ctypes.get_errno() == 3:
+    inspect = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True).proc_pidinfo
+    size = inspect(pid, 3, 0, ctypes.byref(info), ctypes.sizeof(info))
+    if size == 0 and ctypes.get_errno() == errno.ESRCH:
         return None, None
     if size != ctypes.sizeof(info):
-        raise OSError(ctypes.get_errno(), f"cannot inspect test process {pid}")
+        error = OSError(ctypes.get_errno(), f"cannot inspect test process {pid}")
+        # A process can exit between the native permission check and inspection.
+        size = inspect(pid, 3, 0, ctypes.byref(info), ctypes.sizeof(info))
+        if (size == 0 and ctypes.get_errno() == errno.ESRCH) or (
+            size == ctypes.sizeof(info) and info.header[1] == 5
+        ):
+            return None, None
+        raise error
     birth = None if info.header[1] == 5 else f"{info.seconds}:{info.microseconds}"
     return (None, None) if birth is None else (birth, int(info.details[1]))
 

@@ -16,13 +16,17 @@ The input is optionally a commit-message hint or PR context, otherwise infer fro
 
 ### 1. Assess
 
+List the primary and companions with the invoking Slopmeister's `repository status --workspace <primary>`. Apply this procedure to each changed repository under its own saved permission and remote. Use the primary's fixed ship helper for every member, passing that member as `--cwd`. Companions have no separate shipping entry, so the existing native approval route stays the same. The helper refuses foreign sessions and mismatched permissions.
+
+Run a companion's direct Git history writes and pushes as `cd <companion> && git <command>`, never through `git -C <companion>`. This preserves the session's existing bare-command approval rules. The fixed ship helper still takes `--cwd` and keeps its separate native approval route.
+
 Run in parallel, `git status`, `git diff --stat`, `git log --oneline -5` to match the existing message style, `git branch --show-current`, `gh pr list --repo <saved owner/repository> --head <branch> --json number,url,state,body,baseRefName`, and a lookup of the task notes file if any.
 
 Guard rails. On the default branch, stop and warn, never commit or push there. Nothing to commit, nothing unpushed, and no PR line to sync, report "There is nothing to ship."
 
 ### 2. Independent-review line
 
-Every PR body carries exactly one plain line, one of these three.
+Keep exactly one plain review line in the task notes and handoff, one of these three.
 
 ```
 Independent review: PASS - <tool, model, date, one sentence>
@@ -32,7 +36,9 @@ Independent review: PENDING - <what it is waiting on>
 
 Decide the value here once. PASS after the external diff review and its fix pass are satisfied. N/A when the working agreement's exemption applies, a judgment already made at step 3. PENDING when review is still owed, including the automatic path's push after testing and before diff review. A legitimate pending feature branch blocks at the merge. A completed task-and-mode result replays permanently unless the operator explicitly authorizes exact replacement.
 
-The helper checks the line structure. The line does not grant approval. Use the value verbatim whether the PR is new or existing, never re-derive it, and never strip an operator's quoted words out of it.
+For every forge, include that line in a pull request or merge request body only where the plot fully owns the project. Where it does not, the line stays in the notes and handoff and never reaches the body, including writes without the GitHub helper. This ownership rule also applies to the review-line principle for other forges above. Add `--review-in-notes` to step 3's helper command for this case. The helper then refuses a review line in the body. Its default still requires exactly one line.
+
+The line does not grant approval. Use the value verbatim wherever it belongs, whether the request is new or existing. Never re-derive it or strip an operator's quoted words out of the internal record.
 
 ### 3. Commit and push
 
@@ -47,9 +53,11 @@ The helper checks the line structure. The line does not grant approval. Use the 
 
 ### 4. The pull request
 
-Pin every GitHub read and write to the saved owner/repository. The helper validates PR base and head identity against that repository. If an open PR already exists, do not create another. After earlier PRs are merged, include exactly one `Follows #<number>` line naming the latest merged PR in the new body. Keep that line on updates and retries. The helper refuses closed unmerged or ambiguous history and requires new commits on the merged PR head before creating a follow-up. Replace the single existing `Independent review:` line with the value from step 2, preserving the rest of the body byte for byte, re-read the body afterwards and confirm exactly one such line exists. Report the URL and whether the line changed.
+For a session spanning repositories, record each confirmed PR URL in the task notes. After creating the eligible PRs, add links to the other session PRs in each exact body, run `rinse`, and update through the same fixed helper. Read back every link. Preserve already confirmed writes on a retry and report any member still unshipped. No repository's permission authorizes another repository's write.
 
-If no PR exists, base it on the default branch unless told otherwise. Read the commits for this request so the body covers the whole change, not just the last commit. For a follow-up, start after the previous merged PR head. Title under 70 characters. The body carries a summary, a test plan, and the independent-review line from step 2, verbatim. Never add attribution lines.
+Pin every GitHub read and write to the saved owner/repository. The helper validates PR base and head identity against that repository. If an open PR already exists, do not create another. After earlier PRs are merged, include exactly one `Follows #<number>` line naming the latest merged PR in the new body. Keep that line on updates and retries. The helper refuses closed unmerged or ambiguous history and requires new commits on the merged PR head before creating a follow-up. Where step 2 puts the review line in the body, replace its single existing value. Otherwise remove any existing review line from the body and retain the value internally. Preserve the rest of the body byte for byte. Re-read the body afterwards and confirm the line's presence or absence matches step 2. Report the URL and whether the line changed.
+
+If no PR exists, base it on the default branch unless told otherwise. Read the commits for this request so the body covers the whole change, not just the last commit. For a follow-up, start after the previous merged PR head. Title under 70 characters. The body carries a summary and a test plan. Include the independent-review line verbatim only where step 2 permits it. Never add attribution lines.
 
 ### 5. Report
 

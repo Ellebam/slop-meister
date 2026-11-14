@@ -13,6 +13,16 @@ TASK = re.compile(r"[a-z0-9][a-z0-9-]{0,63}")
 TOOLS = {"claude", "codex", "opencode"}
 
 
+def open_nofollow(path: Path | str, flags: int = os.O_RDONLY, *, dir_fd: int | None = None) -> int:
+    """Open without following the final link, retaining the caller's flags and OSError."""
+    return os.open(path, flags | os.O_NOFOLLOW, dir_fd=dir_fd)
+
+
+def regular_file(info: os.stat_result, *, owned: bool = False) -> bool:
+    """Check a regular file and, when requested, ownership by the current user."""
+    return stat.S_ISREG(info.st_mode) and (not owned or info.st_uid == os.getuid())
+
+
 def state_home() -> Path:
     return Path.home().resolve() / ".local/state"
 
@@ -26,9 +36,9 @@ def private_json(source: Path, label: str) -> dict:
     """An object from a regular file that only this user can read or write."""
     if source.is_symlink():
         raise ValueError(f"symlinked {label}")
-    with os.fdopen(os.open(source, os.O_RDONLY | os.O_NOFOLLOW)) as stream:
+    with os.fdopen(open_nofollow(source)) as stream:
         info = os.fstat(stream.fileno())
-        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+        if not regular_file(info, owned=True) or info.st_mode & 0o077:
             raise ValueError(f"unsafe {label}")
         value = json.load(stream)
     if not isinstance(value, dict):

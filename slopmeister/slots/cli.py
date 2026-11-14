@@ -7,7 +7,7 @@ from slopmeister.slots import down, status, up
 
 USAGE = (
     "usage: slopmeister slots up <repo> <target> <name> [--slot <n>] [launcher args]\n"
-    "       slopmeister slots down <repo> <target> <name> [--force] [--slot <n>] [--self]\n"
+    "       slopmeister slots down <repo> <target> <name> [--force] [--slot <n>]\n"
     "       slopmeister slots status [<repo>]"
 )
 

@@ -62,3 +62,57 @@ def session_root() -> Path:
 
 def codex_home() -> Path:
     return Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
+
+
+def _orca_selection(pointer: str) -> str:
+    """The account home Orca's switcher names now, empty for System default."""
+    path = Path(os.path.expanduser(pointer) if pointer.startswith("~/") else pointer)
+    fix = "select an account or System default in Orca, then start again"
+    try:
+        selected = path.read_text().rstrip("\n")
+    except FileNotFoundError:
+        # Orca removes the file when it manages no account.
+        return ""
+    except (OSError, ValueError) as error:
+        raise SlopmeisterError(
+            f"cannot read Orca's Claude account selection {path}; {fix}"
+        ) from error
+    if not selected.isprintable():
+        # A terminal would act on a control sequence in the name, also from an existing folder.
+        raise SlopmeisterError(
+            f"Orca's selected Claude account folder {ascii(selected)} has a non-printable "
+            f"character in its name; {fix}"
+        )
+    if selected and not (os.path.isabs(selected) and os.path.isdir(selected)):
+        raise SlopmeisterError(
+            f"Orca's selected Claude account folder {selected} is not an existing directory; {fix}"
+        )
+    return selected
+
+
+def claude_store(base: Path, *, switcher: bool = True) -> tuple[Path | None, bool]:
+    """The Claude store for a start in `base` now, and whether Orca's account switcher chose it.
+
+    This is the rule of the `claude` function Orca defines in its terminals, which a launch line
+    bypasses. A relative CLAUDE_CONFIG_DIR is relative to the directory the session runs in.
+    """
+    value = os.environ.get("CLAUDE_CONFIG_DIR")
+    if value == "":
+        raise SlopmeisterError(
+            "CLAUDE_CONFIG_DIR is empty, refusing to choose a Claude store; "
+            "unset it or name a store"
+        )
+    pointer = os.environ.get("ORCA_CLAUDE_PROFILE_POINTER")
+    user = os.environ.get("ORCA_CLAUDE_USER_CONFIG_DIR", "")
+    operator_set = (
+        value is not None
+        and value != os.environ.get("ORCA_CLAUDE_INJECTED_CONFIG_DIR")
+        and (not user or value.removesuffix("/") != user.removesuffix("/"))
+    )
+    if switcher and pointer and not operator_set:
+        selected = _orca_selection(pointer)
+        if selected:
+            # Unchanged, because the exact text names the login's macOS Keychain entry.
+            return Path(selected), True
+        value = user if value and user else None
+    return (None if value is None else Path(os.path.realpath(os.path.join(base, value)))), False

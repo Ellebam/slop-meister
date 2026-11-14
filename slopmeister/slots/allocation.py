@@ -62,10 +62,6 @@ def maximum(slots: dict) -> int:
     return slots.get("max", 6)
 
 
-def testers(slots: dict) -> int:
-    return slots.get("testers", 0)
-
-
 def compose_relative(slots: dict) -> str:
     return slots.get("compose", "")
 

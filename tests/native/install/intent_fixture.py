@@ -18,6 +18,7 @@ from tests.support.standin import (
     StandIn,
     capture_server,
     messages_events,
+    require_claude_safety,
     responses_events,
     tool_results,
 )
@@ -168,6 +169,9 @@ def marker_entry(world):
 
 
 def main_results(world):
+    if world.server.case == "claude":
+        output = world.client.evidence.with_suffix(".stdout").read_text()
+        require_claude_safety([json.loads(line) for line in output.splitlines()])
     requests = [body for body in world.server.requests if not is_review(body)]
     result = json.dumps(tool_results(requests[-1]))
     assert "review failure" not in result and "not valid JSON" not in result
@@ -229,6 +233,7 @@ def _host_events(process, world, approved):
             log.flush()
             *lines, pending = (pending + chunk).split(b"\n")
             frames = [json.loads(line) for line in lines]
+            require_claude_safety(frames)
             requests.extend(
                 _answer(process, item, approved)
                 for item in frames

@@ -79,7 +79,15 @@ def _created(response, client, line: dict) -> None:
 
 def _transition(client, key: str, name: str) -> str:
     found = client.get(f"rest/api/2/issue/{key}/transitions").get("transitions")
-    ids = [item.get("id") for item in found or [] if item.get("name") == name]
+    ids = []
+    for item in found or []:
+        target = item.get("to")
+        status = target.get("name") if isinstance(target, dict) else None
+        if any(
+            isinstance(value, str) and value.strip() == name.strip()
+            for value in (item.get("name"), status)
+        ):
+            ids.append(item.get("id"))
     if len(ids) != 1 or not isinstance(ids[0], str):
         raise ValueError("SELECTOR_UNAVAILABLE")
     return ids[0]

@@ -12,7 +12,11 @@ Read that context first and follow its pointers. If unanswered, search the vault
 
 ## The spine
 
-Use one worker, session and branch per ticket, without an orchestrator or agent-spawned stages. Source, tests and readiness edits wait for the single frame-and-plan answer, or verified reuse under `execute-plan` for an unchanged follow-up. Then follow `execute-plan` through the report.
+Use one worker, session and task branch name per ticket, without an orchestrator or agent-spawned stages. A session may span several repositories in its plot, with one worktree per repository. Keep each repository's permissions, Git identity and remote. Name files per repository in `## Scope`. Adding a repository needs the same operator answer as adding an out-of-scope file, then the plot-session add command. A different plot or approval policy remains a scope halt. Source, tests and readiness edits wait for the single frame-and-plan answer, a routine answer under a valid Night mode grant, or verified reuse under `execute-plan` for an unchanged follow-up. Then follow `execute-plan` through the report.
+
+A valid Night mode grant follows `plot-session` and supplies the operator order for its covered routine decisions, testing acceptance, merge, harvest and release. Keep that rule's completion limits and retained consent. The grant waives no scope, security, proof or recovery halt below.
+
+Every spine starts with a tracer bullet, a thin runnable path from the user's entry point to the visible result. This also applies within one repository. `sow` plans that path and `implement` runs its first acceptance command before building later steps. QA, the frozen candidate, the diff check and shipping cover every touched repository together.
 
 After the answer, halt for one of these conditions.
 
@@ -44,10 +48,10 @@ Before a question, gate, handoff, completion claim or unplanned work, invoke `ri
 | 6 | `cross-tool-review` | agent | One external diff check that reviews and runs the guide, findings verified and pruned | Re-plan or repeat review |
 | 7 | `implement` | agent | One fix pass, affected proof, restoration and `ripe` | Substitute suite reruns for behavior proof |
 | 8 | `ship` where allowed | agent | Final branch, guide or explicit N/A, report | Offer merge or claim missing proof complete |
-| 9 | testing | operator | Acceptance of the proof, the diff check's scenario statuses and the guide's operator checks | Continue after fail or blocked |
-| 10 | `harvest` | operator | Groom, ship, merge, task closure or hand-back, report and cleanup | Start before the operator's order |
+| 9 | testing | operator or session under a valid Night mode grant | Acceptance of the proof, the diff check's scenario statuses and the guide's operator checks | Continue after fail or blocked |
+| 10 | `harvest` | operator or session under a valid Night mode grant | Groom, ship, merge, task closure or hand-back, report and cleanup | Start without the operator's order or a valid grant |
 
-Resume unfinished work from Git and producer results. Never repeat completed sessions, prompts or confirmed remote writes. Failed checks follow Test failures. Other stages stop with their cause. Shipping requires both allows, otherwise record N/A and continue to diff review. Acceptance, merge and harvest stay operator-controlled.
+Resume unfinished work from Git and producer results. Never repeat completed sessions, prompts or confirmed remote writes. Failed checks follow Test failures. Other stages stop with their cause. Shipping requires both allows, otherwise record N/A and continue to diff review. Acceptance, merge and harvest need the operator's order or a valid Night mode grant.
 
 Use acceptance commands with expected output. `sow` owns consumer discovery and behavior forks. A lint suppression needs a new operator decision. Keep unanswered questions verbatim. A wrong approach permits shipping unchanged with a follow-up or abandoning and re-ticketing, never re-planning. Severity is independent of review count. Step 5 fixes its own findings unless the approach changes.
 
@@ -55,7 +59,7 @@ The real-world-change rule also covers merge, release, tag, deploy, live probes,
 
 Keep one untracked root `<TASK-ID>-NOTES.md`. Update decisions, scope, plan, proof, producer paths, PR, blockers and next action in place. Only `## Scope`, `## Plan`, `## Validation` and `**Security Lens:**` are frozen search strings. Keep original logs with producers. Share relevant excerpts, never transcripts.
 
-Follow delivered `execute-plan/task-summary.md` before large opening or closing messages in both modes, including the freeform opening plan and closing report. Summarize sanitized reports and link evidence. Invoke Markdown procedures as `/sow` or `$sow`. Only the operator orders `merge` or `harvest`.
+Follow delivered `execute-plan/task-summary.md` before large opening or closing messages in both modes, including the freeform opening plan and closing report. Summarize sanitized reports and link evidence. Invoke Markdown procedures as `/sow` or `$sow`. Merge and harvest require the operator's order or a valid Night mode grant.
 
 ## The break-it pass
 
@@ -109,6 +113,6 @@ Follow `implement`'s Test purpose, reproducer and setup rules. Use `local-qa` to
 
 ## Session end
 
-`harvest` owns the final duties, only on the operator's order. Pauses retain notes and give the handoff.
+`harvest` owns the final duties on the operator's order or under a valid Night mode grant. Pauses retain notes and give the handoff.
 
 {{FILL:tail}}

@@ -12,14 +12,23 @@ from tests.integration.slots.test_public_commands import _task, _world
 from tests.support.repos import git
 
 NAME = "slopmeister-one"
+REPORT = (
+    "Task finished. Slot checks passed. Next action: release this slot. Keep $(false) literal.\n"
+)
 # The stand-in waits for the test, starts a child, runs the cleanup as a real worker would, waits.
-WORKER = """\
+WORKER = (
+    """\
 while [ ! -e "$GO" ]; do /bin/sleep 0.1; done
 /bin/sleep 300 &
 echo $! > "$CHILD"
-/bin/sh -c 'cd "$ROOT" && exec "$CLI" slots down "$REPO" slopmeister "$NAME" --self' > "$OUT" 2>&1
+/bin/sh -c 'cd "$ROOT" && exec "$CLI" workspace-remove --self -- "$REPO/.worktrees/$NAME"' \\
+  <<'HARVEST_REPORT' > "$OUT" 2>&1
+"""
+    + REPORT
+    + """HARVEST_REPORT
 wait
 """
+)
 
 
 def _stand_in(cwd: Path, argv: list[str], env: dict[str, str]) -> subprocess.Popen:
@@ -54,7 +63,7 @@ def _down(env: dict[str, str], repository: Path, flag: str) -> subprocess.Comple
 
 
 def _slot(tmp_path: Path) -> tuple[Path, dict[str, str]]:
-    _, repository, env = _world(tmp_path)
+    _, repository, env = _world(tmp_path, native=True)
     up = _task(env, "slot:up", "--", str(repository), "slopmeister", NAME, input_text="Mode: x\n")
     assert up.returncode == 0, up.stdout + up.stderr
     (tmp_path / "worker.sh").write_text(WORKER)
@@ -79,15 +88,26 @@ def _owned_inventory(root):
 
 
 def _assert_released(tmp_path: Path, repository: Path, env: dict[str, str]) -> None:
-    worktree, log = repository / ".worktrees" / NAME, tmp_path / f"slots/{NAME}.down.log"
+    worktree = repository / ".worktrees" / NAME
+    log = None
     try:
-        _until(lambda: log.is_file() and "released" in log.read_text())
+
+        def finished():
+            nonlocal log
+            logs = list(Path(env["PLOT_SESSION_STATE_DIR"]).glob(f"{NAME}.remove.*.log"))
+            log = logs[0] if logs else None
+            return log is not None and "released" in log.read_text()
+
+        _until(finished)
     except AssertionError as error:
-        files = (log, Path(env["OUT"]))
-        details = "\n".join(path.read_text() for path in files if path.is_file())
-        raise AssertionError(details or "cleanup produced no result log") from error
+        output = Path(env["OUT"])
+        raise AssertionError(
+            f"{error}\ncommand: {output.read_text() if output.exists() else 'not written'}"
+            f"\nresult: {log.read_text() if log and log.exists() else 'not written'}"
+        ) from error
     assert "slopmeister-slot1 released, data worktree" in log.read_text()
     assert str(log) in Path(env["OUT"]).read_text()
+    assert Path(env["OUT"]).read_text().startswith(REPORT) and log.read_text().startswith(REPORT)
     assert _ps(int(Path(env["CHILD"]).read_text()), "stat=") in ("", "Z")
     assert not worktree.exists() and not (tmp_path / "slots/slopmeister-slot1").exists()
     assert str(worktree) not in git(repository, "worktree", "list")
@@ -104,7 +124,14 @@ def test_worker_releases_its_own_slot_and_nobody_else_can(tmp_path):
     try:
         plain = _down(env, repository, "--force")
         assert plain.returncode != 0 and "worker still occupies" in plain.stderr
-        foreign = _down(env, repository, "--self")
+        foreign = subprocess.run(
+            [str(CLI), "workspace-remove", "--self", "--", str(worktree)],
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
         assert foreign.returncode != 0 and f"claude pid {worker.pid}" in foreign.stderr
         assert "--self requires" in foreign.stderr and worktree.is_dir()
         Path(env["GO"]).touch()

@@ -13,7 +13,7 @@ import subprocess
 import sys
 import time
 
-from slopmeister.session import git_environment
+from slopmeister.session import git_environment, repositories
 
 COMMAND_TIMEOUT_SECONDS = 90
 MERGEABILITY_READS = 5
@@ -26,6 +26,7 @@ ALLOWED_GIT_ENV = (
     "GIT_TERMINAL_PROMPT",
 )
 REVIEW_LINE = re.compile("^Independent review: (?:PASS|PENDING|N/A) - .+$", re.M)
+REVIEW_TRACE = re.compile(r"^[^A-Za-z\n]*independent\W+review\b", re.M | re.I)
 GITHUB_REMOTE = re.compile(
     "(?:git@github\\.com:|https://github\\.com/)([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(?:\\.git)?"
 )
@@ -81,10 +82,12 @@ def authorized_state(repo):
     return state
 
 
-def ship_target(repo, state, body):
+def ship_target(repo, state, body, review_in_notes=False):
     if command(repo, "git", "status", "--porcelain", "--untracked-files=all"):
         raise ValueError("commit the explicit task files before shipping")
-    if len(REVIEW_LINE.findall(body)) != 1:
+    if review_in_notes and REVIEW_TRACE.search(body):
+        raise ValueError("keep independent review in the notes and handoff, outside the PR body")
+    if not review_in_notes and len(REVIEW_LINE.findall(body)) != 1:
         raise ValueError("PR body requires exactly one independent-review line")
     remote = command(repo, "git", "remote", "get-url", "--push", "--all", "origin")
     match = GITHUB_REMOTE.fullmatch(remote)
@@ -186,8 +189,8 @@ def mergeability(repo, repository, number):
     return state
 
 
-def ship(repo, title, body):
-    target = ship_target(repo, authorized_state(repo), body)
+def ship(repo, title, body, review_in_notes=False):
+    target = ship_target(repo, authorized_state(repo), body, review_in_notes)
     sha = command(repo, "git", "rev-parse", "HEAD")
     pr, predecessor = open_pr(repo, target)
     check_follow_up(repo, pr, predecessor, sha, body)
@@ -199,14 +202,38 @@ def ship(repo, title, body):
     return dict(pr=pr["url"], sha=sha, pushed=pushed, pr_action=action, mergeable=merge)
 
 
+def entry_workspace() -> Path:
+    path = Path(sys.argv[0]).resolve()
+    if path.parts[-4:] != ("skills", "ship", "scripts", "ship.py"):
+        raise ValueError("use the session's fixed shipping helper")
+    return path.parents[4]
+
+
+def check_session_target(repo: Path) -> None:
+    owner = entry_workspace()
+    if owner == repo:
+        return
+    if not repositories.read(owner).get("repositories"):
+        raise ValueError("shipping helper cannot target a repository outside its session")
+    rows = repositories.members(owner)
+    member = next((row for row in rows if row["worktree"] == str(repo)), None)
+    if member is None or repositories.read(repo).get("session") != str(owner):
+        raise ValueError("shipping helper cannot target a repository outside its session")
+    if (member["commit"], member["shipping"]) != (rows[0]["commit"], rows[0]["shipping"]):
+        raise ValueError("repository permissions differ from this helper's native approval route")
+
+
 def main(argv) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--cwd", type=Path, default=Path.cwd())
     parser.add_argument("--title", required=True)
     parser.add_argument("--body-file", type=Path, required=True)
+    parser.add_argument("--review-in-notes", action="store_true")
     args = parser.parse_args(argv)
     try:
-        result = ship(args.cwd.resolve(), args.title, args.body_file.read_text())
+        repo = args.cwd.resolve()
+        check_session_target(repo)
+        result = ship(repo, args.title, args.body_file.read_text(), args.review_in_notes)
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
         print(f"SPINE BLOCKED: shipping: {error}", file=sys.stderr)
         return 1

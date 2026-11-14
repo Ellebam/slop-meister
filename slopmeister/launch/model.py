@@ -87,6 +87,7 @@ class Launch:
     directory_requested: bool = False
     model_set: bool = False
     extra: list[str] = field(default_factory=list)
+    repositories: list[str] = field(default_factory=list)
     service_actions: bool = False
     git_prompts: bool = False
     approval_required: bool = False
@@ -143,6 +144,11 @@ class Launch:
     @property
     def orca_file(self) -> Path:
         return self.state_dir / f"{self.name}.orca"
+
+    @property
+    def run_file(self) -> Path:
+        """The task inbox Run, kept through closure so the successor reads the same mail."""
+        return self.state_dir / f"{self.name}.run"
 
     @property
     def orca_workspace(self) -> Path:

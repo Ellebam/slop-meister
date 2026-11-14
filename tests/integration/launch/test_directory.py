@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from slopmeister.install.prepare import TERMINAL_INPUT
+from slopmeister.install.prepare import EVERY_SESSION
 from tests.integration.install.installer_helpers import git_result
 from tests.integration.launch.helpers import (
     ROOT,
@@ -65,7 +65,7 @@ def test_directory_session_prepared(tmp_path, tool):
         source = (ROOT / f"dist/{rendered}/plots/example-client.md").read_bytes()
         assert (
             (session / name).read_bytes()
-            == source + f"\n{OUTSIDE}\n{NO_SHIPPING}\n".encode() + TERMINAL_INPUT.encode() + b"\n"
+            == source + f"\n{OUTSIDE}\n{NO_SHIPPING}\n".encode() + EVERY_SESSION.encode() + b"\n"
         )
     assert not any((session / name).exists() for name in ("CLAUDE.local.md", "AGENTS.override.md"))
     access = json.loads((session / ".claude/access-settings.json").read_text())

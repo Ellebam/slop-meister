@@ -6,7 +6,7 @@ import subprocess
 
 import pytest
 
-from slopmeister.install.prepare import TERMINAL_INPUT
+from slopmeister.install.prepare import EVERY_SESSION
 from tests.integration.launch.helpers import ROOT, executable, launch, machine, target
 from tests.support.repos import GIT_ENV, git
 
@@ -38,8 +38,9 @@ def test_prepared_worktree_is_clean_untracked_and_rooted(tmp_path):
     for tool, agreement in (("claude", "CLAUDE.md"), ("codex", "AGENTS.md")):
         render = (ROOT / f"dist/{tool}/plots/example-client.md").read_bytes()
         assert (worktree / agreement).read_bytes() == (
-            render + b"\n" + DENY + TERMINAL_INPUT.encode() + b"\n"
+            render + b"\n" + DENY + EVERY_SESSION.encode() + b"\n"
         )
+        assert b"Write an API read as gh api --method GET" in (worktree / agreement).read_bytes()
     upstream = subprocess.run(
         ["git", "-C", str(repo), "rev-parse", "--abbrev-ref", "example-client-wt1@{upstream}"],
         capture_output=True,

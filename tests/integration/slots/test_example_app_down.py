@@ -22,9 +22,19 @@ else:
 def test_detached_process_starts_only_after_the_command_has_exited(tmp_path):
     """Bug: the cleanup was still the worker's descendant and the shutdown stopped it too."""
     log = tmp_path / "down.log"
-    subprocess.run([sys.executable, "-c", LINGER, str(log)], cwd=ROOT, check=True, timeout=30)
+    log.write_text("a previous result\n")
+    report = "Task finished. Next action: release the slot.\n"
+    result = subprocess.run(
+        [sys.executable, "-c", LINGER, str(log)],
+        cwd=ROOT,
+        input=report,
+        text=True,
+        capture_output=True,
+        check=True,
+        timeout=30,
+    )
     deadline = time.monotonic() + 30
-    while not (log.is_file() and log.read_text().strip()):
+    while not log.read_text().endswith("True True\n"):
         assert time.monotonic() < deadline, "the detached process never wrote"
         time.sleep(0.1)
-    assert log.read_text().split() == ["True", "True"]
+    assert result.stdout == report and log.read_text() == report + "True True\n"

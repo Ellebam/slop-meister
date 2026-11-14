@@ -6,6 +6,8 @@ The [skill](SKILL.md) owns the procedure. This file says what a failure means an
 
 | Result | Meaning | Next |
 |---|---|---|
+| `BROWSER_NO_MONITOR` | Chrome is closed and the Linux desktop has no monitor, for example while no remote desktop client is connected. A Chrome started there opens no window, so `start` refused before it launched one | Run `start --private-display <url>` with the same token file. It runs Chrome in a private display that accepts no network connection and has an owner-only auth file. Close the state as soon as the work is done. Close stops that Chrome, and the display stops by itself after 30 minutes. While it runs, it holds the Chrome profile, so a Chrome the operator starts opens there and stays invisible |
+| `BROWSER_DISPLAY_FAILED` | The private-display Chrome did not start in time | Close the state, which stops it. The start limit applies |
 | `BROWSER_TAB_LOST` | Chrome detached the tab from this session. See [Lost tabs](#lost-tabs) below. | Close the state and report the result, the address and the time. A new `start` would leave another tab behind |
 | `BROWSER_PAGE_NOT_REACHED` | `start` opened a tab, but no page arrived at the end. The reason follows the result | Close the state. Start once more only if the reason names a temporary fault such as a network error |
 | `BROWSER_START_FAILED` | A start step failed. The result carries the page tool's error | Close the state. The start limit applies |

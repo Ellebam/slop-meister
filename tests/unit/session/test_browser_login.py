@@ -188,3 +188,12 @@ def test_a_refused_check_exits_nonzero(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(runtime, "request", lambda *_: refusal)
     code = browser.main(["check", str(tmp_path), "--step", json.dumps(STEP)])
     assert code == 1 and json.loads(capsys.readouterr().out) == refusal
+
+
+@pytest.mark.parametrize("flag", [[], ["--private-display"]])
+def test_start_passes_the_private_display_choice_to_the_runtime(monkeypatch, capsys, flag):
+    # Without it, the route that BROWSER_NO_MONITOR names would refuse again with the same result.
+    seen = []
+    monkeypatch.setattr(runtime, "start", lambda url, private: seen.append((url, private)) or {})
+    assert browser.main(["start", *flag, "https://example.com/"]) == 0
+    assert seen == [("https://example.com/", bool(flag))]

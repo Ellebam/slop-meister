@@ -16,7 +16,7 @@ from slopmeister.review.redact import redact, sanitize_text
 from slopmeister.review.run import owned_reviewer_runner
 from slopmeister.review.scenarios import scenario_ids
 from slopmeister.review.schema import CrossToolReviewError, ReviewErrorCategory
-from slopmeister.slots import allocation
+from slopmeister.session import repositories
 from slopmeister.slots import tester as slot_tester
 from slopmeister.spine import candidate as repository_candidate
 from slopmeister.vault import subject as directory_subject
@@ -37,6 +37,7 @@ class Check:
     run: dict = field(default_factory=dict)
     stopped: bool = True
     cleanup_error: str = ""
+    members: list[tuple[Path, str, str]] = field(default_factory=list)
 
     def runner(self, argv: Sequence[str], **options) -> CommandResult:
         """The owned reviewer runner, remembering whether its process group is known stopped."""
@@ -54,10 +55,13 @@ class Check:
         """The checker may add files to its copy, never change what it tests."""
         if self.checkout is None:
             return
-        if _git(self.checkout, "rev-parse", "HEAD") != self.base or not (
-            repository_candidate.unchanged(self.checkout, self.tree)
-        ):
-            raise CrossToolReviewError("the checker changed the tested files; refusing the result")
+        for checkout, base, tree in [(self.checkout, self.base, self.tree), *self.members]:
+            if _git(checkout, "rev-parse", "HEAD") != base or not (
+                repository_candidate.unchanged(checkout, tree)
+            ):
+                raise CrossToolReviewError(
+                    "the checker changed the tested files; refusing the result"
+                )
 
     def footer(self) -> str:
         lines = [f"**Tested:** {sanitize_text(self.tested)}"]
@@ -119,6 +123,15 @@ def _snapshot(workspace: Path) -> str:
     return _git(workspace, "rev-parse", "--verify", "HEAD^{commit}")
 
 
+def committed_group(workspace: Path):
+    roots = repositories.workspaces(workspace)
+    if len(roots) == 1:
+        return None
+    for root in roots:
+        _snapshot(root)
+    return repository_candidate.freeze(workspace, workspace.name)
+
+
 def _new(args: argparse.Namespace, frozen) -> Check:
     text, scenarios = _guide(args.guide)
     workspace = Path(args.cwd).resolve(strict=True)
@@ -126,7 +139,7 @@ def _new(args: argparse.Namespace, frozen) -> Check:
         subject = directory_subject.load(args.subject_manifest)
         tested = f"directory subject {subject.identity}"
     elif frozen:
-        tested = f"candidate tree {frozen.tree} on base {frozen.base}"
+        tested = f"candidate tree {frozen.identity} on base {frozen.base}"
     else:
         commit = _snapshot(workspace)
         tested = f"commit {commit}"
@@ -146,6 +159,10 @@ def _checkout(check: Check, frozen) -> None:
     if frozen:
         repository_candidate.materialize(frozen, check.checkout)
         check.base, check.tree = frozen.base, frozen.tree
+        check.members = [
+            (check.checkout / repositories.DIRECTORY / item.workspace.name, item.base, item.tree)
+            for item in frozen.members
+        ]
         return
     commit = check.base
     _git(check.root, "clone", "-q", "--local", "--no-hardlinks", "--no-checkout",
@@ -164,6 +181,8 @@ def prepared(args: argparse.Namespace, frozen):
         raise _failure("--slot-target needs a repository checkout")
     check = None
     try:
+        if frozen is None and not args.subject_manifest:
+            frozen = committed_group(Path(args.cwd).resolve())
         check = _new(args, frozen)
         if check.checkout is not None:
             _checkout(check, frozen)
@@ -191,40 +210,15 @@ def _cleanup(check: Check) -> str:
             raise OSError("reviewer stop unverified, checkout and slot kept")
         if checkout is not None and checkout.is_symlink():
             raise OSError("checkout is a symlink, not removed")
-        # A slot whose teardown failed may still have containers mounting the checkout.
+        if error := slot_tester.cleanup(check.root, run):
+            run["slot_cleanup_error"] = error
+            raise OSError(error)
         if error := run.get("slot_cleanup_error"):
             raise OSError(error)
-        images = _stack_images(run)
-        if error := slot_tester.cleanup(check.root, run):
-            raise OSError(error)
         if checkout is not None:
-            _reclaim(checkout, images)
             remove_tree(checkout)
     except FileNotFoundError:
         pass
     except (OSError, SlopmeisterError) as error:
         return redact(str(error))
     return ""
-
-
-def _stack_images(run: dict) -> list[str]:
-    """Read while the containers exist, the exact project label names the run's own stack."""
-    if not run.get("slot", {}).get("compose"):
-        return []
-    label = f"label=com.docker.compose.project={Path(run['slot']['state']).name}"
-    argv = ["docker", "ps", "-a", "--filter", label, "--format", "{{.Image}}"]
-    try:
-        return sorted(set(allocation.run(argv, capture=True, ok=False).stdout.split()))
-    except SlopmeisterError:
-        return []
-
-
-def _reclaim(checkout: Path, images: list[str]) -> None:
-    """A rootful daemon's bind mounts leave files the operator cannot delete. One project image
-    hands them back, and the checkout's removal reports anything left."""
-    mount, owner = f"{checkout}:/checkout", f"{os.getuid()}:{os.getgid()}"
-    argv = ["docker", "run", "--rm", "--network", "none", "--user", "0:0", "-v", mount]
-    argv += ["--entrypoint", "chown"]
-    for image in images:
-        if not allocation.run([*argv, image, "-R", "-h", owner, "/checkout"], ok=False).returncode:
-            return

@@ -7,7 +7,7 @@
 | Where | Layers | Requirements |
 |---|---|---|
 | Hosted Ubuntu CI | `task lint`, `task quality`, `task test:portable`, and the four `host:*` checks | Python 3.14, Task, portable system tools, optional host dependencies, Chromium and Docker, no native login or model inference |
-| Workstation `task check` | The core catalogue plus `tests/native` and `bin/slopmeister workstation drift`, which reports home-install differences as notices in linked task worktrees, fails on them in the main checkout, and fails on changed delivered configuration in a launcher-prepared worktree. `task home:diff` reports allow-rule status | [Workstation setup](../README.md#quick-start), standalone Codex and native process inspection |
+| Workstation `task check` | The core catalogue plus `tests/native` and `bin/slopmeister workstation drift`, which reports home-install differences as notices in linked task worktrees, fails on them in the main checkout, and fails on changed delivered configuration in a launcher-prepared worktree. `task home:diff` reports central global-policy status without live content | [Workstation setup](../README.md#quick-start), standalone Codex and native process inspection |
 | Real-session smoke | `task test:live` | Normal subscription login for both clients, the operator's consent |
 
 The four CI check jobs use GitHub-hosted Ubuntu runners, pinned setup actions and read-only tokens. Core jobs retain failed reports and logs as artifacts. Host tasks keep their output in the Actions log. No client login, shared workstation state or model inference is required. The separate [release job](releases.md) can write only after every check job passes. Run host tasks separately from workstation `task check`.

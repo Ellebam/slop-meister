@@ -3,6 +3,7 @@
 import fcntl
 import os
 from pathlib import Path
+import shlex
 import subprocess
 import sys
 import time
@@ -72,18 +73,87 @@ def world(tmp_path: Path) -> World:
     return World(tmp_path)
 
 
-def test_rebuilt_repository_keeps_the_longer_bundle(world: World) -> None:
+def _notifications(world: World, platform: str) -> Path:
+    """Intercept both commands despite the job's fixed PATH. No host notification is sent."""
+    capture = world.log.with_name("notifications")
+    capture.touch()
+    world.env.update(
+        {
+            "VAULT_NOTIFY": "1",
+            "VAULT_TEST_CAPTURE": str(capture),
+            "BASH_FUNC_uname%%": f"() {{ printf '%s\\n' {shlex.quote(platform)}; }}",
+        }
+    )
+    for command in ("notify-send", "osascript"):
+        world.env[f"BASH_FUNC_{command}%%"] = (
+            f'() {{ printf \'%s\\0\' {command} "$@" >> "$VAULT_TEST_CAPTURE"; }}'
+        )
+    return capture
+
+
+def _assert_notification(capture: Path, platform: str, message: str) -> None:
+    expected = (
+        ["notify-send", "--urgency=critical", "Vault commit", message]
+        if platform == "Linux"
+        else ["osascript", "-e", f'display notification "{message}" with title "Vault commit"']
+    )
+    assert capture.read_bytes().split(b"\0") == [value.encode() for value in expected] + [b""]
+
+
+@pytest.mark.parametrize(("platform", "deleted", "total"), [("Linux", 26, 600), ("Darwin", 6, 100)])
+def test_skipped_snapshot_notifies_and_preserves_history(
+    world: World, platform: str, deleted: int, total: int
+) -> None:
+    """An unexpected deletion must refuse the snapshot and notify in that same run."""
+    paths = [world.vault / f"note-{number}.md" for number in range(total)]
+    for path in paths:
+        path.write_text("# Note\n")
+    world.run()
+    head = world.git("rev-parse", "HEAD")
+    bundle = world.bundle.read_bytes()
+    for path in paths[:deleted]:
+        path.unlink()
+    capture = _notifications(world, platform)
+    log = world.run()
+    assert f"SKIPPED, {deleted} deletions" in log
+    assert world.git("rev-parse", "HEAD") == head
+    assert world.bundle.read_bytes() == bundle
+    assert world.git("diff", "--cached", "--name-only") == ""
+    _assert_notification(
+        capture,
+        platform,
+        f"Skipped, {deleted} deletions staged. Inspect the vault before committing.",
+    )
+    for path in paths[1:deleted]:
+        path.write_text("# Note\n")
+    capture.write_bytes(b"")
+    world.age_bundle()
+    log = world.run()
+    new_head = world.git("rev-parse", "HEAD")
+    assert new_head != head and "committed" in log
+    assert new_head in world.git("bundle", "list-heads", str(world.bundle))
+    assert capture.read_bytes() == b""
+
+
+@pytest.mark.parametrize("platform", ["Linux", "Darwin"])
+def test_rebuilt_repository_keeps_the_longer_bundle(world: World, platform: str) -> None:
     """Escaping bug: a fresh one-commit repository overwrites the only copy of the long history."""
     world.run()
     world.note.write_text("# Start\n\nSecond.\n")
     world.run()
     before, old_head = world.aged_bundle()
     world.fresh_repository()
+    capture = _notifications(world, platform)
     log = world.run()
     assert world.bundle.read_bytes() == before
     assert "bundle kept" in log and "docs/vault-version-control.md" in log
     assert old_head in world.git("bundle", "list-heads", str(world.bundle))
     assert world.git("rev-list", "--count", "HEAD") == "1"
+    _assert_notification(
+        capture,
+        platform,
+        "Bundle kept, the repository does not hold its history. See vault-commit.log.",
+    )
 
 
 @pytest.mark.parametrize("damaged", [b"not a bundle\n", b"# v2 git bundle\n"])
@@ -125,14 +195,40 @@ def _locked_index(world: World) -> None:
         (_locked_index, "add failed", "index.lock"),
     ],
 )
+@pytest.mark.parametrize("platform", ["Linux", "Darwin"])
 def test_failed_git_step_logs_its_cause_and_writes_no_bundle(
-    world: World, breakage, line: str, cause: str
+    world: World, breakage, line: str, cause: str, platform: str
 ) -> None:
     """Escaping bug: a failure is logged with no cause, a failed add as nothing to commit."""
+    capture = _notifications(world, platform)
     breakage(world)
     log = world.run()
     assert line in log and cause in log
     assert "nothing to commit" not in log and not world.bundle.exists()
+    _assert_notification(capture, platform, f"{line.capitalize()}, see vault-commit.log")
+
+
+@pytest.mark.parametrize("platform", ["Linux", "Darwin"])
+def test_bundle_failure_notifies_and_keeps_the_previous_bundle(world: World, platform: str) -> None:
+    """A failed daily replacement must report its failure without losing the old backup."""
+    world.run()
+    before, _ = world.aged_bundle()
+    (world.bundle.parent / ".vault-history.bundle.tmp").mkdir()
+    capture = _notifications(world, platform)
+    log = world.run()
+    assert "bundle failed" in log and ".vault-history.bundle.tmp" in log
+    assert world.bundle.read_bytes() == before
+    _assert_notification(capture, platform, "Bundle failed, see vault-commit.log")
+
+
+@pytest.mark.parametrize("platform", ["Linux", "Darwin"])
+def test_notification_suppression_still_logs_the_failure(world: World, platform: str) -> None:
+    """Scratch callers can disable delivery without hiding the failed snapshot."""
+    capture = _notifications(world, platform)
+    world.env["VAULT_NOTIFY"] = "0"
+    _locked_index(world)
+    assert "add failed" in world.run()
+    assert capture.read_bytes() == b""
 
 
 def test_busy_lock_leaves_a_line_in_the_log(world: World) -> None:

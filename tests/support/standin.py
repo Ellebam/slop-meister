@@ -130,6 +130,16 @@ def tool_results(body):
     return claude + codex
 
 
+def require_claude_safety(frames):
+    """A missing safety service is broken proof, not a native permission refusal."""
+    for frame in frames:
+        unavailable = any(
+            item.get("non_execution_kind") == "automode-unavailable"
+            for item in frame.get("tool_result_meta", [])
+        )
+        require(not unavailable, json.dumps(frame))
+
+
 def messages_events(call, body, turn):
     message = dict(
         id="msg_standin",
@@ -142,6 +152,12 @@ def messages_events(call, body, turn):
         usage=dict(input_tokens=100, output_tokens=1),
     )
     block, delta, stop = messages_block(call, turn)
+    final = dict(stop_reason=stop, stop_sequence=None)
+    if any(item.get("type") == "dangerous_tool_use" for item in body.get("safeguards", [])):
+        verdicts = {block["id"]: dict(type="evaluated", outcome="not_flagged")} if call else {}
+        final["safeguard_results"] = [
+            dict(type="dangerous_tool_use", status=dict(type="available", tool_uses=verdicts))
+        ]
     return [
         dict(type="message_start", message=message),
         dict(type="content_block_start", index=0, content_block=block),
@@ -149,7 +165,7 @@ def messages_events(call, body, turn):
         dict(type="content_block_stop", index=0),
         dict(
             type="message_delta",
-            delta=dict(stop_reason=stop, stop_sequence=None),
+            delta=final,
             usage=dict(output_tokens=4),
         ),
         dict(type="message_stop"),

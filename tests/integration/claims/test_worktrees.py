@@ -1,11 +1,11 @@
 """Worktree and process findings warn and never decide another issue's ownership."""
 
 import json
-import shutil
 import subprocess
 
 import pytest
 
+from slopmeister.removal import remove_tree
 from tests.integration.claims.helpers import writes
 
 pytestmark = pytest.mark.xdist_group("claims")
@@ -60,7 +60,7 @@ def test_claimed_issue_stays_claimed_when_its_process_changes(world, original_en
 
 
 def _lose(workspace, recreated):
-    shutil.rmtree(workspace)
+    remove_tree(workspace)
     if recreated:
         workspace.mkdir()
     if recreated == "repository":

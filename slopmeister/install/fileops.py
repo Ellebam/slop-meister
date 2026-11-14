@@ -19,10 +19,15 @@ def write_file(path: Path, value: tuple[bytes, int]) -> None:
 
 
 def lock_service_actions(repo: Path, enabled: bool) -> None:
-    if not enabled:
-        return
-    for native in (".codex", ".claude"):
-        root = repo / native / "service-actions"
+    roots = (
+        [repo / native / "service-actions" for native in (".codex", ".claude")] if enabled else []
+    )
+    roots.extend(
+        repo / native / "skills/ci-rerun"
+        for native in (".agents", ".claude")
+        if (repo / native / "skills/ci-rerun").is_dir()
+    )
+    for root in roots:
         for path in [root, *root.rglob("*")]:
-            if path.is_dir():
-                path.chmod(0o555)
+            if root.name == "ci-rerun" or path.is_dir():
+                path.chmod(0o555 if path.is_dir() else 0o444)

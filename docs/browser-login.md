@@ -11,6 +11,7 @@ The runtime drives the operator's own Chrome through Microsoft's [Playwright Ext
 | Need | Provided by |
 |---|---|
 | Google Chrome with the Playwright Extension, running in a desktop session | The operator, once per machine, because Chrome requires a person to confirm the install |
+| `systemd-run` and `xvfb-run` for the private display on a Linux desktop with no monitor | The machine's packages |
 | Node | The machine, see [Agent machines](agent-hosts.md) |
 | The pinned page tool | `task browser:install`, once per machine and after a version change |
 | A client certificate, where a service requires one | The operator, `task browser:certificate -- <vault> <document item> <url pattern>` in their own terminal on Linux, or Keychain Access on a Mac. The vault's login file names the arguments |
@@ -30,7 +31,11 @@ The operator can reuse an existing signed-in service through the same shell rout
 
 The extension token gives its holder full control of the operator's Chrome. The extension's own warning says a connection exposes the entire browser, including sessions, cookies and other tabs. Tab groups organize work and are no security limit. The operator chooses the vault and its tier during setup. Resolve the token through that tier's normal approval route. Regenerate it after a suspected leak, update 1Password and restart Chrome.
 
-Playwright passes the token in the address of the extension's connect tab. `start` discards attach output, deletes the automatic snapshots, opens its own tab and closes the connect tab before returning. `run` redacts extension addresses from every output. The session socket lives in the owner-only state. The page tool uses the real home to find Chrome, so `PWTEST_CLI_GLOBAL_CONFIG` replaces its global settings, which could otherwise redirect it to another browser.
+Playwright passes the token in the address of the extension's connect tab. `start` discards attach output, deletes the automatic snapshots, opens its own tab and closes the connect tab before returning. `run` redacts extension addresses from every output and cuts every page and link address at its query or fragment, because these can carry an account name or a sign-in flow value. A snapshot file the page tool saves keeps its link addresses whole. The cut scans each run of address characters once, so a hostile page cannot slow it down. The session socket lives in the owner-only state. The page tool uses the real home to find Chrome, so `PWTEST_CLI_GLOBAL_CONFIG` replaces its global settings, which could otherwise redirect it to another browser.
+
+## Private display
+
+On a Linux desktop with no monitor, a Chrome that the extension route launches opens no window and the attach hangs. `start` detects that case before it launches anything. With `--private-display`, it starts Chrome in a transient systemd user unit that runs `xvfb-run` without TCP listening and with its auth file inside the owner-only state. It waits until Chrome's profile socket answers, so the attach reaches that Chrome. `close` stops the unit even when the connection already failed, and keeps the state when the stop is not confirmed. The display Chrome holds the profile lock while it runs, so the unit has a 30-minute runtime limit for a session that never closes it.
 
 ## Credential and capture boundary
 

@@ -28,7 +28,7 @@ Read these before you judge a text, and again when they change.
 ## Checks
 
 - Traces, where the plot says we do not fully own the project. Look for these kinds.
-  - Workflow. Slopmeister, plot, skill and procedure names used as such, spine steps, notes files and their headings, reviewers and testers, `.worktrees/` and scratch paths.
+  - Workflow. Slopmeister, plot, skill and procedure names used as such, spine steps, notes files and their headings, reviewers and testers, the `Independent review:` line, `.worktrees/` and scratch paths.
   - Agents. Tool and model names, co-author and generated-with lines.
   - Machine. The home directory path, the user name, `/private/tmp`, `/var/folders/`, local ports and container names.
   - Other customers. Anything from another customer.

@@ -65,8 +65,8 @@ def test_supervisor_uses_only_selected_vault_and_never_inherits_desktop_credenti
     assert len(calls) == 4 and not list(tmp_path.glob("*.p12"))
 
 
-@pytest.mark.parametrize("platform,home", [("darwin", "/var/empty"), ("linux", str(Path.home()))])
-def test_op_receives_a_home_that_fits_the_system(tmp_path, monkeypatch, platform, home):
+@pytest.mark.parametrize("platform", ["darwin", "linux"])
+def test_op_receives_a_home_that_fits_the_system(tmp_path, monkeypatch, platform):
     """Bug: op gets the real home on macOS, or a folder Linux does not have."""
     module, data, _ = consumer(tmp_path, monkeypatch)
     monkeypatch.setattr(sys, "platform", platform)
@@ -86,6 +86,7 @@ def test_op_receives_a_home_that_fits_the_system(tmp_path, monkeypatch, platform
 
     monkeypatch.setattr(module, "invoke", invoke)
     module.fetch(["--issue", "TEST-7"])
+    home = "/var/empty" if platform == "darwin" else str(Path.home())
     config = str(Path.home() / ".config")
     assert homes == [(home, config)] * 4
 

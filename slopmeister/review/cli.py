@@ -77,6 +77,8 @@ def _review(args: argparse.Namespace) -> int:
     if args.candidate and (args.mode != "diff" or args.subject_manifest):
         raise CrossToolReviewError("candidate review requires repository diff mode")
     frozen = repository_candidate.load(Path(args.cwd), identity["task"]) if args.candidate else None
+    if frozen is None and args.mode == "diff" and not args.subject_manifest:
+        frozen = check.committed_group(Path(args.cwd).resolve())
     existing = _existing(args, path, frozen)
     if existing is not None:
         return existing
@@ -92,7 +94,7 @@ def _review(args: argparse.Namespace) -> int:
 def _existing(args, path: Path, frozen) -> int | None:
     if path.exists():
         gate, code, bound = read_result(path)
-        if bound != (frozen.tree if frozen else None):
+        if bound != (frozen.identity if frozen else None):
             raise CrossToolReviewError("candidate differs from final review result")
         _feedback(f"replaying final result from {path}")
         print(gate)
@@ -102,7 +104,7 @@ def _existing(args, path: Path, frozen) -> int | None:
     if not args.exempt_reason.strip():
         raise CrossToolReviewError("review exemption needs a nonempty reason")
     gate = "Independent review: N/A - " + sanitize_text(args.exempt_reason)
-    save_result(path, gate, (0, frozen.tree if frozen else None))
+    save_result(path, gate, (0, frozen.identity if frozen else None))
     _feedback(f"result artifact: {path}")
     print(gate)
     return 0
@@ -136,13 +138,22 @@ def _execute(args, direction: ReviewDirection, target_state) -> int:
             )
             options = {"runner": prepared.runner, "check": prepared}
             result = _run(direction, target, (config, started), options)
+            prepared.run["ready"] = status(result) not in BLOCKING
     finally:
-        if prepared is not None:
-            _feedback(f"check run: {prepared.root}")
-            if prepared.cleanup_error:
-                _feedback(f"check cleanup kept {prepared.root}: {prepared.cleanup_error}")
-    bound = frozen.tree if frozen else None
+        _report_check(prepared)
+    bound = frozen.identity if frozen else None
+    if prepared.cleanup_error:
+        raise CrossToolReviewError(
+            f"check cleanup failed; slot was not returned: {prepared.cleanup_error}"
+        )
     return _complete(result, (path, started, bound), "\n\n" + prepared.footer())
+
+
+def _report_check(prepared) -> None:
+    if prepared is not None:
+        _feedback(f"check run: {prepared.root}")
+        if prepared.cleanup_error:
+            _feedback(f"check cleanup kept {prepared.root}: {prepared.cleanup_error}")
 
 
 def _run(direction: ReviewDirection, target: ReviewTarget, context: tuple, options: dict):

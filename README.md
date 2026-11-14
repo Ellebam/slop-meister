@@ -18,8 +18,8 @@ Slopmeister is a **development framework where coding agents earn their merge.**
 
 Every agent produces a little slop. Slopmeister gives the farm some fences. Write your instructions once, open workers in [Orca](https://onorca.dev), and bring the other tool in to review and test their work. You choose the direction and accept the result. Project knowledge stays in a separate Markdown vault.
 
-- **Sow.** Give a worker a task, its own branch and fixed instructions.
-- **Tend.** The worker builds, tests and receives an independent review.
+- **Sow.** Give a worker a task, the same task branch in each repository it needs and fixed instructions.
+- **Tend.** The worker first builds and runs a thin path to the user's result, then widens it, tests it and receives an independent review.
 - **Harvest.** Inspect the evidence, accept testing and explicitly invoke `/harvest` or `$harvest` when the session should end.
 
 ## Quick start
@@ -39,7 +39,7 @@ Use a fork when you intend to publish your own configuration changes. Keep machi
 
 Start `claude` or `codex` in this directory and say **“onboard me”**. If needed, invoke `/workstation` or `$workstation` explicitly.
 
-The [workstation skill](src/skills/workstation/SKILL.md) walks through prerequisites, your vault, selected home configuration, logins, Orca and optional services. It explains each change before any missing approval is requested. You complete logins, device pairing and operating-system consent yourself.
+The [workstation skill](src/skills/workstation/SKILL.md) walks through prerequisites, your vault, selected home configuration, logins, Orca and optional services. It explains each change before any missing approval is requested. You complete logins, device pairing and operating-system consent yourself. Installing the home configuration also switches off the private memory of Claude Code and Codex, because the vault is the only memory.
 
 The checkout already contains the rendered instructions and skill links. A new session can discover onboarding before Slopmeister is installed into your home directory.
 
@@ -78,7 +78,7 @@ sequenceDiagram
 
 The **plot** describes a project's rules, task source and permissions. The **field** in your vault holds its knowledge. Workers **sow** a plan, **groom** documentation, **prune** unnecessary work and check whether the result is **ripe**. **Bloom** explains complex work visually, and optional **Grove** hosting lets you read those pages on your phone.
 
-Plots can declare setup commands and [separate service allocations for independent checks](docs/slots.md#independent-checks). [Peer mailboxes](src/skills/plot-session/communicate.md) carry information without granting authority. [Harvest](src/skills/harvest/SKILL.md) is the operator-ordered ending for every session state. Sessions no longer create automatic retro notes. Existing notes and [explicit legacy-log commands](docs/vault-version-control.md#session-retros-and-legacy-logs) remain available.
+Plots can declare setup commands. An independent check [borrows its worker's slot](docs/slots.md#independent-checks). [Peer mailboxes](src/skills/plot-session/communicate.md) carry information without granting authority. [Harvest](src/skills/harvest/SKILL.md) is the operator-ordered ending for every session state. Sessions no longer create automatic retro notes. Existing notes and [explicit legacy-log commands](docs/vault-version-control.md#session-retros-and-legacy-logs) remain available.
 
 A worker receives a fixed copy of its instructions. Changing the sources affects later sessions. Commit, shipping, publication and stronger actions retain their separate permission boundaries.
 
@@ -108,7 +108,7 @@ The 1Password desktop integration is the second route. You can order it for an e
 
 Workers can [sign into websites through the Chrome extension](docs/browser-login.md) under the existing secret-tier rules. The connection uses the operator’s Chrome and opens its own task tabs. [Item metadata search](docs/1password-access.md#item-metadata) finds 1Password item titles without reading values. Metadata search always requires your explicit instruction and a Home Assistant approval.
 
-[Phone access](docs/phone-access.md) covers the Claude app and Orca Mobile. Tailscale provides private access to the optional Linux services. Pairing, certificates and real approvals need checks on your own devices.
+[Phone access](docs/phone-access.md) covers the Claude app and Orca Mobile. [Context Meter](https://github.com/Ellebam/orca-context-meter), our Orca plugin, shows how full every agent's context is. Install it with `orca plugin install Ellebam/orca-context-meter`. Tailscale provides private access to the optional Linux services. Pairing, certificates and real approvals need checks on your own devices.
 
 ## Updates and limits
 

@@ -14,6 +14,7 @@ from slopmeister.install import snapshot
 from tests.integration.install.helpers import ROOT, profile, unlock_deliveries
 from tests.support.repos import git, scratch_repo
 
+CODEX = Path.home() / ".local/bin/codex"
 SAFE_ENV = ("PATH", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR")
 
 
@@ -55,7 +56,7 @@ def _command(env, *args, ok=True, admission_error=None):
     codex = Path(env["HOME"]) / ".local/bin/codex"
     if not codex.is_symlink():
         codex.parent.mkdir(parents=True, exist_ok=True)
-        codex.symlink_to(Path.home() / ".local/bin/codex")
+        codex.symlink_to(CODEX)
     stdout, stderr = io.StringIO(), io.StringIO()
     with (
         patch.dict(os.environ, env, clear=True),

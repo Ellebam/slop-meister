@@ -28,6 +28,7 @@ from slopmeister.review.schema import (
     ReviewErrorCategory,
     ReviewResult,
 )
+from slopmeister.session import repositories
 from slopmeister.spine import candidate as repository_candidate
 from slopmeister.vault import subject as directory_subject
 
@@ -157,8 +158,13 @@ def _worktree(cwd: str) -> tuple[str, bool]:
     already-untracked folder.
     """
     try:
-        tree = repository_candidate.worktree_tree(Path(cwd))
-        return tree, tree != repository_candidate.head_tree(Path(cwd))
+        values = []
+        dirty = False
+        for workspace in repositories.workspaces(Path(cwd)):
+            tree = repository_candidate.worktree_tree(workspace)
+            values.append((str(workspace), tree))
+            dirty |= tree != repository_candidate.head_tree(workspace)
+        return json.dumps(values), dirty
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         raise CrossToolReviewError(
             f"cannot read the reviewed worktree: {redact(str(error))}"

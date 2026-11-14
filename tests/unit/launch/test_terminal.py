@@ -133,6 +133,21 @@ def test_terminals_maps_handles_to_workspaces(orca):
     assert terminal.terminals() == {"term_1": "/w"}
 
 
+def test_shutdown_calls_pass_the_remaining_budget_to_the_subprocess(monkeypatch):
+    """The closure deadline must bound the real Orca calls, not just the polling sleeps."""
+    budgets = []
+
+    def run(args, **kwargs):
+        budgets.append(kwargs["timeout"])
+        result = {"terminals": [], "truncated": False}
+        return subprocess.CompletedProcess(args, 0, json.dumps({"ok": True, "result": result}), "")
+
+    monkeypatch.setattr(terminal.subprocess, "run", run)
+    terminal.close("term_1", timeout=0.75)
+    assert terminal.terminals(timeout=0.25) == {}
+    assert budgets == [0.75, 0.25]
+
+
 def test_truncated_list_is_unreadable(orca):
     """Bug: a handle beyond the list limit looked closed and closure reported success."""
     orca(**{"terminal list": [{"terminals": [], "truncated": True}]})

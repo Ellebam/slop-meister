@@ -63,7 +63,7 @@ task slot:up -- '<remote-repository>' <plot> <name> \
 
 Replace the examples with the operator's authorized repository, plot, issue and session name. The `slot:up` form applies only to a plot with declared slot resources. Native tool arguments remain after `--`. File paths, including a note or abandonment handoff, refer to agent-host. The transport passes stdin unchanged and checks SSH, the remote checkout and the existing Orca runtime before invoking the launcher or allocating a slot. It does not open Orca during that preflight.
 
-Success reports the remote host and the normal `plot-session: delivered` evidence. SSH disconnection does not move the worker. Its terminal belongs to agent-host's Orca and remains available there and on the phone.
+Success reports the remote host and the normal `plot-session: delivered` evidence. A remote Claude launch runs on the account selected in the remote host's [Orca](claude-accounts.md), not on the Mac's selection. SSH disconnection does not move the worker. Its terminal belongs to agent-host's Orca and remains available there and on the phone.
 
 ## Status and operator input
 
@@ -87,7 +87,7 @@ orca=/Applications/Orca.app/Contents/Resources/bin/orca
 
 Project only those status fields. Never read or save previews. A failed or truncated read, omitted host or missing coverage is unknown, never proof of no workers. A `done` state means only that the turn ended. Read the last message for an operator question and the screen when a state is stale.
 
-Only an explicit operator request in the dispatcher's conversation permits a send:
+[Automatic context recovery](../src/skills/plot-session/dispatcher.md#automatic-context-redispatch) uses the launcher and grants no terminal input. Only an explicit operator request in the dispatcher's conversation permits a send:
 
 ```sh
 "$orca" terminal send --environment agent-host --terminal term_123 \

@@ -81,6 +81,7 @@ def _events(session: Session) -> list[tuple[float, int, str, object]]:
     events += [(turn.end, 0, "turn", turn.report) for turn in session.turns]
     events += [(when, 1, "skill", name) for when, name in session.skills]
     events += [(command.start, 1, "command", command.kind) for command in session.commands]
+    events += [(when, 1, "command", kind) for when, kind in session.command_starts]
     events += [(command.end, 1, "done", command.kind) for command in session.commands]
     events += [(when, 1, "edit", kind) for when, kind in session.edits]
     events += [(user.when, 2, "user", user.kind) for user in session.users]

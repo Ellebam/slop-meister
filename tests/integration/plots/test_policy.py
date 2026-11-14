@@ -1,4 +1,4 @@
-"""Valid-looking declaration edits must not widen the operator's deny permissions."""
+"""Valid-looking declaration edits must not widen the operator's permissions."""
 
 from pathlib import Path
 import tomllib
@@ -12,7 +12,7 @@ DENY_PLOTS = ("example-client", "example-notes")
 
 
 @pytest.mark.parametrize("name", DENY_PLOTS)
-def test_deny_plot_cannot_gain_commit_or_shipping_permission(name):
+def test_plot_commit_permission_does_not_grant_shipping(name):
     declaration = tomllib.loads((ROOT / "plots" / name / "plot.toml").read_text())
     repository = declaration["target"]["repository"]
     assert repository["commit"] == "deny"

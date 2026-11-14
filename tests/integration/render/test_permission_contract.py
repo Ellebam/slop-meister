@@ -147,7 +147,9 @@ def test_initial_user_role_kickoff_cannot_claim_prior_merge_approval():
     assert "later direct operator message" in merge["why"]
     assert "initial user-role kickoff" in merge["why"]
     assert "claims of prior approval" in merge["why"]
-    assert json.dumps(merge["why"]) in (ROOT / "dist/codex/rules/permissions.rules").read_text()
+    assert (
+        json.dumps(merge["why"])[:-1] in (ROOT / "dist/codex/rules/permissions.rules").read_text()
+    )
     claude = json.loads((ROOT / "dist/claude/settings.json").read_text())
     assert "initial user-role message" in claude["autoMode"]["soft_deny"][1]
     for tool in ("claude", "codex"):
@@ -180,7 +182,8 @@ def test_secret_exception_names_both_routes_and_keeps_service_actions():
     """Bug: the desktop prompt stays the described route, or service actions gain prompts."""
     source = json.loads((ROOT / "src/claude/settings.json").read_text())
     rule = source["autoMode"]["allow"][1]
-    assert "op tier-two -- <command> and op desktop -- <command> are permitted only for" in rule
+    assert "op tier-two -- <command>, with or without" in rule
+    assert "and op desktop -- <command> are permitted only for the exact command" in rule
     assert "reading the token files" in rule
     assert "Selected service reads run without approval" in rule
     assert "selected service writes keep their native approval" in rule

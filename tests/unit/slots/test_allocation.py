@@ -3,12 +3,15 @@ import subprocess
 
 import pytest
 
+from slopmeister import repositories
 from slopmeister.errors import SlopmeisterError
 from slopmeister.slots import allocation, down, status, up
 from slopmeister.threads import occupants
 
 
 def slot_identity(tmp_path, monkeypatch, worktree_slot=1):
+    monkeypatch.setattr(repositories, "check_companions", lambda *_: [])
+    monkeypatch.setattr(repositories, "remove_companions", lambda *_: None)
     text = f"SLOT={worktree_slot}\nSLOT_TARGET=scratch\nSLOT_NAME=scratch-one\n"
     worktree = tmp_path / "repo/.worktrees/scratch-one"
     state = tmp_path / "slots/scratch-slot1"

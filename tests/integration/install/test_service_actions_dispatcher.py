@@ -5,7 +5,12 @@ import json
 import pytest
 
 from slopmeister.install.service_actions import ActionContext, action_payload
-from tests.integration.install.helpers import fixture, profile, unlock_deliveries
+from tests.integration.install.helpers import (
+    fixture,
+    profile,
+    rule_decisions,
+    unlock_deliveries,
+)
 from tests.integration.install.test_install_service_actions import _command
 
 
@@ -99,6 +104,12 @@ def test_fresh_dispatcher_delivers_only_declared_jira_reads_and_verifies_snapsho
     try:
         _command(env, "--directory", "slopmeister", str(workspace), "--dispatcher-jira")
         _command(env, "--check", "slopmeister", str(workspace))
+        # Bug: the standing dispatcher's ordered terminal send waits for a reviewer.
+        assert rule_decisions(workspace, "/usr/bin/orca-ide terminal send") == ("allow", "allow")
+        access = json.loads((workspace / ".claude/access-settings.json").read_text())["permissions"]
+        launches = [rule for rule in access["allow"] if rule.endswith(" plot-session -- *)")]
+        forced = [rule for rule in access["ask"] if rule.endswith("workspace-remove --f*)")]
+        assert len(launches) == len(forced) == 1
         for native in (".claude", ".codex"):
             root = workspace / native / "service-actions"
             assert (root / "one/jira-read").stat().st_mode & 0o777 == 0o555

@@ -17,7 +17,7 @@ jira-write        --permissions PROJECT
                   --create PROJECT --fields JSON_OBJECT_OR_ARRAY_OF_1_TO_3
                   --update KEYS --fields JSON_OBJECT --if-updated UPDATED,...
                   --comment KEYS --body TEXT --if-updated UPDATED,...
-                  --transition KEYS --to TRANSITION_NAME --if-updated UPDATED,...
+                  --transition KEYS --to TRANSITION_OR_STATUS_NAME --if-updated UPDATED,...
                   --link KEY --type LINK_TYPE --to-issue KEY --if-updated UPDATED,UPDATED
 confluence-write  --permissions PAGE_ID
                   --create-page PARENT_ID --pages '[{"title": T, "body": STORAGE}, ...]'
@@ -27,7 +27,7 @@ confluence-write  --permissions PAGE_ID
 
 Each command names at most three tickets or pages, and one payload applies to all of them. More work means more commands, each approved on its own. The preview is a read of the targets plus the exact write command. Every form on an existing target carries the value each target had in that read, Jira's `updated` or the Confluence version number, one per target in target order. Before any write, the consumer reads every target again and refuses the whole command with `CONTENT_CHANGED` if one differs. Jira values compare at whole seconds, because the search behind `jira-read --issues` returns `updated` without milliseconds, so one batch read supplies every guard. A change made in the same second as the change the read saw is not detected. A Confluence update sends the next version number, so the server itself refuses a page that changed in between. Nothing retries.
 
-`--create` takes the form project over `--fields.project`. `issuetype` and fields such as `parent` create sub-tasks or epics. `--transition` requires one available name match or returns `SELECTOR_UNAVAILABLE`. `--link A --type Blocks --to-issue B` means A blocks B. `--update-page` preserves the title. Text and JSON accept 32768 characters with newline and tab, including replacements regardless of existing page size. Hand longer replacements to the operator without browser fallback. A body starting with `--` is refused. Deletion is unsupported.
+`--create` takes the form project over `--fields.project`. `issuetype` and fields such as `parent` create sub-tasks or epics. `--transition --to` matches an available transition by its exact name or the exact name of its target status. Leading and trailing spaces are ignored on both sides. Case still matters. Exactly one transition must match across both kinds of name, otherwise the command returns `SELECTOR_UNAVAILABLE` before any write. A transition matching both names counts once. Preview each ticket with `jira-read --issue` to see `issue.transitions`, including each move's `id`, `name` and target status in `to.name`. `--link A --type Blocks --to-issue B` means A blocks B. `--update-page` preserves the title. Text and JSON accept 32768 characters with newline and tab, including replacements regardless of existing page size. Hand longer replacements to the operator without browser fallback. A body starting with `--` is refused. Deletion is unsupported.
 
 `--permissions` writes nothing. Jira returns `mypermissions` for the project as a map of permission to true or false. Confluence Data Center reports an account's operations per page, not per space, so its probe returns the page's operations such as `update:page`.
 

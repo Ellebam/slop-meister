@@ -28,6 +28,8 @@ Reply with the verified HTTPS link and one sentence saying what the page explain
 
 Use the same generation, publication and isolated verification steps above. Keep decision numbers stable while awaiting the answer. For a manager, retain each decision's owning worker and the mapping from page options to that worker's proposal.
 
+Keep one verified page link for each decision round. The operator's next answer to that page, including a partial answer, or explicit withdrawal ends the round. After delivering the link, do not republish or replace the page during that round. Hold new or changed decisions for the next round and carry unanswered decisions forward with their numbers and worker mappings. Never apply an answer to options the operator has not seen.
+
 For each decision, give a few sentences of context. Offer three real options when three exist. Do not invent an option to fill a slot. Make A the recommendation. Every option states its pros, cons and what happens next. Also offer D, an own answer with a text field, and a separate optional note that can accompany any option. Leave choices unanswered until the operator selects them. Do not submit or publish anything from the page.
 
 Show the exact text of anything an option would publish beside that option, with its action and target. Preserve that text for the existing consent and file-based send procedure. A plan choice is still only a plan choice. If an own answer or note changes publication text, show the final text in a new chat consent block before sending. Never treat the selection as approval of unseen text or a different action.

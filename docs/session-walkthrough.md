@@ -65,7 +65,9 @@ The worker keeps its decisions and evidence in an untracked `<TASK-ID>-NOTES.md`
 
 ## The ten steps
 
-One ticket, one branch, one worker, one conversation. The worker runs every step itself and stops wherever you decide.
+One ticket, one worker, one conversation, with the same task branch name in every needed repository. The worker runs every step itself and stops wherever you decide.
+
+Every plan traces the path from the user's entry point to the visible result, including within a single repository. Step 1 carries the smallest deliverable through that real path and runs its acceptance command before later work. A harness alone does not prove the deliverable. If the user result exists only in continuous integration (CI), the pull request CI run is the tracer. A failed first slice is fixed or brought back for a scope decision. If an external prerequisite blocks its acceptance, the worker records the blocker and asks once. Independent approved steps can continue while dependent steps wait. The blocked proof remains owed. Later steps widen the working path. The same session can add a repository after your scope answer through the [launcher](launcher.md#repositories), keeping its plot and approval rules. QA and the one diff check test the repositories together. Shipping records each repository's result and links its PRs.
 
 ```mermaid
 flowchart LR
@@ -106,7 +108,7 @@ Permanent tests follow the shared [test-purpose rule](../src/skills/implement/SK
 
 Plots that require [groom](../src/skills/groom/SKILL.md) use it for affected repository docs and vault notes. Plans name the documents and actions. Maintenance finishes before proof, and both reviews check it. Freeform records the list in session notes.
 
-**Harvest is yours.** Green CI or an open PR cannot authorize it. Order harvest in any words to select the ending from saved state. Finished spine work retains testing acceptance and merge/integration gates. Unfinished work keeps its worktree, slot, notes and claim. Unsaved or unpushed work keeps the workspace. Harvest finishes authorized routine document maintenance through groom, then reports once before cleanup.
+**Harvest is yours.** Green CI or an open PR cannot authorize it. Order harvest in any words to select the ending from saved state. Finished spine work retains testing acceptance and merge/integration gates. Unfinished work keeps its worktree, slot, notes and claim. Unsaved or unpushed work keeps the workspace. Harvest finishes authorized routine document maintenance through groom, then reports once before cleanup. A worktree harvest carries its report inside the shutdown call and saves it in the result log, which counts as delivery. The manager, dispatcher or proof owner that sent harvest reads the full report there and passes it on. An unfinished harvest then stops only its calling session, see [stop an unfinished session](workspace-removal.md#stop-an-unfinished-session). A question awaiting your answer remains a pause and closes nothing.
 
 ## Pause and resume
 

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from slopmeister.errors import UsageError
 
-USAGE = "usage: slopmeister slots down <repo> <target> <name> [--force] [--slot <n>] [--self]"
+USAGE = "usage: slopmeister slots down <repo> <target> <name> [--force] [--slot <n>]"
 
 
 @dataclass(frozen=True)
@@ -25,10 +25,10 @@ def parse(argv: Sequence[str]) -> Request:
     repo, target, name, *tail = args
     flags, wanted = set(), ""
     while tail:
-        if tail[0] in ("--force", "--self"):
+        if tail[0] == "--force":
             flags.add(tail.pop(0))
         elif tail[0] == "--slot" and len(tail) >= 2:
             wanted, tail = tail[1], tail[2:]
         else:
             raise UsageError(USAGE)
-    return Request(repo, target, name, "--force" in flags, wanted, "--self" in flags)
+    return Request(repo, target, name, "--force" in flags, wanted)

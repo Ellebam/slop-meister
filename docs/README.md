@@ -15,6 +15,8 @@ New here? Start with the [project overview](../README.md), then follow [one sess
 | Set up a workstation, diagnose a failed launch or tool, or update the tools | Tell an agent in the checkout, the [workstation skill](../src/skills/workstation/SKILL.md) runs it, see the [Quick start](../README.md#quick-start) |
 | Command a configured remote host from the Mac or phone | [Remote dispatch](remote-dispatch.md) |
 | Launch or resume a worker | [The dispatcher's first run](session-walkthrough.md#prepare-and-dispatch), then [the launcher procedure](../src/skills/plot-session/SKILL.md) |
+| Stop, replace or recover a worker after a failed launch | [Launcher recovery](launcher-recovery.md) |
+| Install selected home entries, the central policy and the memory switch-off | [Home install](home-install.md) |
 | Set up Orca, its phone pairing and what agents may drive in it | [Orca onboarding](orca.md) |
 | End or hand back a session | [Harvest](../src/skills/harvest/SKILL.md) |
 | Remove a retired workspace or recover failed removal | [Workspace removal](workspace-removal.md) |
@@ -26,7 +28,9 @@ New here? Start with the [project overview](../README.md), then follow [one sess
 | Add a project | [Onboard a project](context-layer.md#onboard-a-project) |
 | Prepare project secrets | [1Password integration](1password.md) |
 | Run parallel stacks and independent checks | [Slots](slots.md) |
+| Release a slot or recover a failed release | [Slot release](slot-release.md) |
 | Start a dispatcher from a phone, or recover one after a restart | [Phone access on macOS and Ubuntu](phone-access.md) |
+| Run sessions on a second Claude account, or switch and sign in from the phone | [Claude accounts](claude-accounts.md) |
 | Set up another agent machine, or learn what every agent machine must do | [Agent machines](agent-hosts.md) |
 | Run OpenCode as an interactive worker | [OpenCode](opencode.md) |
 | Keep the Go plugin available to Codex from a local marketplace, optional | [Codex plugins](codex-plugins.md) |
@@ -52,6 +56,7 @@ New here? Start with the [project overview](../README.md), then follow [one sess
 | How does a plot find project knowledge? | [Context and ownership](context-layer.md) |
 | How do sources become tool-specific files? | [Plot composition](plot-shape.md) |
 | What does a launched session receive, and what may it run? | [The launcher](launcher.md) |
+| Where are command decisions defined and enforced? | [Permission contract](permissions.md) |
 | How are ports and resources kept apart? | [Slots](slots.md) |
 | Who owns each part of an agent machine? | [Agent machines](agent-hosts.md) |
 | How much context does startup use? | [Startup measurement method](startup-context.md) |

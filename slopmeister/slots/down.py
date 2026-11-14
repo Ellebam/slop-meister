@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import replace
 import os
 from pathlib import Path
+import select
 import shutil
 import sys
 import time
 
-from slopmeister.errors import SlopmeisterError
+from slopmeister.errors import SlopmeisterError, UsageError
 from slopmeister.launch import closure
 from slopmeister.launch.model import Launch, Stop
 from slopmeister.removal import nested
@@ -18,6 +18,9 @@ from slopmeister.slots import allocation, claimed, leftover, setup, tester
 from slopmeister.slots.down_arguments import Request as Request
 from slopmeister.slots.down_arguments import parse as parse
 from slopmeister.threads import occupants
+
+REPORT_BYTES = 64 * 1024
+REPORT_TIMEOUT = 5
 
 
 def _occupied(worktree: Path, project: str) -> None:
@@ -42,7 +45,7 @@ def _parents() -> dict[int, int]:
     return {int(pid): int(parent) for pid, parent in map(str.split, rows)}
 
 
-def _calling_worker(worktree: Path, project: str) -> None:
+def _calling_worker(worktree: Path, project: str) -> occupants.Process:
     """Only the session that runs the command may have its slot released beneath it."""
     try:
         workers = {process.pid: process for process in occupants.census(str(worktree))}
@@ -62,6 +65,7 @@ def _calling_worker(worktree: Path, project: str) -> None:
             f"--self requires the calling worker to be the only occupant of {worktree}, "
             f"refusing to release {project}:\n" + "\n".join(listed or ["no occupant"])
         )
+    return inside[0]
 
 
 def _owned_state(request: Request) -> allocation.Live:
@@ -100,6 +104,8 @@ def _refuse_duplicate(worktree: Path, owned: allocation.Live) -> None:
 
 
 def _worktree_slot(request: Request, worktree: Path) -> int:
+    from slopmeister.repositories import check_companions
+
     path = worktree / allocation.ALLOCATION
     if not path.is_file():
         raise SlopmeisterError(f"{worktree} carries no {allocation.ALLOCATION}")
@@ -125,9 +131,11 @@ def _worktree_slot(request: Request, worktree: Path) -> int:
     ).stdout.strip()
     if dirty and not request.force:
         raise SlopmeisterError(f"uncommitted work in {worktree}; pass --force to confirm deletion")
-    nested(worktree)
+    children = check_companions(worktree, request.force)
+    companions = frozenset(Path(row["worktree"]) for row in children)
+    nested(worktree, companions)
     if not request.force:
-        setup.check_ignored_output(worktree, owned)
+        setup.check_ignored_output(worktree, owned, companions)
     return owned.slot
 
 
@@ -154,58 +162,108 @@ def _context(request: Request) -> tuple[dict, Path, Path, int]:
     return slots, root, worktree, number
 
 
+def _report() -> str:
+    if sys.stdin.isatty():
+        raise UsageError("--self requires a nonempty harvest report on standard input")
+    descriptor, data = sys.stdin.fileno(), bytearray()
+    deadline = time.monotonic() + REPORT_TIMEOUT
+    while True:
+        ready, _, _ = select.select([descriptor], [], [], max(0, deadline - time.monotonic()))
+        if not ready:
+            raise UsageError("harvest report input did not close before the timeout")
+        chunk = os.read(descriptor, min(4096, REPORT_BYTES + 1 - len(data)))
+        if not chunk:
+            break
+        data.extend(chunk)
+        if len(data) > REPORT_BYTES:
+            raise UsageError(f"harvest report exceeds {REPORT_BYTES} bytes")
+    report = data.decode("utf-8")
+    if not report.strip():
+        raise UsageError("--self requires a nonempty harvest report on standard input")
+    if any((ord(c) < 32 or 127 <= ord(c) < 160) and c not in "\n\t" for c in report):
+        raise UsageError("harvest report contains terminal control characters")
+    return report if report.endswith("\n") else report + "\n"
+
+
 def _detach(log: Path) -> bool:
-    """Fork the process that outlives the worker. True in it, once the command has returned."""
-    sys.stdout.flush()
-    command = os.getpid()
-    if os.fork():
-        return False
-    os.setsid()
-    output = os.open(log, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    os.dup2(os.open(os.devnull, os.O_RDONLY), 0)
-    os.dup2(output, 1)
-    os.dup2(output, 2)
+    """Deliver the report before forking the process that outlives the worker."""
+    try:
+        report = _report()
+        descriptor = os.open(log, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+            os.fchmod(output.fileno(), 0o600)
+            output.write(report)
+            output.flush()
+            print(report, end="", flush=True)
+            command = os.getpid()
+            if os.fork():
+                return False
+            os.setsid()
+            os.dup2(output.fileno(), 1)
+            os.dup2(output.fileno(), 2)
+    except (OSError, ValueError) as error:
+        raise SlopmeisterError(
+            f"harvest report delivery failed, worker not stopped: {error}"
+        ) from error
+    with open(os.devnull, "rb") as source:
+        os.dup2(source.fileno(), 0)
     # Shutdown stops the worker's descendants, so this process must leave that tree first.
     while os.getppid() == command:
         time.sleep(0.05)
     return True
 
 
-def _stop_worker(request: Request, root: Path, worktree: Path) -> None:
-    launch = Launch(request.target, request.name, str(root), repo=root, wt=worktree)
+def _stop_worker(
+    request: Request, root: Path | None, worktree: Path, caller: occupants.Process
+) -> None:
+    # No repository argument marks a directory session, whose tab the launcher saved elsewhere.
+    launch = Launch(request.target, request.name, str(root or ""), repo=root, wt=worktree)
     launch.claude_wt = Path(os.path.realpath(worktree))
     try:
-        closure.close(launch)
+        closure.close(launch, caller=caller)
     except Stop as stop:
         raise SlopmeisterError(f"worker not closed, nothing released: {stop.text}") from stop
 
 
 def main(argv: Sequence[str]) -> int:
-    request = parse(argv)
-    if data := tester.find(request.target, request.name, request.wanted):
-        if request.own or request.force:
-            raise SlopmeisterError("tester recovery takes neither --self nor --force")
-        tester.recover(data, allocation.main_root(request.repo), request.wanted)
-        return 0
-    if not request.own:
-        return _release(request)
-    _, root, worktree, _ = _context(request)
-    log = allocation.state_path() / f"{request.name}.down.log"
-    if not _detach(log):
-        print(f"slot: releasing {request.name}, this worker stops now, result in {log}")
-        return 0
-    _stop_worker(request, root, worktree)
-    return _release(replace(request, own=False))
+    return _release(parse(argv))
+
+
+def _stop_applications(worktree: Path, data: Path) -> None:
+    registry = data / "applications"
+    if registry.is_symlink():
+        raise SlopmeisterError("application registry is a symlink; slot retained")
+    if registry.exists() and not registry.is_dir():
+        raise SlopmeisterError("application registry is not a directory; slot retained")
+    if not registry.exists() or not any(registry.iterdir()):
+        return
+    item = allocation.read(worktree / allocation.ALLOCATION)
+    claim, slots = tester._worker({"cwd": str(worktree)}, item.target)
+    evidence = data / "evidence"
+    if evidence.is_symlink():
+        raise SlopmeisterError("slot stop evidence is a symlink; slot retained")
+    evidence.mkdir(mode=0o700, exist_ok=True)
+    setup.phase(claim, slots, "stop", data)
+    if any(registry.iterdir()):
+        raise SlopmeisterError("registered applications remain after stop; slot retained")
 
 
 def _release(request: Request) -> int:
+    from slopmeister.repositories import remove_companions
+
+    number = request.wanted or str(_owned_state(request).slot)
+    if data := tester.find(request.target, request.name, number):
+        tester.recover(data, allocation.main_root(request.repo), request.wanted)
+        return 0
     slots, root, worktree, number = _context(request)
     project = f"{request.target}-slot{number}"
     data = allocation.state_path() / project
+    _stop_applications(worktree, data)
     relative = allocation.compose_relative(slots)
     released = allocation.remove_project(project) if relative else []
     present = worktree.is_dir()
     if present:
+        remove_companions(worktree)
         leftover.remove(worktree, leftover.command(worktree, request.target, number))
     # The state outlives a failed removal, a rerun needs it to prove the slot's identity.
     if data.is_dir():

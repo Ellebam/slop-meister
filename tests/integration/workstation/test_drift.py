@@ -2,7 +2,9 @@
 
 import json
 
-from slopmeister.workstation import drift, manifest
+import pytest
+
+from slopmeister.workstation import drift, manifest, rules
 from tests.integration.install.installer_helpers import prepared, state
 from tests.integration.workstation.test_install import ORCA_DATA, machine, workstation
 from tests.support.repos import git, scratch_repo
@@ -67,6 +69,51 @@ def test_linked_home_drift_is_a_notice_but_doctor_stays_strict(tmp_path, monkeyp
     monkeypatch.setattr(drift, "ROOT", checkout)
     assert drift.drift(home) == 1
     assert doctor._home_install(home, doctor.host.home_setup(home)[2]).status == "problem"
+
+
+@pytest.mark.parametrize("name", rules.NAMES)
+@pytest.mark.parametrize("breakage", ["missing", "rule_absent", "decision_differs"])
+def test_template_rules_fail_in_main_and_notice_in_linked(
+    tmp_path, monkeypatch, capsys, name, breakage
+):
+    home = _installed_home(tmp_path, monkeypatch)
+    checkout = scratch_repo(tmp_path / "checkout")
+    workspace = tmp_path / "workspace"
+    git(checkout, "worktree", "add", "-q", "-b", "task", str(workspace))
+    path = home / name
+    if breakage == "missing":
+        path.unlink()
+    elif name == rules.CLAUDE_LIVE:
+        data = json.loads(path.read_text())
+        denied = data["permissions"]["deny"].pop()
+        data["permissions"]["allow"] = (
+            [denied, "Bash(private-approval *)"] if breakage == "decision_differs" else []
+        )
+        path.write_text(json.dumps(data))
+    else:
+        lines = path.read_text().splitlines(keepends=True)
+        index = next(i for i, line in enumerate(lines) if 'decision="forbidden"' in line)
+        lines[index] = (
+            "" if breakage == "rule_absent" else lines[index].replace('"forbidden"', '"allow"')
+        )
+        path.write_text("".join(lines))
+    monkeypatch.setattr(drift, "ROOT", workspace)
+    assert drift.drift(home) == 0
+    linked = capsys.readouterr().out
+    assert "Notice:" in linked and f"~/{name}" in linked
+    monkeypatch.setattr(drift, "ROOT", checkout)
+    assert drift.drift(home) == 1
+    main = capsys.readouterr().out
+    assert f"~/{name}" in main and "private-approval" not in linked + main
+
+
+def test_saved_codex_approval_does_not_drift_central_policy(tmp_path, monkeypatch, capsys):
+    home = _installed_home(tmp_path, monkeypatch)
+    monkeypatch.setattr(drift, "ROOT", scratch_repo(tmp_path / "checkout"))
+    saved = home / ".codex/rules/default.rules"
+    saved.write_text('prefix_rule(pattern=["private-approval"], decision="allow")\n')
+    assert drift.drift(home) == 0
+    assert "private-approval" not in capsys.readouterr().out
 
 
 def test_orca_ui_edit_of_managed_key_fails_drift_without_printing_app_state(

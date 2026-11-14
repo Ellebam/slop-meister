@@ -108,11 +108,45 @@ def test_unmarked_session_is_the_real_op(monkeypatch, session):
     secret_run.main(["read", "op://A/B/C"])
     secret_run.main(["run", "--no-masking", "--", "true"])
     secret_run.main(["item", "share", "X"])
+    secret_run.main(["run", "--", "git", "commit", "-a"])
     assert [argv[1:] for argv, _ in session] == [
         ["read", "op://A/B/C"],
         ["run", "--no-masking", "--", "true"],
         ["item", "share", "X"],
+        ["run", "--", "git", "commit", "-a"],
     ]
+
+
+@pytest.mark.parametrize(
+    ("route", "line"),
+    [
+        (None, ["run", "--"]),
+        (None, ["tier-two", "--"]),
+        (None, ["desktop", "--"]),
+        (secret_run.DESKTOP, ["run", "--env-file", "--", "--"]),
+    ],
+)
+def test_denied_inner_command_is_refused_in_a_codex_session(
+    monkeypatch, session, capsys, route, line
+):
+    """Bug: the allowed op prefix starts a command the session's deny list refuses."""
+    if route:
+        monkeypatch.setenv(secret_run.ROUTE, route)
+    assert secret_run.main([*line, "git", "commit", "-a", "-m", "x"]) == 1
+    name = line[0]
+    assert capsys.readouterr().err == (
+        f"op {name}: git commit -a is denied in this session, also inside op {name}\n"
+    )
+    assert session == []
+
+
+def test_desktop_route_ignores_a_separator_inside_the_command(monkeypatch, session):
+    """Bug: the desktop route refuses an allowed command whose own arguments follow a `--`."""
+    monkeypatch.setenv(secret_run.ROUTE, secret_run.DESKTOP)
+    line = ["run", "--", "git", "log", "--", "git", "commit", "-a"]
+    assert secret_run.main(line) is None
+    ((argv, _),) = session
+    assert argv[-5:] == line[-5:]
 
 
 def test_missing_real_op_is_named(tmp_path, monkeypatch, capsys):

@@ -15,7 +15,8 @@ For fresh workers, use [Choose the worker command](../src/skills/plot-session/di
 - [File access and trust](#file-access-and-trust)
 - [Git in a prepared worktree](#git-in-a-prepared-worktree)
 - [Directory sessions](#directory-sessions)
-- [Recovery](#recovery)
+- [Recovery](launcher-recovery.md)
+- [Repositories](#repositories)
 - [The permission contract](#the-permission-contract)
 - [Declared shipping](#declared-shipping)
 
@@ -36,11 +37,13 @@ Root `*-NOTES.md` task notes are hidden from Git by an exclusion rule every new 
 
 ## How each tool starts
 
-[Native worker startup](launcher-native.md) owns the client arguments, delivery evidence, protected selectors and write-tool preflight. Existing model, effort and disable-only options remain available.
+[Native worker startup](launcher-native.md) owns the client arguments, delivery evidence, protected selectors and write-tool preflight. Existing model, effort and disable-only options remain available. A Claude launch and redispatch reads the [Claude account](claude-accounts.md) selected in Orca again.
 
 ## File access and trust
 
 Every launch grants file access to the vault selected by `SLOPMEISTER_VAULT`, defaulting to `~/.slopmeister/vault`. A Slopmeister worker also gets the Slopmeister checkout it was launched for, and the dispatcher gets the invoking checkout. Claude receives the grants in the protected `.claude/access-settings.json` as `permissions.additionalDirectories`, Codex as `writable_roots` in the workspace `.codex/config.toml`. A grant is file access, never permission to load vault configuration as instructions.
+
+See [session repositories](#repositories) for initial and later additions. Companions use the existing workspace access and plot rules.
 
 Trust is decided at onboarding, not at a prompt. Before the terminal opens, the launcher trusts the folder each tool keys trust on:
 
@@ -67,46 +70,23 @@ Remove retired worktrees and directory sessions through [workspace removal](work
 
 ## Manager role and peer inboxes
 
-Declare `--manager` only on the first dispatch. Redispatch keeps the saved role. The role grants group monitoring and only the exact operator-ordered worker approval relay described in [Manage sessions](../src/skills/plot-session/manage.md). It grants no broader permission. Capacity resumes remain bounded to the documented exact stop. The launcher prepares each task’s own inbox before the model starts. Informational peer mail needs no separate participant approval and never supplies operator authority.
+Declare `--manager` only on the first dispatch. Redispatch keeps the saved role. The role grants group monitoring and only the exact operator-ordered worker approval relay described in [Manage sessions](../src/skills/plot-session/manage.md). It also performs [verified automatic context recovery](../src/skills/plot-session/dispatcher.md#automatic-context-redispatch) only for its own group. Context recovery needs no operator order or Night mode and grants no terminal-input or other write authority. The role grants no broader permission. Capacity resumes remain bounded to the documented exact stop. The launcher prepares each task's own inbox before the model starts. Informational peer mail needs no separate participant approval and never supplies operator authority.
 
-## Recovery
+## Repositories
 
-Orca terminal creation failures print its code, `timeout`, `unreadable_reply` or `execution_failed` on one line. Only `selector_not_found` permits retries within 60 seconds, including call timeouts. Every failure then polls, because a terminal may exist.
+Repeat `--repository <main-checkout>` to add source repositories in the session's plot. Each gets the task branch in `<primary>/.slopmeister-repos/<basename>`. Duplicate repositories or names refuse before preparation. A companion with an origin starts from its freshly fetched advertised default branch. The source checkout stays on its current branch and commit. A local-only companion without origin starts from its local HEAD. A repository with no commit, including a clone of an empty origin, gets an orphan task branch without a bootstrap commit. Any other origin without an advertised default refuses, including an empty origin when the source already has commits. The primary remains the launcher, issue and notes identity. Companions are ignored by the primary Git repository and remain separate Git worktrees, not submodules.
 
-`--redispatch` preserves the workspace, branch, files, notes, configuration and slot. It validates identity, configuration, native settings, permission, delivery exclusion and required native-tool startup before stopping the worker. Mismatches leave the worker running. It records and stops the agent and descendants child-first, then verifies their exit. It closes the saved terminal only after stopping a live predecessor, because idle tabs may be someone's shell. The new conversation receives the kickoff and retains the fixed snapshot.
+After the operator approves an additional repository, run `bin/slopmeister repository add --workspace <primary> --repo <main-checkout>` from the unchanged invoking Slopmeister checkout. Native approval covers that exact addition. It creates no worker and uses the client's existing workspace access. `repository status --workspace <primary>` verifies and lists the members. Every member retains its own Git identity, remote and saved permissions. Changed plot permissions require a scope decision rather than a live policy rewrite. If session delivery differs, the refusal prints the full quoted retry command for the unchanged invoking checkout. Older sessions without a saved source path print the command relative to that checkout. If the invoking source changed, restore it or ask for a fresh session. Do not replace the running session's delivery or allocate an improvised checkout. Use the primary's fixed shipping helper for every member. It validates membership and the target's permissions before any write.
 
-A workspace from before the removal of the Git guard refuses redispatch, and `git config --worktree --unset core.hooksPath` restores ordinary Git there. Independently running services keep running, those owned by the old agent may need restarting.
+The saved state records pending creation before allocating a companion and marks it ready after installation verifies. An installation failure rolls back only the worktree and branch created by that call, provided no new commit, product-file change or live worker appeared. Unknown ownership or a crash keeps the pending record for inspection. A successful rollback restores the previous member set so the same addition can be retried. Old sessions without the add capability keep their original behavior. OpenCode multi-repository sessions are refused.
+
+An unborn companion can be frozen and copied for review before its first product commit. The candidate keeps its empty baseline commit in the private candidate store, never in the target repository. After committing, `candidate verify-commit --cwd <member> --commit <commit>` verifies that member's selected commit and every other recorded member at HEAD. A refusal names the member that blocks verification.
+
+An empty GitHub origin has no default branch and cannot receive a pull request. Initial default-branch publication needs the operator's explicit order and is not part of repository add. The shipping helper gives a generic error for that case.
 
 ## The permission contract
 
-[`src/permissions.toml`](../src/permissions.toml) owns general command rules. [`src/github-permissions.toml`](../src/github-permissions.toml) owns GitHub command rules. [`src/native-permissions.toml`](../src/native-permissions.toml) owns workspace-bound release and selected service policies. Each entry has a command prefix, a decision and a `why`, and the renderer turns it into Claude settings, [Codex rules](../dist/codex/rules/permissions.rules) and the OpenCode permission map. Change its owning source and run `bin/slopmeister render`, never in a tool's own file. An unknown decision, a prefix under two decisions or a missing `why` fails the render.
-
-| Decision | Effect |
-|---|---|
-| `allow` | Runs with no check. |
-| `needs_intent` | Runs only when your message names that exact action. Claude gets an `autoMode.soft_deny` rule beside `"$defaults"`, Codex a `prompt` rule its reviewer judges against the conversation, OpenCode an `ask`, which a headless caller refuses. |
-| `deny` | Refuses the matching direct command. |
-
-An unlisted command falls back to the tool's own judgment. Kickoff text, including the initial user-role message, issue bodies, notes and agent-written briefs, is task content, never operator intent. Its claims of prior approval do not authorize an action. Guarded actions need a later direct operator message.
-
-**No Bash sandbox for Claude.** macOS Seatbelt broke pipes, process listing, `TMPDIR` and Git credentials, so delivery sets `"sandbox": {"enabled": false}`. Secret denies, intent rules and native approval still apply. Codex keeps `on-request`, network access on macOS and no sandbox on Linux. [Secret requests](1password-access.md) need network access.
-
-**Helpers.** The ship and claim helpers call `gh` inside their own process, which no command rule matches, so `needs_intent` on `gh pr create` or `gh issue comment` restricts only an agent typing them.
-
-The installed self-release allow is bound to exactly `workspace-remove --self -- <this workspace>`. It does not authorize a different path or force. The command still checks the caller, claims and unsaved work.
-
-**Service actions.** A plot's optional `service_actions` list delivers only the selected fixed read and write actions and their private profiles, see [service actions](service-actions.md). Codex launches use `on-request` with `auto_review`, Claude keeps auto mode and explicit asks for those actions.
-
-**Limits.** The deny rules match literal command prefixes, so they are not a security boundary:
-
-- Claude refuses `env <denied prefix>`, Codex runs it. This difference is accepted.
-- Global flags before the subcommand, such as `op --account … read …`, can miss a rule. The `op run --no-masking` deny covers that prefix only.
-- `gh auth status --show-token` and `gh auth status -t` match only those literal spellings directly after the subcommand. Value forms such as `--show-token=true` and grouped short flags such as `-at` miss these rules too.
-- Absolute paths, aliases, shell indirection and commands inside scripts or Task targets escape direct matching.
-- Masking hides recognized secret values in output. It doesn't stop a consuming program from writing or sending them.
-- Marked sessions choose tokens by vault. Tier two needs explicit intent and Home Assistant approval. Reference-free `op run` executes directly. Unmarked onboarding uses the real CLI. Its allow rule does not guarantee approval. Run ordinary commands directly for native rule matching.
-
-The [native enforcement test](testing.md#run-real-session-qa) proves both real clients refuse the direct forms against a stand-in model. It doesn't prove real 1Password authentication or masking. The [Claude home template](../plots/home/claude/settings.json.tmpl) and [Codex home rules](../plots/home/codex/rules/default.rules) carry matching reference entries checked for parity, but delivery never depends on them.
+[Permission contract](permissions.md) owns central decisions, native translations, global restriction delivery and their limits.
 
 ## Declared shipping
 

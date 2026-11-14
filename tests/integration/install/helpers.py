@@ -79,9 +79,23 @@ def unlock_deliveries(tmp_path):
     for root in tmp_path.rglob("service-actions"):
         if root.parent.name in (".codex", ".claude") and root.is_dir():
             _unlock(root)
+    for root in tmp_path.rglob("ci-rerun"):
+        if root.parent.name == "skills" and root.parent.parent.name in (".agents", ".claude"):
+            _unlock(root)
 
 
 def _unlock(root):
     for path in [root, *root.rglob("*")]:
         if path.is_dir() and not path.is_symlink():
             path.chmod(0o755)
+
+
+def rule_decisions(workspace: Path, prefix: str) -> tuple[str | None, str]:
+    """The rule decision each tool holds for a command prefix in this prepared session."""
+    access = json.loads((workspace / ".claude/access-settings.json").read_text())["permissions"]
+    kinds = ("deny", "ask", "allow")
+    claude = next((k for k in kinds if f"Bash({prefix} *)" in access.get(k, [])), None)
+    pattern = f"pattern={json.dumps(prefix.split())}, "
+    rules = (workspace / ".codex/rules/permissions.rules").read_text().splitlines()
+    codex = next(line for line in rules if pattern in line).split('decision="')[1].split('"')[0]
+    return claude, codex

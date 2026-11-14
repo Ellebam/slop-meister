@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+from slopmeister.session import browser_display as display
 from slopmeister.session import browser_runtime as runtime
 from tests.support.browser import CONNECT, commands
 
@@ -211,3 +212,152 @@ def test_unconfirmed_close_retains_the_state(root, tool, failing):
     with pytest.raises(ValueError, match="CLOSE_UNCONFIRMED"):
         runtime.close(root)
     assert root.exists()
+
+
+def test_a_desktop_with_no_monitor_refuses_start_before_chrome_launches(
+    started, tmp_path, monkeypatch
+):
+    calls, _ = started
+    monkeypatch.setattr(display, "monitorless", lambda: True)
+    before = set(tmp_path.iterdir())
+    with pytest.raises(ValueError, match="BROWSER_NO_MONITOR: .*--private-display"):
+        runtime.start("https://example.com/")
+    assert calls == [] and set(tmp_path.iterdir()) == before
+
+
+@pytest.mark.parametrize(
+    ("platform", "chrome", "monitors", "expected"),
+    [
+        ("linux", 1, (0, "Monitors: 0\n"), True),
+        ("linux", 0, (0, "Monitors: 0\n"), False),
+        ("linux", 1, (0, "Monitors: 1\n 0: +*XWAYLAND0 1920/0x1080/0+0+0  XWAYLAND0\n"), False),
+        ("linux", 1, (1, "Can't open display\n"), False),
+        ("linux", 1, None, False),
+        ("darwin", 1, (0, "Monitors: 0\n"), False),
+    ],
+)
+def test_only_a_closed_chrome_on_a_desktop_with_zero_monitors_counts_as_monitorless(
+    monkeypatch, platform, chrome, monitors, expected
+):
+    monkeypatch.setattr(display.sys, "platform", platform)
+    monkeypatch.setattr(
+        display.shutil,
+        "which",
+        lambda name: None if name == "xrandr" and monitors is None else f"/usr/bin/{name}",
+    )
+
+    def run(argv, **options):
+        assert "env" in options and runtime.TOKEN not in options["env"]
+        code, output = (chrome, "") if argv[0].endswith("pgrep") else monitors
+        return display.subprocess.CompletedProcess(argv, code, output, "")
+
+    monkeypatch.setenv(runtime.TOKEN, "dummy-private-token")
+    monkeypatch.setattr(display.subprocess, "run", run)
+    assert display.monitorless() is expected
+
+
+@pytest.fixture
+def units(started, monkeypatch):
+    """Record systemd calls beside the page tool calls, in one order, and run neither."""
+    calls, _ = started
+    page_tool = runtime.subprocess.run
+    replies = {"stop": 0, "is-active": 3}
+    monkeypatch.setattr(runtime.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(display, "chrome_ready", lambda: True)
+
+    def run(argv, **options):
+        if str(argv[0]).endswith("node"):
+            return page_tool(argv, **options)
+        calls.append((argv, options))
+        verb = next(a for a in argv[1:] if not a.startswith("-"))
+        return runtime.subprocess.CompletedProcess(argv, replies.get(verb, 0), "", "")
+
+    monkeypatch.setattr(runtime.subprocess, "run", run)
+    return calls, replies
+
+
+def test_private_display_runs_chrome_in_an_owner_only_x_display_without_tcp(
+    units, tmp_path, monkeypatch
+):
+    calls, _ = units
+    monkeypatch.setattr(display, "monitorless", lambda: True)
+    done = runtime.start("https://example.com/", private_display=True)
+    state = tmp_path / done["state"]
+    unit, options = calls[0]
+    assert unit[:5] == [
+        "/usr/bin/systemd-run",
+        "--user",
+        "--collect",
+        "--quiet",
+        "--unit=" + state.name,
+    ]
+    assert "--property=RuntimeMaxSec=1800" in unit
+    assert unit[unit.index("/usr/bin/env") :] == [
+        "/usr/bin/env", "-u", "WAYLAND_DISPLAY", "/usr/bin/xvfb-run", "-a",
+        "-f", str(state / "display/xauth"), "-s", "-screen 0 1920x1080x24 -nolisten tcp",
+        "/usr/bin/google-chrome-stable", "--ozone-platform=x11",
+    ]  # fmt: skip
+    assert runtime.TOKEN not in options["env"]
+    assert (state / "display").stat().st_mode & 0o777 == 0o700
+    assert commands(calls[1:]) == ["attach", "tab-new", "tab-close", "resize"]
+    assert json.loads((state / "owner.json").read_text())["display"] is True
+
+
+def test_attach_waits_for_the_display_chrome_and_never_launches_another(units, monkeypatch):
+    calls, _ = units
+    monkeypatch.setattr(display, "chrome_ready", lambda: False)
+    monkeypatch.setattr(display, "READY_SECONDS", 0)
+    with pytest.raises(ValueError, match="BROWSER_DISPLAY_FAILED: .*retain state"):
+        runtime.start("https://example.com/", private_display=True)
+    assert [argv[0] for argv, _ in calls] == ["/usr/bin/systemd-run"]
+
+
+@pytest.mark.parametrize(("active", "closed"), [(3, True), (4, True), (0, False), (1, False)])
+def test_close_stops_the_display_chrome_and_keeps_the_state_until_it_is_gone(
+    root, units, active, closed
+):
+    calls, replies = units
+    runtime.save(root, {**runtime.metadata(root), "display": True})
+    replies["is-active"] = active
+    if closed:
+        assert runtime.close(root)["result"] == "BROWSER_CLOSED"
+    else:
+        with pytest.raises(ValueError, match="CLOSE_UNCONFIRMED"):
+            runtime.close(root)
+    assert [argv[2:] for argv, _ in calls[1:]] == [
+        ["stop", root.name],
+        ["is-active", "--quiet", root.name],
+    ]
+    assert root.exists() is not closed
+
+
+def test_close_stops_the_display_chrome_even_when_detach_fails(root, units, tool):
+    calls, replies = units
+    _, pages = tool
+    runtime.save(root, {**runtime.metadata(root), "display": True})
+    pages["list"] = (0, f"- {runtime.SESSION}:\n")
+    pages["detach"] = (1, "")
+    with pytest.raises(ValueError, match="CLOSE_UNCONFIRMED"):
+        runtime.close(root)
+    assert [argv[2] for argv, _ in calls[-2:]] == ["stop", "is-active"]
+    assert root.exists()
+
+
+@pytest.mark.parametrize("failing", [False, True])
+def test_page_output_hides_the_query_and_fragment_of_every_address(root, tool, failing):
+    _, replies = tool
+    authorize = "https://id.example/authorize?state=s1&login_hint=a%40b.example&code_challenge=c1"
+    replies["eval"] = (
+        int(failing),
+        f'"{authorize}"\n- 0: [Back](https://app.example/cb#code=c2&id_token=t1)\n'
+        f"- 1: [Welcome]({CONNECT})\n- 2: [Plain](https://a.example/path)\n"
+        "- /url: /reset?login_hint=r1\n- /url: reset?code=r2\n- /url: #token=r3\n"
+        '- 3: [Reset](/reset?code=r4)\n"https://a.example/cb?a)b&code=r5"\n',
+    )
+    output = runtime.page(root, ["eval", "() => location.href"]).stdout
+    leaks = ("s1", "a%40b", "c1", "c2", "t1", "r1", "r2", "r3", "r4", "r5")
+    for value in (*leaks, "dummy-private-token"):
+        assert value not in output
+    assert '"https://id.example/authorize?hidden"' in output
+    assert "(https://app.example/cb?hidden)" in output and "(https://a.example/path)" in output
+    assert "/url: /reset?hidden" in output and "[Reset](/reset?hidden)" in output

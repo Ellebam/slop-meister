@@ -9,6 +9,7 @@ import stat
 import subprocess
 import tempfile
 
+from slopmeister.session import browser_display as display
 from slopmeister.session.browser_state import (
     PREFIX,
     SECONDS,
@@ -30,11 +31,16 @@ LIBRARY = PAGE_TOOL / "node_modules/playwright-core"
 TOKEN = "PLAYWRIGHT_MCP_EXTENSION_TOKEN"
 SESSION = "job"
 VIEWPORT = ("1280", "800")
-# Files the page tool creates inside the state, all removed at close.
-OWNED = ("playwright", "sockets")
+# Files the page tool and the private display create inside the state, all removed at close.
+OWNED = ("playwright", "sockets", "display")
 # The extension's connect page carries the token in its address.
 CONNECT_ADDRESS = re.compile(r"chrome-extension://[^\s)\]\"']+")
 HIDDEN = "chrome-extension://hidden"
+# A page address can carry an account name or a flow value in its query or fragment, and no page
+# command needs them. A query can hold any punctuation, so a run ends only at a space, quote or
+# angle bracket. Each run is cut once, so the scan stays linear.
+ADDRESS_RUN = re.compile(r"[^\s\"'<>]+")
+ADDRESS_TAIL = re.compile(r"[?#]")
 # The owner-only state has a size limit, so a long address must not reach it.
 ADDRESS_LIMIT = 1024
 # Page work only. Cookie, storage, saved state, network bodies, routing, code running,
@@ -88,7 +94,7 @@ def node() -> Path:
     return engine
 
 
-def start(url: str) -> dict:
+def start(url: str, private_display: bool = False) -> dict:
     origin, path = https_url(url)
     token = os.environ.get(TOKEN, "")
     if not token or token.startswith("op://"):
@@ -96,8 +102,11 @@ def start(url: str) -> dict:
     if not PAGE_ENTRY.is_file():
         raise ValueError("BROWSER_PREREQUISITE: run task browser:install")
     node()
+    display.check(private_display)
     root = Path(tempfile.mkdtemp(prefix=PREFIX, dir=TEMP_ROOT)).resolve()
     save(root, {"worktree": str(workspace()), "address": (origin + path)[:ADDRESS_LIMIT]})
+    if private_display:
+        display.start(root)
     # The address of the connect tab and the attach snapshot never leave this function.
     if page_tool(root, ["attach", "--extension=chrome", "--session=" + SESSION], token).returncode:
         raise ValueError(
@@ -205,15 +214,34 @@ def page(root: Path, arguments: list[str]) -> subprocess.CompletedProcess:
     except ValueError, OSError:
         shutil.rmtree(root / "playwright/.playwright-cli", ignore_errors=True)
         raise
-    done.stdout = CONNECT_ADDRESS.sub(HIDDEN, done.stdout)
+    done.stdout = hide(done.stdout)
     if done.returncode:
-        done.stdout += CONNECT_ADDRESS.sub(HIDDEN, done.stderr)
+        done.stdout += hide(done.stderr)
     return done
+
+
+def cut(run: re.Match) -> str:
+    # A snapshot shows a link's own address, which can be relative to the page. Any tail that
+    # holds a parameter is cut, and so is any tail of an absolute or root-relative address.
+    token = run.group()
+    tail = ADDRESS_TAIL.search(token)
+    if tail is not None and "=" not in token[tail.start() :]:
+        start = 0 if token.startswith("/") else token.find("://")
+        tail = ADDRESS_TAIL.search(token, start) if start >= 0 else None
+    if tail is None:
+        return token
+    # The brackets that close a Markdown link stay, so the line keeps its shape.
+    closing = token[len(token.rstrip(")]")) :]
+    return token[: tail.start()] + "?hidden" + closing
+
+
+def hide(text: str) -> str:
+    return ADDRESS_RUN.sub(cut, CONNECT_ADDRESS.sub(HIDDEN, text))
 
 
 def failure(done: subprocess.CompletedProcess) -> str:
     """The page tool's own error line, with no address that carries the extension token."""
-    text = CONNECT_ADDRESS.sub(HIDDEN, f"{done.stdout}\n{done.stderr}")
+    text = hide(f"{done.stdout}\n{done.stderr}")
     found = (line for line in text.splitlines() if re.match(r"\w*Error: ", line))
     return next(found, "the page tool gave no error")
 
@@ -262,13 +290,17 @@ def close_tabs(root: Path, data: dict) -> None:
 
 def close(root: Path) -> dict:
     data = metadata(root)
-    # The session ends with Chrome, so a gone session leaves only this state to remove.
-    listed = page_tool(root, ["list"])
-    if listed.returncode:
-        raise ValueError("BROWSER_CLOSE_UNCONFIRMED")
-    attached = SESSION in listed.stdout
-    if attached:
-        close_tabs(root, data)
+    try:
+        # The session ends with Chrome, so a gone session leaves only this state to remove.
+        listed = page_tool(root, ["list"])
+        if listed.returncode:
+            raise ValueError("BROWSER_CLOSE_UNCONFIRMED")
+        attached = SESSION in listed.stdout
+        if attached:
+            close_tabs(root, data)
+    finally:
+        # A display Chrome holds the profile lock, so it stops even when the connection failed.
+        display.stop(root, data)
     if any(p.name not in {*OWNED, "owner.json"} for p in root.iterdir()):
         raise ValueError("BROWSER_STATE_REFUSED")
     if any((root / name).is_symlink() for name in OWNED):

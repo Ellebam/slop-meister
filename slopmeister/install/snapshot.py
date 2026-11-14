@@ -16,8 +16,10 @@ FILE_MODE = 0o644
 DIRECTORY_MODE = 0o755
 # Skill to (script name, program): the entry sits at <skill>/scripts/<script>.py in either tool.
 SKILL_PROGRAMS = {
+    "plot-session": ("context_redispatch", "slopmeister.session.context_redispatch"),
     "browser-login": ("browser", "slopmeister.session.browser_login"),
     "bloom": ("bloom", "slopmeister.session.bloom"),
+    "ci-rerun": ("ci_rerun", "slopmeister.session.ci_rerun"),
     "ship": ("ship", "slopmeister.session.ship"),
     "vault-todos": ("vault_todos", "slopmeister.session.vault_todos"),
 }
@@ -36,6 +38,16 @@ def sources(root: Path) -> list[Path]:
 
 def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def source_identity(root: Path) -> str:
+    value = hashlib.sha256()
+    runtime = (p for p in (root / "slopmeister").rglob("*.py") if "__pycache__" not in p.parts)
+    rendered = (p for p in (root / "dist").rglob("*") if p.is_file())
+    for source in sorted([*runtime, *rendered]):
+        value.update(str(source.relative_to(root)).encode())
+        value.update(source.read_bytes())
+    return value.hexdigest()
 
 
 def write(root: Path, state_dir: Path) -> Path:
@@ -97,10 +109,13 @@ def program(delivered: str) -> str | None:
     return None
 
 
-def bake(files: dict[str, tuple[bytes, int]], snapshot: Path) -> None:
+def bake(files: dict[str, tuple[bytes, int]], snapshot: Path, companion: bool = False) -> None:
     """Replace every delivered entry in the payload with its thin entry bound to the snapshot."""
     for delivered, (_, mode) in list(files.items()):
         module = program(delivered)
+        if companion and module == "slopmeister.session.ship":
+            del files[delivered]
+            continue
         if module:
             files[delivered] = (entry_text(module, snapshot).encode(), mode)
 

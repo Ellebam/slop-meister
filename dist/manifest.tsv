@@ -1,6 +1,7 @@
 kind	name	plot
 skill	bloom	shared
 skill	browser-login	shared
+skill	ci-rerun	shared
 skill	cross-tool-review	shared
 skill	dummy	shared
 skill	execute-plan	shared
