@@ -9,7 +9,7 @@ import subprocess
 
 import pytest
 
-from slopmeister.install.service_actions import action_payload
+from slopmeister.install.service_actions import SHEBANG, action_payload
 from slopmeister.session.service_actions.constants import PYTHON, PYTHON_FLAGS
 from tests.integration.install.helpers import ROOT, profile, selected_context, unlock_deliveries
 from tests.native.install.discovery_fixture import CODEX
@@ -50,10 +50,11 @@ def test_only_the_exact_read_entry_is_allowed_and_secret_denies_hold(tmp_path, n
     base = _policy_command(tmp_path, namespaced)
     action = "example/jira-read" if namespaced else "jira-read"
     entry = tmp_path / "session/.codex/service-actions" / action / "entry.py"
-    direct = [str(PYTHON), *PYTHON_FLAGS, str(entry)]
     cases = [
-        ([*direct, "--issue", "TEST-7"], "allow"),
+        ([str(entry), "--issue", "TEST-7"], "allow"),
+        ([str(PYTHON), *PYTHON_FLAGS, str(entry), "--issue", "TEST-7"], None),
         ([str(PYTHON), str(entry), "--issue", "TEST-7"], None),
+        ([str(tmp_path / "shadow/entry.py")], None),
         ([str(PYTHON), *PYTHON_FLAGS, str(tmp_path / "shadow/entry.py")], None),
         ([str(PYTHON), *PYTHON_FLAGS, "-m", "service_actions.supervisor"], None),
         (["op", "document", "get", "EXAMPLE"], "forbidden"),
@@ -63,9 +64,11 @@ def test_only_the_exact_read_entry_is_allowed_and_secret_denies_hold(tmp_path, n
         assert json.loads(result.stdout).get("decision") == expected, argv
 
 
-ENTRY = """import os, sys
+# The proof names the isolation the delivered first line must give the read.
+ENTRY = b"""import os, sys
 from pathlib import Path
-Path(os.environ["SLOPMEISTER_PROOF"]).write_text("RAN")
+isolated = sys.flags.ignore_environment and sys.flags.no_user_site and sys.flags.no_site
+Path(os.environ["SLOPMEISTER_PROOF"]).write_text("RAN" if isolated else "NOT ISOLATED")
 """
 
 
@@ -73,7 +76,8 @@ def _deliver_entry(client, context, native):
     action = "example/jira-read" if context.namespaced else "jira-read"
     entry = client.cwd / native / "service-actions" / action / "entry.py"
     entry.parent.mkdir(parents=True)
-    entry.write_text(ENTRY)
+    entry.write_bytes(SHEBANG + ENTRY)
+    entry.chmod(0o555)
     return entry
 
 
@@ -91,7 +95,7 @@ def _codex_read(tmp_path, namespaced, shape):
         rules = action_payload(context)[0][".codex/rules/service-actions.rules"][0].decode()
         (Path(client.env["CODEX_HOME"]) / "rules/service-actions.rules").write_text(rules)
         entry = _deliver_entry(client, context, ".codex")
-        command = f"{PYTHON} {' '.join(PYTHON_FLAGS)} {entry} --issue TEST-7"
+        command = f"{entry} --issue TEST-7"
         server.script = [("exec_command", {"cmd": shape(command)})]
         sandbox = ["-c", "sandbox_workspace_write.exclude_slash_tmp=true"]
         sandbox += ["-c", "sandbox_workspace_write.exclude_tmpdir_env_var=true"]
@@ -132,7 +136,7 @@ def _claude_read(tmp_path, namespaced, shape):
         access = tmp_path / "access-settings.json"
         access.write_text(json.dumps({"permissions": action_payload(context)[1]}))
         entry = _deliver_entry(client, context, ".claude")
-        command = shlex.join([str(PYTHON), *PYTHON_FLAGS, str(entry), "--issue", "TEST-7"])
+        command = shlex.join([str(entry), "--issue", "TEST-7"])
         server.script = [("Bash", {"command": shape(command)})]
         argv = ["auto" if arg == "bypassPermissions" else arg for arg in client.argv]
         argv[argv.index("--") : argv.index("--")] = ["--settings", str(access)]

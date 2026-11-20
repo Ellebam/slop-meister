@@ -149,7 +149,8 @@ def _install_items(items: list[state.Item], home: Path, backups: Path) -> tuple[
 
 def install(home: Path, chosen: set[str]) -> int:
     """Install the chosen pending entries. Returns the number written."""
-    items = [item for item in state.items(home) if item.name in chosen]
+    available = state.items(home)
+    items = [item for item in available if item.name in chosen]
     backups = backup_dir(home)
     _preflight(home, items, backups)
     if any(item.name == orca.NAME and item.pending for item in items):
@@ -158,6 +159,14 @@ def install(home: Path, chosen: set[str]) -> int:
     # The Codex config's hook trust entry is computed from the hooks file, so either needs it.
     if any(item.name in (codex_hooks.NAME, CODEX_CONFIG) and item.pending for item in items):
         codex_hooks.validate(home)
+    if codex_hooks.NAME in chosen:
+        missing = [
+            item.name
+            for item in available
+            if item.name in manifest.HOOK_RUNTIME and item.pending and item.name not in chosen
+        ]
+        if missing:
+            raise UsageError("also select the Codex hook runtime: " + " ".join(missing))
     written, stopped = _install_items(items, home, backups)
     print()
     if written:

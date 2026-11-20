@@ -29,6 +29,8 @@ Name projects with `-R <host>/<group>/<project>`. Group reads use `GITLAB_HOST=<
 
 `glab issue board view -R <host>/<group>/<project>` shows a project's issue board. Read group epic boards in the browser. [Legacy epic notes](https://docs.gitlab.com/api/notes/#epics) need the numeric epic ID, not its IID. That API is deprecated. Use Work Items for newer epics.
 
+For an existing GitLab task branch with a different name, add `--push-branch /path/to/shop feature/shop-search` when launching the worker. The [launcher guide](launcher.md#declared-shipping) explains how to push the saved branch, optionally include a pre-release tag and open a merge request.
+
 For a self-managed host, use `glab api --hostname <host> --method GET <endpoint>`. The explicit host and read method keep the destination and operation visible.
 
 ## Ship a branch

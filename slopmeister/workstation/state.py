@@ -1,6 +1,7 @@
 """One comparison of the home install against this machine, read by install, diff and drift."""
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
 
 from slopmeister.workstation import codex_config, codex_hooks, manifest, orca, rules
@@ -45,7 +46,8 @@ def _status(entry: Entry, home: Path) -> str:
     if not destination.exists():
         return MISSING
     same = destination.is_file() and destination.read_bytes() == entry.expected(home)
-    return UNCHANGED if same else DIFFERS
+    runnable = entry.flag != manifest.EXEC or os.access(destination, os.X_OK)
+    return UNCHANGED if same and runnable else DIFFERS
 
 
 def items(home: Path) -> list[Item]:

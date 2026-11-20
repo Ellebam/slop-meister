@@ -29,6 +29,9 @@ CONSUMER_FILES = (
     "service_actions/openssl.cnf",
     *(f"service_actions/{name}.py" for name in _MODULES.split()),
 )
+# Claude Code in auto mode drops an allow rule that starts Python with flags, so a read starts
+# the entry itself and its first line carries the same isolation flags.
+SHEBANG = f"#!{PYTHON} -{''.join(flag[1:] for flag in PYTHON_FLAGS)}\n".encode()
 PROFILE_KEYS = set(
     ["action", "plot", "origin", "expected_user", "account_id", "vault_id", "vault_name"]
     + ["pat_ref", "password_ref", "certificate_document", "token_file"]
@@ -164,7 +167,8 @@ def _command_line(entry: Path, action: str, native: str, revision: str, namespac
     write = action.endswith("-write")
     arguments = " --backlog" if namespaced else ARGUMENTS.get(action, "")
     output = " --output <PRIVATE_RESULT_FILE>" if write else ""
-    command = f"`{PYTHON} {' '.join(PYTHON_FLAGS)} {shlex.quote(str(entry))}{output}{arguments}`"
+    python = f"{PYTHON} {' '.join(PYTHON_FLAGS)} " if write else ""
+    command = f"`{python}{shlex.quote(str(entry))}{output}{arguments}`"
     label = f"mcp__{action.replace('-', '_')}__run: " if write else ""
     return f"{label}{command} ({native}, revision {revision[:12]})"
 
@@ -189,8 +193,9 @@ def _add_action(
         entries[relative + "/config.json"] = ((json.dumps(data, indent=2) + "\n").encode(), 0o400)
         entries[relative + "/revision"] = ((revision + "\n").encode(), 0o444)
         entry = context.workspace / relative / "entry.py"
-        command = [str(PYTHON), *PYTHON_FLAGS, str(entry)]
-        more_rules, more_allows, more_asks = service_rules(command, context.root, action)
+        if not action.endswith("-write"):
+            entries[relative + "/entry.py"] = (SHEBANG + content["entry.py"], 0o555)
+        more_rules, more_allows, more_asks = service_rules([str(entry)], context.root, action)
         rules.extend(more_rules)
         allows.extend(more_allows)
         asks.extend(more_asks)

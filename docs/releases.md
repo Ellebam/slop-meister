@@ -6,7 +6,7 @@ Follow one shop search task from setup to testing acceptance in the illustrated 
 
 Workers have their own Chrome profiles. The independent review checks the tested change before shipping. Managers receive notices about waiting permission dialogs, and memory guards protect the shared vault workflow. Optional weekly sessions recap work or prepare a dependency update.
 
-Read the browser setup before your first sign-in. Run `task home:diff` to see which settings changed, install the entries you select and start a fresh worker. The optional schedules require macOS and your own configuration.
+Start a fresh worker to receive the fixed executable for preselected Jira and Confluence reads. Read the browser setup before your first sign-in. Run `task home:diff` to see which settings changed, install the common runtime entries together as described in the home-install guide and start a fresh worker. The optional schedules require macOS and your own configuration.
 
 ## Upgrading to 0.6.0
 

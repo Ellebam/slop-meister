@@ -31,7 +31,8 @@ def test_direct_read_is_allowed_in_both_tools(tmp_path):
     rules = entries[".codex/rules/service-actions.rules"][0].decode()
     for native in (".codex", ".claude"):
         entry = context.workspace / native / "service-actions/jira-read/entry.py"
-        command = [str(PYTHON), "-E", "-s", "-S", str(entry)]
+        command = [str(entry)]
+        assert str(PYTHON) not in rules
         assert json.dumps(command) in rules
         assert "Bash(" + shlex.join(command) + " *)" in permissions["allow"]
         assert str(entry) in instructions

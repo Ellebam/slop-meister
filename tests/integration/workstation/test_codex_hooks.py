@@ -10,7 +10,7 @@ import tomllib
 
 import pytest
 
-from slopmeister.workstation import codex_hooks
+from slopmeister.workstation import codex_hooks, manifest
 from tests.integration.workstation.test_install import machine, workstation
 
 ORCA_GROUP = {"hooks": [{"type": "command", "command": ": orca-agent-hook-form=1; true"}]}
@@ -59,7 +59,12 @@ def test_retired_group_is_replaced_in_place_and_orca_groups_stay(tmp_path):
     preview = workstation(home, bin_dir, "diff")
     assert "differs: .codex/hooks.json PermissionRequest group" in preview.stdout
     assert path.read_bytes() == before
-    assert workstation(home, bin_dir, "install", ".codex/hooks.json").returncode == 0
+    assert (
+        workstation(
+            home, bin_dir, "install", *manifest.HOOK_RUNTIME, ".codex/hooks.json"
+        ).returncode
+        == 0
+    )
     assert json.loads(path.read_text()) == {
         "hooks": {
             "Stop": [ORCA_GROUP],
@@ -73,9 +78,28 @@ def test_retired_group_is_replaced_in_place_and_orca_groups_stay(tmp_path):
     assert "unchanged: .codex/hooks.json" in again
 
 
+def test_hook_install_requires_its_executable_and_modules_before_any_write(tmp_path):
+    home, bin_dir = machine(tmp_path)
+    helper, guard, *others = manifest.HOOK_RUNTIME
+    for selected, missing in (((), helper), ((helper, *others), guard)):
+        result = workstation(home, bin_dir, "install", ".codex/hooks.json", *selected)
+        assert result.returncode and missing in result.stderr
+        assert not (home / ".codex/hooks.json").exists()
+        assert not (home / helper).exists()
+    assert workstation(home, bin_dir, "install", *manifest.HOOK_RUNTIME).returncode == 0
+    (home / helper).chmod(0o600)
+    assert helper in workstation(home, bin_dir, "install", ".codex/hooks.json").stderr
+    assert workstation(home, bin_dir, "install", helper, ".codex/hooks.json").returncode == 0
+
+
 def test_missing_file_gets_only_our_groups(tmp_path):
     home, bin_dir = machine(tmp_path)
-    assert workstation(home, bin_dir, "install", ".codex/hooks.json").returncode == 0
+    assert (
+        workstation(
+            home, bin_dir, "install", *manifest.HOOK_RUNTIME, ".codex/hooks.json"
+        ).returncode
+        == 0
+    )
     path = home / ".codex/hooks.json"
     expected = {"hooks": {"PermissionRequest": [OURS], "PreToolUse": [GUARD]}}
     assert json.loads(path.read_text()) == expected
@@ -105,7 +129,7 @@ def test_a_broken_hooks_file_beside_a_current_config_is_named_in_the_diff(tmp_pa
     """Bug: the config's trust check raised on the hooks file and ended the whole diff."""
     home, bin_dir = machine(tmp_path)
     for item in (".codex/hooks.json", ".codex/config.toml"):
-        assert workstation(home, bin_dir, "install", item).returncode == 0
+        assert workstation(home, bin_dir, "install", *manifest.HOOK_RUNTIME, item).returncode == 0
     hooks_file(home, "{ not json")
     preview = workstation(home, bin_dir, "diff")
     assert "unreadable: .codex/hooks.json" in preview.stdout, preview.stderr

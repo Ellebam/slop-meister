@@ -18,6 +18,13 @@ RELOAD = "reload"
 VAULT_REPOSITORY = ".vault-git/obsidian.git"
 OP_LIBRARY = ".local/lib/slopmeister-op"
 CODEX_CONFIG = ".codex/config.toml"
+HOOK_RUNTIME = (
+    ".local/bin/slopmeister-prompt",
+    *(
+        f"{OP_LIBRARY}/slopmeister/session/{module}.py"
+        for module in ("memory_guard", "prompt_record", "launch_identity")
+    ),
+)
 # The phone's entry point is reloaded on install like the vault job. Its restart ends only the
 # server's own phone sessions, never a worker, and the service manager starts it again,
 # see docs/phone-access.md.

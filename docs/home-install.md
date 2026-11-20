@@ -6,7 +6,7 @@ The workstation procedure follows this page at its home install step.
 
 Run `task home:diff`. Read the current entry names in `slopmeister/workstation/manifest.py`. Prepare `task home:install -- <entry>...` with the common runtime entries and the chosen platform entries. Use explicit names so declined integrations stay off. Do not use the no-argument form or `--all` during selective onboarding. The installer backs up replacements.
 
-The common install includes agent instructions, hooks, the Codex context setting, vault runtime and masked `op` runtime:
+Install the common entries together so the Codex hooks have their command and Python modules. If you select the hooks separately, include each runtime entry the installer reports as missing. The common install includes agent instructions, hooks, the Codex context setting, vault runtime and masked `op` runtime.
 
 ```bash
 task home:install -- \

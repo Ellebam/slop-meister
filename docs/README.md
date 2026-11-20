@@ -48,7 +48,7 @@ Start with the [quick start](../README.md#quick-start) to set up a workstation. 
 
 | Question | Read |
 |---|---|
-| What are the layers and the vocabulary? | [Project overview](../README.md#who-works-on-a-task) |
+| What does the worker receive, and who acts on a task? | [Session walkthrough](session-walkthrough.md#what-the-worker-receives) and [project roles](../README.md#who-works-on-a-task) |
 | What does each skill do, and who starts it? | [Skills index](skills.md) |
 | What happens during a task? | [Session walkthrough](session-walkthrough.md) |
 | What rules does a Slopmeister worker load? | [Rendered agreement](../dist/codex/plots/slopmeister.md) |
