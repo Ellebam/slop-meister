@@ -28,8 +28,9 @@ def test_preparation_replaces_only_root_configuration(installed):
         *expected_denies,
         "Edit(~/.local/state/slopmeister/**)",
         *(
-            "Edit(/" + str(workspace / native / "skills/ci-rerun") + "/**)"
+            "Edit(/" + str(workspace / native / "skills" / skill) + "/**)"
             for native in (".agents", ".claude")
+            for skill in ("ci-rerun", "ship")
         ),
     ]
     assert not (workspace / "CLAUDE.md").is_symlink()
@@ -75,10 +76,13 @@ def test_delivered_helpers_are_copies_and_snapshot_drift_is_refused(installed):
         assert helper.read_text() == entry_text("slopmeister.session.ship", bound)
         assert not helper.is_symlink()
         original = helper.read_bytes()
+        assert helper.stat().st_mode & 0o777 == 0o444
+        helper.chmod(0o644)
         helper.write_bytes(original + b"\nchanged helper\n")
         result = install(installed.env, "--check", "example-app", str(workspace), ok=False)
         assert "saved session configuration" in result.stderr
         helper.write_bytes(original)
+        helper.chmod(0o444)
     install(installed.env, "--check", "example-app", str(workspace))
 
 

@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 1186" width="480" height="1186" role="img" aria-labelledby="sp-title sp-desc" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif">
+  <title id="sp-title">One task, from plan to harvest</title>
+  <desc id="sp-desc">The ten steps of one task in order. Step 1, the worker plans. Step 2, you choose the direction, which is decision one of two. Step 3, the other tool reviews the plan. Steps 4 and 5, the worker builds and proves the change. Step 6, the other tool checks the diff. Step 7, the worker fixes the findings. Step 8, the worker opens or updates the pull request where shipping is allowed and hands off. Step 9, you accept testing, which is decision two of two. Step 10, harvest ends the session on your order.</desc>
+  <style>
+    .over { font-size: 12.5px; font-weight: 700; letter-spacing: 1.2px; }
+    .title { font-size: 19px; font-weight: 700; fill: #1f2a22; }
+    .body { font-size: 15px; fill: #4a544a; }
+    .num { font-size: 15px; font-weight: 700; fill: #ffffff; }
+    .card { fill: #ffffff; stroke: #d8d4c6; stroke-width: 1.2; }
+    .decision { fill: #fbeedb; stroke: #9b6639; stroke-width: 2; }
+    .w { fill: #35654d; }
+    .o { fill: #36598a; }
+    .y { fill: #8a5527; }
+  </style>
+  <defs>
+    <filter id="sp-shadow" x="-5%" y="-10%" width="110%" height="130%">
+      <feDropShadow dx="0" dy="1.5" stdDeviation="2.5" flood-color="#1f2a22" flood-opacity="0.09"/>
+    </filter>
+  </defs>
+
+  <rect width="480" height="1186" rx="20" fill="#f6f4ee"/>
+
+  <path d="M44 83 V1075" stroke="#c9c4b4" stroke-width="2" fill="none"/>
+
+  <g filter="url(#sp-shadow)">
+    <rect class="card" x="76" y="28" width="376" height="110" rx="14"/>
+    <rect class="decision" x="76" y="152" width="376" height="110" rx="14"/>
+    <rect class="card" x="76" y="276" width="376" height="110" rx="14"/>
+    <rect class="card" x="76" y="400" width="376" height="110" rx="14"/>
+    <rect class="card" x="76" y="524" width="376" height="110" rx="14"/>
+    <rect class="card" x="76" y="648" width="376" height="110" rx="14"/>
+    <rect class="card" x="76" y="772" width="376" height="110" rx="14"/>
+    <rect class="decision" x="76" y="896" width="376" height="110" rx="14"/>
+    <rect class="card" x="76" y="1020" width="376" height="110" rx="14"/>
+  </g>
+
+  <rect class="w" x="90" y="44" width="4" height="78" rx="2"/>
+  <circle class="w" cx="44" cy="83" r="15"/>
+  <text class="num" x="44" y="88" text-anchor="middle">1</text>
+  <text class="over w" x="108" y="54">WORKER</text>
+  <text class="title" x="108" y="79">Plan</text>
+  <text class="body" x="108" y="102">The worker reads the task, sets the scope</text>
+  <text class="body" x="108" y="122">and sends you one message with its plan.</text>
+
+  <rect x="27" y="190" width="34" height="34" rx="5" fill="#9b6639" transform="rotate(45 44 207)"/>
+  <text class="num" x="44" y="212" text-anchor="middle">2</text>
+  <text class="over y" x="108" y="178">YOU · DECISION 1 OF 2</text>
+  <text class="title" x="108" y="203">Your choice</text>
+  <text class="body" x="108" y="226">You choose the direction and answer once.</text>
+  <text class="body" x="108" y="246">Nothing is built before your answer.</text>
+
+  <rect class="o" x="90" y="292" width="4" height="78" rx="2"/>
+  <circle class="o" cx="44" cy="331" r="15"/>
+  <text class="num" x="44" y="336" text-anchor="middle">3</text>
+  <text class="over o" x="108" y="302">OTHER TOOL</text>
+  <text class="title" x="108" y="327">Independent plan review</text>
+  <text class="body" x="108" y="350">The other tool reviews the plan.</text>
+  <text class="body" x="108" y="370">The worker applies what holds up.</text>
+
+  <rect class="w" x="90" y="416" width="4" height="78" rx="2"/>
+  <rect class="w" x="22" y="440" width="44" height="30" rx="15"/>
+  <text class="num" x="44" y="460" text-anchor="middle">4–5</text>
+  <text class="over w" x="108" y="426">WORKER</text>
+  <text class="title" x="108" y="451">Build and prove</text>
+  <text class="body" x="108" y="474">A thin working path first, then the rest.</text>
+  <text class="body" x="108" y="494">The worker tests it and tries to break it.</text>
+
+  <rect class="o" x="90" y="540" width="4" height="78" rx="2"/>
+  <circle class="o" cx="44" cy="579" r="15"/>
+  <text class="num" x="44" y="584" text-anchor="middle">6</text>
+  <text class="over o" x="108" y="550">OTHER TOOL</text>
+  <text class="title" x="108" y="575">Independent diff check</text>
+  <text class="body" x="108" y="598">The other tool reviews the diff and runs</text>
+  <text class="body" x="108" y="618">the test guide on a clean copy.</text>
+
+  <rect class="w" x="90" y="664" width="4" height="78" rx="2"/>
+  <circle class="w" cx="44" cy="703" r="15"/>
+  <text class="num" x="44" y="708" text-anchor="middle">7</text>
+  <text class="over w" x="108" y="674">WORKER</text>
+  <text class="title" x="108" y="699">Fixes</text>
+  <text class="body" x="108" y="722">One pass fixes the confirmed findings</text>
+  <text class="body" x="108" y="742">and proves them again.</text>
+
+  <rect class="w" x="90" y="788" width="4" height="78" rx="2"/>
+  <circle class="w" cx="44" cy="827" r="15"/>
+  <text class="num" x="44" y="832" text-anchor="middle">8</text>
+  <text class="over w" x="108" y="798">WORKER</text>
+  <text class="title" x="108" y="823">Ship and hand off</text>
+  <text class="body" x="108" y="846">Where shipping is allowed, the worker opens</text>
+  <text class="body" x="108" y="866">or updates the pull request, then reports.</text>
+
+  <rect x="27" y="934" width="34" height="34" rx="5" fill="#9b6639" transform="rotate(45 44 951)"/>
+  <text class="num" x="44" y="956" text-anchor="middle">9</text>
+  <text class="over y" x="108" y="922">YOU · DECISION 2 OF 2</text>
+  <text class="title" x="108" y="947">Testing acceptance</text>
+  <text class="body" x="108" y="970">You inspect the evidence, run the checks</text>
+  <text class="body" x="108" y="990">left to you and accept testing.</text>
+
+  <rect class="y" x="90" y="1036" width="4" height="78" rx="2"/>
+  <circle cx="44" cy="1075" r="15" fill="#f6f4ee" stroke="#9b6639" stroke-width="2.5"/>
+  <text x="44" y="1080" text-anchor="middle" font-size="14" font-weight="700" fill="#8a5527">10</text>
+  <text class="over y" x="108" y="1046">ON YOUR ORDER</text>
+  <text class="title" x="108" y="1071">Harvest</text>
+  <text class="body" x="108" y="1094">The session ends with the final delivery,</text>
+  <text class="body" x="108" y="1114">a report and cleanup.</text>
+
+  <g font-size="13" fill="#4a544a">
+    <circle class="w" cx="84" cy="1158" r="6"/>
+    <text x="96" y="1162.5">Worker</text>
+    <circle class="o" cx="170" cy="1158" r="6"/>
+    <text x="182" y="1162.5">Other tool</text>
+    <rect x="272" y="1152" width="12" height="12" rx="2" fill="#9b6639" transform="rotate(45 278 1158)"/>
+    <text x="292" y="1162.5">Your decision</text>
+  </g>
+</svg>

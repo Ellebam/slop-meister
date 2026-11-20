@@ -27,7 +27,12 @@ def test_tracer(tmp_path):
             },
         },
     }
-    log.write_text(json.dumps(record) + "\n")
+    prompt = {
+        "type": "user",
+        "timestamp": "2026-10-05T11:59:00Z",
+        "message": {"role": "user", "content": "MESSAGE_SENTINEL"},
+    }
+    log.write_text(json.dumps(prompt) + "\n" + json.dumps(record) + "\n")
     result = subprocess.run(
         [
             sys.executable,
@@ -53,7 +58,11 @@ def test_tracer(tmp_path):
     assert (cell["requests"], cell["input"], cell["output"]) == (1, 100, 5)
     assert (cell["peak_context"], cell["mean_context"]) == (100, 100)
     assert (cell["plot"], cell["role"], cell["week"]) == ("sample", "launched", "W1")
+    assert json.loads(result.stdout)["messages"] == {
+        "W1": {"messages": {"kickoff": 1}, "requests": {"kickoff": 1}}
+    }
     assert "TRANSCRIPT_SENTINEL" not in result.stdout + result.stderr
+    assert "MESSAGE_SENTINEL" not in result.stdout + result.stderr
     assert record["cwd"] not in result.stdout + result.stderr
 
 

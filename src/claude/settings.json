@@ -4,7 +4,23 @@
     "SessionStart": [
       {
         "matcher": "compact",
-        "hooks": [{ "type": "command", "command": "~/.claude/notes-after-compaction.sh" }]
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/notes-after-compaction.sh"
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.local/bin/slopmeister-prompt notice",
+            "timeout": 10
+          }
+        ]
       }
     ]
   },

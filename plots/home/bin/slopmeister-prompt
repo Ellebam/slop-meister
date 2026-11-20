@@ -1,0 +1,25 @@
+#!/bin/bash
+# The notice only signals a pending dialog. The guard must fail closed.
+set -u
+for python in /opt/homebrew/bin/python3.14 /usr/local/bin/python3.14 /usr/bin/python3.14; do
+    [ -x "$python" ] || continue
+    export PYTHONDONTWRITEBYTECODE=1
+    export PYTHONPATH="${HOME-}/.local/lib/slopmeister-op"
+    if [ "${1-}" = notice ]; then
+        "$python" -P -s -m slopmeister.session.prompt_record notice >/dev/null 2>&1
+        exit 0
+    fi
+    if [ "${1-}" = guard ]; then
+        # Codex's PreToolUse hook. Exit status 2 blocks the call, so a failed guard refuses.
+        shift
+        "$python" -P -s -m slopmeister.session.memory_guard "$@" && exit 0
+        echo "slopmeister-prompt: the memory guard failed, the write is refused" >&2
+        exit 2
+    fi
+    # The first available interpreter replaces this launcher.
+    # shellcheck disable=SC2093
+    exec "$python" -P -s -m slopmeister.session.prompt_record "$@"
+done
+[ "${1-}" = notice ] && exit 0
+echo "slopmeister-prompt: Python 3.14 is required at a fixed system path" >&2
+exit 2

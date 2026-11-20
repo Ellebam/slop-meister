@@ -21,8 +21,10 @@ ALLOW = (
     b"Agent commit permission for this plot is allow. Agent commits are allowed in this "
     b"session's repository. This grants no push, merge or other remote write.\nAgent shipping "
     b"permission for this session is allow. Ordinary push and PR create/update are allowed only "
-    b"for the saved repository and current non-default task branch through ship, GitHub enforces "
-    b"branch protection. Merge and harvest remain operator-controlled.\n"
+    b"for the saved repository and current non-default task branch through ship. The helper "
+    b"refuses the default branch. On another forge its push-only command pushes the branch "
+    b"recorded at launch and new pre-release tags at HEAD, and every other push keeps native "
+    b"approval. Merge and harvest remain operator-controlled.\n"
 )
 
 

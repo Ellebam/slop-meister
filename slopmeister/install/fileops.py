@@ -23,11 +23,12 @@ def lock_service_actions(repo: Path, enabled: bool) -> None:
         [repo / native / "service-actions" for native in (".codex", ".claude")] if enabled else []
     )
     roots.extend(
-        repo / native / "skills/ci-rerun"
+        repo / native / "skills" / skill
         for native in (".agents", ".claude")
-        if (repo / native / "skills/ci-rerun").is_dir()
+        for skill in ("ci-rerun", "ship")
+        if (repo / native / "skills" / skill).is_dir()
     )
     for root in roots:
         for path in [root, *root.rglob("*")]:
-            if root.name == "ci-rerun" or path.is_dir():
+            if root.name in ("ci-rerun", "ship") or path.is_dir():
                 path.chmod(0o555 if path.is_dir() else 0o444)

@@ -5,13 +5,12 @@ import json
 import os
 from pathlib import Path
 import re
-import shutil
-import sys
 import time
 import uuid
 
 from slopmeister import paths
 from slopmeister.errors import SlopmeisterError
+from slopmeister.launch import terminal
 from slopmeister.quality import identifiers
 from slopmeister.session import launch_identity
 from slopmeister.session.service_actions.process import Run, invoke
@@ -24,17 +23,10 @@ NAME = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}")
 
 
 def inventory() -> list[dict]:
-    binary = (
-        "/Applications/Orca.app/Contents/Resources/bin/orca"
-        if sys.platform == "darwin"
-        else shutil.which("orca") or shutil.which("orca-ide")
-    )
-    if not binary:
-        raise SlopmeisterError("local session inventory unavailable")
     env = os.environ.copy()
     for key in ("ORCA_ENVIRONMENT", "ORCA_PAIRING_CODE"):
         env.pop(key, None)
-    output = invoke(Run([binary, "terminal", "list", "--json"], env, timeout=TIMEOUT))
+    output = invoke(Run([terminal.binary(), "terminal", "list", "--json"], env, timeout=TIMEOUT))
     envelope = json.loads(output)
     data = envelope.get("result", {})
     if envelope.get("ok") is not True or data.get("truncated") is not False:

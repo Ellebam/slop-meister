@@ -2,7 +2,7 @@
 
 The commands below are the fixed actions selected for this plot. Reads run without a question, research objective, budget or review, like `gh issue view`. Writes keep the approval described under Write actions.
 
-A read is one command, the exact absolute Python entry shown below with `-E -s -S`, followed by its literal arguments. Do not add a chain, pipe, redirection, `cd`, wrapper, module form or relative path, because a changed command leaves the allow rule. Quote each selector as one argument. Allow at least 330 seconds for execution where the tool supports it. If the tool yields sooner, collect the same running session.
+A read is one command, the exact absolute executable entry shown below, followed by its literal arguments. Do not add a chain, pipe, redirection, `cd`, wrapper, module form or relative path, because a changed command leaves the allow rule. Quote each selector as one argument. Allow at least 330 seconds for execution where the tool supports it. If the tool yields sooner, collect the same running session.
 
 A finished read prints one JSON line with `result` and `result_file`. If the tool returns a running session instead, collect that same session until it exits. On Codex call `write_stdin` with its session id and empty `chars`. Never resubmit because a wait elapsed, and never report a read as unknown while its session is uncollected. Accept success only after exit `0` with the expected action success code. A nonzero or uncertain exit is not success. Keep the file for diagnosis and do not replay. Read `result_file` with standard file tools, in contiguous chunks when it is larger than the display limit. It is a private `0600` file of at most 2 MiB in the session's temporary directory. Keep provider content out of Slopmeister notes. Delete the file when its context is no longer needed.
 
@@ -47,7 +47,7 @@ Use `mcp__jira_write__run` or `mcp__confluence_write__run` for writes. Their `co
 
 `NATIVE_APPROVAL_REQUIRED` can be a local fault before provider contact. Its fixed reason is `client` for a client-path mismatch, `ask` for a missing native write approval rule, or `local` for another local fault. Repair the local setup and start a fresh admitted session. Do not change arguments, retry the action or use a browser to bypass this gate.
 
-Codex sessions use `on-request` with an automatic reviewer. Claude retains auto mode with an explicit ask on the native write tool. An automatic review decision is not operator approval. A Codex reviewer denial stops this run unless the operator uses native `/approve` for one exact retry, still subject to review. A declared manager may relay an operator-ordered native approval for one named worker and action under Manage sessions in the plot-session skill.
+Codex sessions use `on-request` with an automatic reviewer. Claude retains auto mode with an explicit ask on the native write tool. An automatic review decision is not operator approval. A Codex reviewer denial stops this run unless the operator uses native `/approve` for one exact retry, still subject to review. A managed worker can notify its manager that the operator needs to inspect a native permission dialog.
 
 `jira-write` accepts these forms:
 

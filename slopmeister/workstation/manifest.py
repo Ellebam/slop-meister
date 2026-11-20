@@ -10,7 +10,7 @@ from pathlib import Path
 
 from slopmeister import paths
 from slopmeister.paths import ROOT
-from slopmeister.workstation import orca, rules
+from slopmeister.workstation import codex_hooks, orca, rules
 
 EXEC = "exec"
 # A service is reloaded on install, a launchd job on the Mac and a systemd user unit on Linux.
@@ -18,12 +18,23 @@ RELOAD = "reload"
 VAULT_REPOSITORY = ".vault-git/obsidian.git"
 OP_LIBRARY = ".local/lib/slopmeister-op"
 CODEX_CONFIG = ".codex/config.toml"
+HOOK_RUNTIME = (
+    ".local/bin/slopmeister-prompt",
+    *(
+        f"{OP_LIBRARY}/slopmeister/session/{module}.py"
+        for module in ("memory_guard", "prompt_record", "launch_identity")
+    ),
+)
 # The phone's entry point is reloaded on install like the vault job. Its restart ends only the
 # server's own phone sessions, never a worker, and the service manager starts it again,
 # see docs/phone-access.md.
 CLAUDE_LABEL = "local.claude-remote-control"
 CLAUDE_UNIT = "claude-remote-control"
 VAULT_LABEL = "local.vault-commit"
+# Starts a glean session every Sunday evening after the week's cut, see src/skills/glean/SKILL.md.
+GLEAN_LABEL = "local.glean"
+# Starts the dependency update sessions every Monday morning, see docs/launcher.md.
+WEEKLY_LABEL = "local.weekly"
 # On Linux the two Drive sync runs and the scheduled vault commit each have a timer.
 VAULT_SYNC, DOCUMENTS_SYNC, VAULT_SWEEP = "drive-sync-vault", "drive-sync-documents", "vault-commit"
 TIMERS = (VAULT_SYNC, DOCUMENTS_SYNC, VAULT_SWEEP)
@@ -86,6 +97,9 @@ COMMON = (
     # Slopmeister's op, first on PATH because the dotfiles put ~/.local/bin first in every shell.
     # It picks the tier of a marked session's op run, see docs/1password-access.md.
     Entry("plots/home/bin/op", ".local/bin/op", EXEC),
+    # The permission prompt record of both tools, outside either tool's folder. It uses the op
+    # library, see slopmeister/session/prompt_record.py.
+    Entry("plots/home/bin/slopmeister-prompt", ".local/bin/slopmeister-prompt", EXEC),
     Entry("slopmeister/__init__.py", f"{OP_LIBRARY}/slopmeister/__init__.py"),
     Entry("slopmeister/session/__init__.py", f"{OP_LIBRARY}/slopmeister/session/__init__.py"),
     Entry(
@@ -93,6 +107,14 @@ COMMON = (
         f"{OP_LIBRARY}/slopmeister/session/launch_identity.py",
     ),
     Entry("slopmeister/session/secret_run.py", f"{OP_LIBRARY}/slopmeister/session/secret_run.py"),
+    Entry(
+        "slopmeister/session/prompt_record.py",
+        f"{OP_LIBRARY}/slopmeister/session/prompt_record.py",
+    ),
+    Entry(
+        "slopmeister/session/memory_guard.py",
+        f"{OP_LIBRARY}/slopmeister/session/memory_guard.py",
+    ),
     Entry(
         "slopmeister/session/secret_metadata.py",
         f"{OP_LIBRARY}/slopmeister/session/secret_metadata.py",
@@ -133,7 +155,13 @@ COMMON = (
 )
 # The Mac runs the vault job through launchd and an applet, and Google's client does its sync.
 SERVICES = {
-    "darwin": (_agent(VAULT_LABEL, RELOAD), _agent(CLAUDE_LABEL, RELOAD)),
+    "darwin": (
+        _agent(VAULT_LABEL, RELOAD),
+        _agent(CLAUDE_LABEL, RELOAD),
+        Entry("plots/home/launchd/weekly.py", ".local/bin/slopmeister-weekly", EXEC),
+        _agent(GLEAN_LABEL, RELOAD),
+        _agent(WEEKLY_LABEL, RELOAD),
+    ),
     "linux": (
         Entry(
             f"plots/home/systemd/{CLAUDE_UNIT}.service",
@@ -153,9 +181,15 @@ def entries() -> tuple[Entry, ...]:
 
 
 def mac_only() -> tuple[str, ...]:
-    """Orca's settings file and the applet, which have their own installers."""
+    """Orca's managed settings and the applet, which have their own installers."""
     return (orca.NAME, APPLET) if paths.platform() == "darwin" else ()
 
 
 def names() -> tuple[str, ...]:
-    return (*(entry.destination for entry in entries()), CODEX_CONFIG, *rules.NAMES, *mac_only())
+    return (
+        *(entry.destination for entry in entries()),
+        CODEX_CONFIG,
+        codex_hooks.NAME,
+        *rules.NAMES,
+        *mac_only(),
+    )

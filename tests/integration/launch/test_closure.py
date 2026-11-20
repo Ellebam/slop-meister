@@ -15,13 +15,15 @@ from slopmeister.launch.model import Launch, Stop
 REAL_RUN, REAL_KILL, REAL_SLEEP = subprocess.run, os.kill, time.sleep
 
 
-def _sleeper(cwd, name: str, ignore_term: bool = False) -> subprocess.Popen:
+def _sleeper(cwd, name: str, ignore_term: bool = False, padding: str = "") -> subprocess.Popen:
     """A real sleep whose argv carries a session name; a trap set before exec survives it."""
     trap = "trap '' TERM; " if ignore_term else ""
-    script = f"{trap}exec -a 'sleep --remote-control={name}' /bin/sleep 300"
+    script = f"{trap}exec -a 'sleep {padding}--remote-control={name}' /bin/sleep 300"
     child = subprocess.Popen(["/bin/bash", "-c", script], cwd=cwd)
     for _ in range(100):
-        argv = REAL_RUN(["ps", "-p", str(child.pid), "-o", "args="], capture_output=True, text=True)
+        argv = REAL_RUN(
+            ["ps", "-ww", "-p", str(child.pid), "-o", "args="], capture_output=True, text=True
+        )
         if "--remote-control" in argv.stdout:
             return child
         REAL_SLEEP(0.02)
@@ -35,10 +37,11 @@ def _confine(monkeypatch, owned: dict[int, subprocess.Popen], parents=None, clie
         if args == ["ps", "-axo", "pid=,ppid="]:
             rows = "".join(f"{pid} {(parents or {}).get(pid, 1)}\n" for pid in owned)
             return subprocess.CompletedProcess(args, 0, rows, "")
-        if args[:2] == ["ps", "-axo"]:
+        if args[:3] == ["ps", "-ww", "-axo"]:
             rows = "".join(f"{pid} ?? /bin/claude\n" for pid in clients or owned)
             return subprocess.CompletedProcess(args, 0, rows, "")
-        assert args[0] in ("ps", "lsof") and int(args[args.index("-p") + 1]) in owned, args
+        listed = args[args.index("-p") + 1].split(",")
+        assert args[0] in ("ps", "lsof") and all(int(pid) in owned for pid in listed), args
         return REAL_RUN(args, **kwargs)
 
     def kill(pid, sig):
@@ -106,6 +109,31 @@ def test_signals_reach_only_owned_processes(tmp_path, monkeypatch, ignores_term)
             closure.close(launch)
             assert old.wait(timeout=5) == -signal.SIGTERM
         assert neighbour.poll() is None
+    finally:
+        for child in owned.values():
+            child.kill()
+            child.wait()
+
+
+@pytest.mark.xdist_group("launch-processes")
+def test_a_named_worker_past_the_terminal_width_still_refuses(tmp_path, monkeypatch):
+    """Bug: ps cut the argument row at COLUMNS, the named worker in another workspace lost its
+    name, and closure picked the unnamed worker in the target workspace."""
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
+    monkeypatch.setenv("PLOT_SESSION_STATE_DIR", str(tmp_path / "state"))
+    (tmp_path / "wt").mkdir()
+    (tmp_path / "wt-other").mkdir()
+    unnamed = _sleeper(tmp_path / "wt", "example-client-other")
+    named = _sleeper(tmp_path / "wt-other", "example-client-old", padding="x" * 80 + " ")
+    owned = {unnamed.pid: unnamed, named.pid: named}
+    try:
+        monkeypatch.setenv("COLUMNS", "60")
+        _confine(monkeypatch, owned)
+        with pytest.raises(Stop, match=f"named PID {named.pid} belongs to a different workspace"):
+            closure.close(
+                Launch("example-client", "example-client-old", "repo", claude_wt=tmp_path / "wt")
+            )
+        assert unnamed.poll() is None and named.poll() is None
     finally:
         for child in owned.values():
             child.kill()

@@ -15,7 +15,7 @@ from slopmeister.removal import SCRATCH
 from slopmeister.render.settings import native_tools, permission_contract
 
 GIT_HISTORY_COMMANDS = ("commit", "merge", "rebase", "cherry-pick", "revert", "am", "pull")
-VAULT_COMMIT = "slopmeister-vault commit"
+VAULT_COMMIT = shlex.join([str(Path.home() / ".vault-git/bin/slopmeister-vault"), "commit"])
 
 
 def add_native_payload(context: InstallContext) -> None:
@@ -87,7 +87,7 @@ def _codex_rules(context: InstallContext, permissions: dict) -> None:
     binary = str(context.root / "bin/slopmeister")
     review = [binary, "review", "review"]
     add = [binary, "repository", "add"]
-    vault = VAULT_COMMIT.split()
+    vault = shlex.split(VAULT_COMMIT)
     policies = permission_contract(context.root / "src/permissions.toml")["self_release"]
     releases = [[binary, *policy["prefix"].split(), str(context.repo)] for policy in policies]
     permissions.setdefault("allow", []).extend(f"Bash({shlex.join(item)})" for item in releases)
@@ -118,7 +118,8 @@ def _ci_rerun_rules(context: InstallContext, permissions: dict) -> None:
     rules = []
     for native in (".agents", ".claude"):
         directory = context.repo / native / "skills/ci-rerun"
-        permissions.setdefault("deny", []).append("Edit(/" + str(directory) + "/**)")
+        for fixed in (directory, context.repo / native / "skills/ship"):
+            permissions.setdefault("deny", []).append("Edit(/" + str(fixed) + "/**)")
         if not context.directory and not context.request.proof_owner:
             command = ["python3", str(directory / "scripts" / "ci_rerun.py")]
             permissions.setdefault("allow", []).append("Bash(" + shlex.join(command) + " *)")
@@ -144,6 +145,13 @@ def _add_settings(context: InstallContext, values: tuple[dict, dict, list[str], 
     context.files[".codex/config.toml"] = (native_tools(context, writable), 0o644)
 
 
+SHIP_ENTRY = Path("skills", "ship", "scripts", "ship.py")
+PUSH_ONLY = (
+    "The fixed ship helper pushes HEAD without force only to this session's recorded branch "
+    "and new pre-release tags at HEAD, and refuses the default branch and every other checkout"
+)
+
+
 def _add_git_approval(context: InstallContext) -> None:
     if context.directory:
         return
@@ -152,18 +160,20 @@ def _add_git_approval(context: InstallContext) -> None:
     patterns = []
     for command in commands:
         patterns.extend((["git", command], ["git", "-C", str(context.repo), command]))
-    if context.permission != "allow" or context.shipping != "allow":
-        ship = Path("skills", "ship", "scripts", "ship.py")
-        patterns.extend(
-            ["python3", str(context.repo / tree / ship)] for tree in (".agents", ".claude")
-        )
+    ship = [["python3", str(context.repo / tree / SHIP_ENTRY)] for tree in (".agents", ".claude")]
+    allowed = context.permission == "allow" and context.shipping == "allow"
+    if not allowed:
+        patterns.extend(ship)
     order = permission_contract(context.root / "src/permissions.toml")["order"]
     why = json.dumps("Explicit operator intent required. " + order)
     tail = f', decision="prompt", justification={why})'
     rules = ["prefix_rule(pattern=" + json.dumps(pattern) + tail for pattern in patterns]
+    if allowed:
+        pushes = [[*command, "--push-only"] for command in ship]
+        tail = f', decision="allow", justification={json.dumps(PUSH_ONLY)})'
+        rules += ["prefix_rule(pattern=" + json.dumps(pattern) + tail for pattern in pushes]
+        allow = ["Bash(" + shlex.join(pattern) + " *)" for pattern in pushes]
+        context.settings.setdefault("permissions", {}).setdefault("allow", []).extend(allow)
+    context.files[".codex/rules/git-permission.rules"] = (("\n".join(rules) + "\n").encode(), 0o644)
     asks = ["Bash(" + " ".join(pattern) + " *)" for pattern in patterns]
-    context.files[".codex/rules/git-permission.rules"] = (
-        ("\n".join(rules) + "\n").encode(),
-        0o644,
-    )
     context.settings.setdefault("permissions", {}).setdefault("ask", []).extend(asks)

@@ -135,6 +135,35 @@ def test_skipped_snapshot_notifies_and_preserves_history(
     assert capture.read_bytes() == b""
 
 
+def test_skipped_snapshot_still_writes_the_due_bundle(world: World) -> None:
+    """Escaping bug: every skipped run also skipped the bundle, the only history off the machine."""
+    paths = [world.vault / f"note-{number}.md" for number in range(30)]
+    for path in paths:
+        path.write_text("# Note\n")
+    world.run()
+    head = world.git("rev-parse", "HEAD")
+    world.age_bundle()
+    aged = world.bundle.stat().st_mtime
+    world.log.write_text("")
+    for path in paths[:26]:
+        path.unlink()
+    log = world.run()
+    assert "SKIPPED, 26 deletions" in log and "bundle written" in log
+    assert world.bundle.stat().st_mtime > aged
+    assert world.git("bundle", "list-heads", str(world.bundle)).split()[0] == head
+    assert world.git("diff", "--cached", "--name-only") == ""
+
+
+def test_drive_icon_files_are_not_staged(world: World) -> None:
+    """Escaping bug: Drive's Icon files, named with a final carriage return, entered history."""
+    exclude = ROOT / "slopmeister/vault/runtime/exclude"
+    (world.git_dir / "info/exclude").write_bytes(exclude.read_bytes())
+    (world.vault / "Icon\r").write_text("")
+    (world.vault / "_system/Icon\r").write_text("")
+    world.run()
+    assert world.git("ls-files") == "_system/start.md"
+
+
 @pytest.mark.parametrize("platform", ["Linux", "Darwin"])
 def test_rebuilt_repository_keeps_the_longer_bundle(world: World, platform: str) -> None:
     """Escaping bug: a fresh one-commit repository overwrites the only copy of the long history."""

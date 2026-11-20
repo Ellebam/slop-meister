@@ -88,6 +88,12 @@ def test_entry_preserves_explicit_preflight_refusal(tmp_path, monkeypatch, capsy
         '{"url": "https://example.com/", "fields": [["#a", "OTHER"]], "submit": "#go"}',
         '{"url": "https://example.com/", "fields": [], "submit": "#go"}',
         '{"url": "https://example.com/", "fields": [["#a", "BROWSER_LOGIN_OTP"]], "submit": ""}',
+        '{"url": "https://example.com/", "frame": "http://id.example/in", '
+        '"fields": [["#a", "BROWSER_LOGIN_PASSWORD"]], "submit": "#go"}',
+        '{"url": "https://example.com/", "frame": ["https://id.example/in"], '
+        '"fields": [["#a", "BROWSER_LOGIN_PASSWORD"]], "submit": "#go"}',
+        '{"url": "https://example.com/", "frames": "https://id.example/in", '
+        '"fields": [["#a", "BROWSER_LOGIN_PASSWORD"]], "submit": "#go"}',
     ],
 )
 def test_malformed_steps_are_refused_before_any_value_is_read(monkeypatch, raw):
@@ -143,6 +149,72 @@ def test_each_step_carries_its_own_destination_and_stored_fields_hold_no_value(
     assert SECRET not in stored and json.loads(stored)["credential_fields"] == ["#p"]
 
 
+@pytest.mark.parametrize(
+    ("code", "shares"),
+    [("001234", ["0", "0", "1", "2", "3", "4"]), ("00123456", ["0012", "3456"])],
+    ids=["six-boxes", "two-boxes-of-four"],
+)
+def test_a_split_code_gives_each_box_its_share_and_guards_every_box(
+    tmp_path, monkeypatch, code, shares
+):
+    state.save(tmp_path, {"worktree": str(tmp_path)})
+    monkeypatch.setenv("BROWSER_LOGIN_OTP", code)
+    sent = {}
+    monkeypatch.setattr(runtime, "request", lambda _, payload: sent.update(payload) or {})
+    boxes = [f"#d{i}" for i in range(len(shares))]
+    raw = {
+        "url": "https://id.example/mfa",
+        "fields": [[boxes, "BROWSER_LOGIN_OTP"]],
+        "submit": "#v",
+    }
+    browser.fill(tmp_path, browser.arguments(["fill", str(tmp_path), "--step", json.dumps(raw)]))
+    fields = sent["steps"][0]["fields"]
+    assert [(f["selector"], f["value"]) for f in fields] == list(zip(boxes, shares, strict=True))
+    stored = (tmp_path / "owner.json").read_text()
+    assert code not in stored and json.loads(stored)["credential_fields"] == boxes
+
+
+@pytest.mark.parametrize(
+    ("group", "variable", "code"),
+    [
+        (["#a", "#b"], "BROWSER_LOGIN_PASSWORD", "001234"),
+        ([f"#d{i}" for i in range(5)], "BROWSER_LOGIN_OTP", "001234"),
+        (["#a", "#" + "b" * browser.GROUP_SELECTOR_LIMIT], "BROWSER_LOGIN_OTP", "001234"),
+        (["#a", ""], "BROWSER_LOGIN_OTP", "001234"),
+        (["#a", 1], "BROWSER_LOGIN_OTP", "001234"),
+        (["#a", "#b", "#c", "#d"], "BROWSER_LOGIN_OTP", "001234"),
+    ],
+    ids=["not-a-code", "five-boxes", "long-selector", "empty", "not-text", "uneven-share"],
+)
+def test_a_code_group_that_cannot_hold_the_code_is_refused(monkeypatch, group, variable, code):
+    monkeypatch.setenv(variable, code)
+    raw = json.dumps(
+        {"url": "https://id.example/mfa", "fields": [[group, variable]], "submit": "#v"}
+    )
+    with pytest.raises(ValueError, match="BROWSER_FIELD_REFUSED"):
+        browser.step(raw)
+
+
+@pytest.mark.parametrize(("count", "accepted"), [(3, True), (5, False), (8, True), (9, False)])
+def test_check_accepts_only_box_counts_a_supported_code_divides(count, accepted):
+    raw = {"url": "https://id.example/mfa", "submit": "#v"}
+    raw["fields"] = [[[f"#d{i}" for i in range(count)], "BROWSER_LOGIN_OTP"]]
+    if accepted:
+        assert len(browser.step(json.dumps(raw), resolved=False)["fields"]) == count
+    else:
+        with pytest.raises(ValueError, match="BROWSER_FIELD_REFUSED"):
+            browser.step(json.dumps(raw), resolved=False)
+
+
+def test_a_named_frame_adds_its_own_destination_and_a_step_without_one_is_unchanged(monkeypatch):
+    monkeypatch.setenv("BROWSER_LOGIN_PASSWORD", SECRET)
+    top = {"url": "https://example.com/login", "fields": [["#p", "BROWSER_LOGIN_PASSWORD"]]}
+    plain = browser.step(json.dumps({**top, "submit": "#s"}))
+    framed = browser.step(json.dumps({**top, "frame": "https://id.example/in?x=1", "submit": "#s"}))
+    assert set(plain) == {"origin", "path", "fields", "submit"}
+    assert framed == {**plain, "frame": {"origin": "https://id.example", "path": "/in"}}
+
+
 STEP = {
     "url": "https://example.com/login",
     "fields": [["#p", "BROWSER_LOGIN_PASSWORD"]],
@@ -191,9 +263,16 @@ def test_a_refused_check_exits_nonzero(tmp_path, monkeypatch, capsys):
 
 
 @pytest.mark.parametrize("flag", [[], ["--private-display"]])
-def test_start_passes_the_private_display_choice_to_the_runtime(monkeypatch, capsys, flag):
+def test_start_passes_the_profile_and_the_private_display_choice_to_the_runtime(
+    monkeypatch, capsys, flag
+):
     # Without it, the route that BROWSER_NO_MONITOR names would refuse again with the same result.
     seen = []
-    monkeypatch.setattr(runtime, "start", lambda url, private: seen.append((url, private)) or {})
-    assert browser.main(["start", *flag, "https://example.com/"]) == 0
-    assert seen == [("https://example.com/", bool(flag))]
+    monkeypatch.setattr(runtime, "start", lambda *args: seen.append(args) or {})
+    assert browser.main(["start", "--profile", "plot", *flag, "https://example.com/"]) == 0
+    assert seen == [("https://example.com/", "plot", bool(flag))]
+
+
+def test_start_without_a_profile_is_refused(capsys):
+    with pytest.raises(SystemExit):
+        browser.main(["start", "https://example.com/"])

@@ -7,15 +7,18 @@ import os
 from pathlib import Path
 import shlex
 import subprocess
+import sys
 import tempfile
 
 from slopmeister.claims import evidence
 from slopmeister.errors import SlopmeisterError
+from slopmeister.launch import terminal
 from slopmeister.paths import ROOT, main_checkout, session_root
 from slopmeister.removal import check_ignored, ignored_work, nested, read_inventory, remove_tree
 from slopmeister.removal import clean as _clean
 from slopmeister.removal import git as _git
 from slopmeister.repositories import check_companions, remove_companions
+from slopmeister.review.check import remove_finished
 from slopmeister.session import git_environment
 from slopmeister.slots import allocation, claimed, down, leftover, tester
 from slopmeister.threads import occupants
@@ -145,14 +148,25 @@ def _retry(path: Path) -> str:
     return shlex.join([str(ROOT / "bin/slopmeister"), "workspace-remove", str(path), "--force"])
 
 
+def _drop_folder(path: Path) -> None:
+    """Orca is a view, so a session folder it cannot drop is still removed."""
+    listed = terminal.repos()
+    if listed is not None and str(path) not in listed:
+        return
+    if listed is None or not terminal.drop(listed[str(path)]):
+        print(f"orca: {path} stays in Orca's sidebar, remove it there", file=sys.stderr)
+
+
 def _remove(path: Path, repo: Path | None) -> int:
     if repo is not None:
         if _registered(path, repo):
             remove_companions(path)
         leftover.remove(path, _retry(path), repo)
     else:
+        _drop_folder(path)
         remove_tree(path)
     print(f"workspace removed: {path}; branches kept")
+    remove_finished(path)
     return 0
 
 

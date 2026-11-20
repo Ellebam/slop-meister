@@ -31,12 +31,21 @@ from tests.support.review_helpers import (
 )
 
 
-def test_permission_error_inside_invalid_json_is_not_retryable():
+@pytest.mark.parametrize(
+    "denials, category",
+    [
+        (', "permission_denials":[{"tool_name":"Bash"}]', "CONTROL_FAILURE"),
+        ("", "INVALID_REVIEWER_JSON"),
+    ],
+)
+def test_error_envelope_is_a_control_failure_only_with_a_recorded_denial(denials, category):
     fake = FakeReviewRuntime()
-    fake.set_review_output('{"type":"result","is_error":true,"result":"Permission denied"}')
+    fake.set_review_output(
+        '{"type":"result","is_error":true,"result":"Permission denied"' + denials + "}"
+    )
     with pytest.raises(CrossToolReviewError) as error:
         run_review(ReviewDirection.CODEX_TO_CLAUDE, ReviewTarget("Review.", "."), runner=fake)
-    assert error.value.category.value == "CONTROL_FAILURE"
+    assert error.value.category.value == category
 
 
 def test_owned_timeout_keeps_partial_output_and_stops_only_its_group(monkeypatch):

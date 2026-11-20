@@ -1,5 +1,6 @@
 """Secret redaction and safe one-line rendering."""
 
+import base64
 import json
 import re
 
@@ -23,6 +24,13 @@ SENSITIVE_ENV_NAMES = frozenset(
 )
 SENSITIVE_PROXY_NAMES = {"ALL_PROXY", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY"}
 _SECRET_PATTERNS = (
+    # A quote can stop inside the block, so a missing END line cuts to the end of the text. That
+    # cut needs a line break after the BEGIN line, so prose naming the delimiter stays readable.
+    re.compile(
+        r"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----"
+        r"(?:.*?-----END [A-Z0-9 ]*-----|[ \t]*\r?\n.*\Z)",
+        re.DOTALL,
+    ),
     re.compile(r"sk-[A-Za-z0-9_-]{16,}"),
     re.compile(r"Bearer\s+[A-Za-z0-9._-]{16,}", re.IGNORECASE),
     re.compile(r"secret_[A-Za-z0-9_-]{12,}", re.IGNORECASE),
@@ -36,6 +44,7 @@ _SECRET_PATTERNS = (
     re.compile(r"\bAIza[0-9A-Za-z_-]{35}"),
     re.compile(r"\bglpat-[A-Za-z0-9_-]{20,}"),
 )
+_DOTTED_TRIPLE = re.compile(r"(?<![\w.-])([\w-]{2,})\.[\w-]+\.[\w-]+(?![\w-])", re.ASCII)
 _CREDENTIAL_VALUE = r"""(?:"(?:\\.|[^"\\\r\n])*"|'(?:\\.|[^'\\\r\n])*'|[^\s|`]+)"""
 _CREDENTIAL_NAME = r"(?:TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|API[_-]?KEY|CREDENTIALS?)"
 _CREDENTIAL_LABEL = rf"(?<![\w-])(?:(?:[A-Za-z][A-Za-z0-9_]*_)?{_CREDENTIAL_NAME}|"
@@ -58,7 +67,7 @@ def redact(text: str) -> str:
 def _redact_json(value: object) -> object:
     if isinstance(value, dict):
         return {
-            key: "[REDACTED]"
+            redact(key): "[REDACTED]"
             if re.fullmatch(f"{_CREDENTIAL_LABEL}|{_CLOUD_ENV_NAME}", key, re.IGNORECASE)
             else _redact_json(item)
             for key, item in value.items()
@@ -69,7 +78,8 @@ def _redact_json(value: object) -> object:
 
 
 def _redact_text(text: str) -> str:
-    redacted = text
+    # A generic pattern can mask one JWT segment and hide the token shape, so JWTs go first.
+    redacted = _DOTTED_TRIPLE.sub(_mask_jwt, text)
     for pattern in _SECRET_PATTERNS:
         redacted = pattern.sub("[REDACTED]", redacted)
     redacted = re.sub(
@@ -95,6 +105,17 @@ def _redact_text(text: str) -> str:
         "[REDACTED_ENV]=[REDACTED]",
         redacted,
     )
+
+
+def _mask_jwt(match: re.Match[str]) -> str:
+    """A JWT is three base64url parts whose first part is a JSON header naming its algorithm.
+    Checking the header keeps module paths, versions and host names that share the shape."""
+    head = match[1]
+    try:
+        header = json.loads(base64.urlsafe_b64decode(head + "=" * (-len(head) % 4)))
+    except ValueError, RecursionError:
+        return match[0]
+    return "[REDACTED]" if isinstance(header, dict) and "alg" in header else match[0]
 
 
 def sanitize_text(value: str) -> str:

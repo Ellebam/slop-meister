@@ -83,6 +83,19 @@ def verify_release(release: dict, tag: str, sha: str | None) -> None:
         raise ValueError(f"conflicting tag or release {tag}: publication identity does not match")
 
 
+def release_notes(tag: str) -> str:
+    heading = f"Upgrading to {tag.removeprefix('v')}"
+    sections = re.split(r"(?m)^## ", Path("docs/releases.md").read_text(encoding="utf-8"))
+    bodies = [
+        section.partition("\n")[2].strip()
+        for section in sections[1:]
+        if section.partition("\n")[0] == heading
+    ]
+    if len(bodies) != 1 or not bodies[0]:
+        raise ValueError(f"expected one nonempty release notes section for {tag}")
+    return bodies[0]
+
+
 def publish() -> None:
     base, tag, sha = context()
     release = api(f"{base}/releases/tags/{tag}", missing_ok=True)
@@ -93,13 +106,14 @@ def publish() -> None:
         return
     if existing is not None and existing != sha:
         raise ValueError(f"conflicting tag {tag}: it does not name the tested commit")
+    notes = release_notes(tag)
     if existing is None:
         api(f"{base}/git/refs", {"ref": f"refs/tags/{tag}", "sha": sha})
     confirmed = tag_commit(api(f"{base}/git/ref/tags/{tag}"), tag)
     if confirmed != sha:
         raise ValueError(f"conflicting tag {tag}: it changed before publication")
     payload = {"tag_name": tag, "target_commitish": sha, "name": tag}
-    payload.update(draft=False, prerelease=False, generate_release_notes=True)
+    payload.update(draft=False, prerelease=False, body=notes)
     created = api(f"{base}/releases", payload)
     verify_release(created, tag, sha)
     print(f"Published {tag} at {sha}")

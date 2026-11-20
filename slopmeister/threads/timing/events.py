@@ -12,9 +12,9 @@ GATE = re.compile(
 )
 # A full gate that ended sooner was refused at once or only looked like a command.
 GATE_SECONDS = 30
-# These options make the gate run a part of its catalogue, or nothing.
 # What a heredoc holds is written to a file or a program, it is not a command of this shell.
 HEREDOC = re.compile(r"<<-?\s*(['\"]?)(\w+)\1[^\n]*\n[\s\S]*?\n\s*\2\b")
+# These options make the gate run a part of its catalogue, or nothing.
 GATE_SUBSET = re.compile(r"--(?:layer|ci|kind|list|clean|help)\b")
 COMMAND_KINDS = (
     ("tester-launch", re.compile(r"slopmeister\s+tester\s+launch\b")),

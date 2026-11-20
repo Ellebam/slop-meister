@@ -23,6 +23,7 @@ SETTINGS = "home-assistant.json"
 FIELDS = {"ask_url", "answer_url", "token"}
 WAIT_SECONDS = 600
 POLL_SECONDS = 2
+SERVER_ERROR_LIMIT = 3
 EXCHANGE_TIMEOUT = 5
 ANSWER_LIMIT = 1048576
 # A mobile push drops a larger body, so the operator would approve text they cannot see.
@@ -184,7 +185,9 @@ def answer(settings: dict[str, str], identifier: str) -> str:
     except HTTPError as error:
         if error.code == 401:
             raise Unreachable("answer route refused authentication (HTTP 401)") from None
-        return ""
+        if 500 <= error.code < 600:
+            raise
+        raise Unreachable(f"answer route returned HTTP {error.code}") from None
     except ValueError, HTTPException, RecursionError:
         raise Unreachable("answer route returned an invalid reply") from None
     except OSError:
@@ -202,9 +205,19 @@ def answer(settings: dict[str, str], identifier: str) -> str:
 def decision(settings: dict[str, str], identifier: str) -> str:
     """Wait for this request's decision: approved, denied, or timed out after ten minutes."""
     deadline = time.monotonic() + WAIT_SECONDS
+    failures = 0
     while time.monotonic() < deadline:
-        found = answer(settings, identifier)
-        if found:
-            return found
+        try:
+            found = answer(settings, identifier)
+        except HTTPError as error:
+            failures += 1
+            if failures >= SERVER_ERROR_LIMIT:
+                raise Unreachable(
+                    f"answer route returned HTTP {error.code} after {failures} failed polls"
+                ) from None
+        else:
+            failures = 0
+            if found:
+                return found
         time.sleep(POLL_SECONDS)
     return EXPIRED

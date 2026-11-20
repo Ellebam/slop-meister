@@ -1,5 +1,13 @@
 # Releases
 
+## Upgrading to 0.7.0
+
+Follow one shop search task from setup to testing acceptance in the illustrated quick start and walkthrough.
+
+Workers have their own Chrome profiles. The independent review checks the tested change before shipping. Managers receive notices about waiting permission dialogs, and memory guards protect the shared vault workflow. Optional weekly sessions recap work or prepare a dependency update.
+
+Start a fresh worker to receive the fixed executable for preselected Jira and Confluence reads. Read the browser setup before your first sign-in. Run `task home:diff` to see which settings changed, install the common runtime entries together as described in the home-install guide and start a fresh worker. The optional schedules require macOS and your own configuration.
+
 ## Upgrading to 0.6.0
 
 Start fresh workers for the changed fixed instructions. A session can now span several repositories of one plot, with one worktree per repository. Pass `--repository` at [launch](launcher.md#repositories) or add one later with `bin/slopmeister repository add`. Every planned task starts with a thin runnable path that is proved before later steps. A Night mode grant now lasts until the operator returns or revokes it.
@@ -44,9 +52,11 @@ Existing workers retain their fixed configuration. Start a fresh workspace to re
 
 ## Publishing
 
+Write a section headed `## Upgrading to X.Y.Z` in this file. Open with the reader’s outcome, name the visible changes and finish with any action needed to upgrade. Aim for 150 words or fewer. The publisher uses the text up to the next level-two heading verbatim. Use links that work on the GitHub release page. A missing, repeated or empty section stops a new release before tag creation.
+
 Set `project.version` in [pyproject.toml](../pyproject.toml) to the next `X.Y.Z` version. Run `uv lock` and include the lockfile update in the same commit. Use three nonnegative integers without leading zeroes or a prerelease suffix. Keep the version unchanged for commits that do not need a release. The first version is `0.1.0`.
 
-The [check workflow](../.github/workflows/check.yml) publishes a normal GitHub release with generated notes after a push to `main` passes lint, quality, portable tests and all four [host checks](../host/README.md#check-without-deployment). It creates `vX.Y.Z` at the exact commit those jobs tested. It does not publish a package or deploy services. Native and live workstation tests remain separate.
+The [check workflow](../.github/workflows/check.yml) publishes a normal GitHub release with the matching authored notes after a push to `main` passes lint, quality, portable tests and all four [host checks](../host/README.md#check-without-deployment). It creates `vX.Y.Z` at the exact commit those jobs tested. It does not publish a package or deploy services. Native and live workstation tests remain separate.
 
 The workflow token is read-only by default. Only the release job gets `contents: write`. Pull requests cannot run that job. Publication runs one job at a time per repository and does not cancel an active publisher. The publisher checks the event, branch, checked-out commit and version before contacting GitHub. It never prints CLI response bodies or credentials.
 
@@ -54,4 +64,4 @@ Tags are permanent version identities. The publisher never moves or deletes one.
 
 If a run creates the tag but fails before publishing, rerun the failed job from that workflow run. It reuses the tag only at the same tested commit. A manual `check` workflow dispatch on `main` also runs every gate before publication. If `main` has advanced past an unpublished tag, recover the original run instead of moving the tag. A failed GitHub request stops the job. Inspect the Actions log, restore access or service availability, then retry. GitHub can refuse an older commit when its workflow files differ from the current default branch. Keep the tag fixed and choose a new version on current `main` if that prevents recovery.
 
-The [release tests](../tests/integration/release) run the publisher against a local GitHub CLI stand-in. They cover the first release, unchanged versions, interrupted publication, conflicting tags, invalid versions, event restrictions and API failures without remote writes.
+The [release tests](../tests/integration/release) run the publisher against a local GitHub CLI stand-in. They cover the exact release body, missing or empty notes, the first release, unchanged versions, interrupted publication, conflicting tags, invalid versions, event restrictions and API failures without remote writes.

@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import re
+import secrets
 import stat
 import tempfile
 import uuid
@@ -13,9 +14,37 @@ TASK = re.compile(r"[a-z0-9][a-z0-9-]{0,63}")
 TOOLS = {"claude", "codex", "opencode"}
 
 
-def open_nofollow(path: Path | str, flags: int = os.O_RDONLY, *, dir_fd: int | None = None) -> int:
+def open_nofollow(
+    path: Path | str, flags: int = os.O_RDONLY | os.O_NONBLOCK, *, dir_fd: int | None = None
+) -> int:
     """Open without following the final link, retaining the caller's flags and OSError."""
     return os.open(path, flags | os.O_NOFOLLOW, dir_fd=dir_fd)
+
+
+def replace_bytes(path: Path, data: bytes, mode: int | None = None) -> None:
+    """Publish one complete file. A new file uses the process umask unless a mode is required."""
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        pass
+    else:
+        if not stat.S_ISREG(info.st_mode):
+            raise OSError(f"cannot replace nonregular file: {path}")
+        if mode is None:
+            mode = stat.S_IMODE(info.st_mode)
+    candidate = path.with_name(f".{path.name}.{secrets.token_hex(8)}.part")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    descriptor = os.open(candidate, flags, 0o666 if mode is None else 0o600)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(data)
+            stream.flush()
+            if mode is not None:
+                os.fchmod(stream.fileno(), mode)
+            os.fsync(stream.fileno())
+        os.replace(candidate, path)
+    finally:
+        candidate.unlink(missing_ok=True)
 
 
 def regular_file(info: os.stat_result, *, owned: bool = False) -> bool:

@@ -10,13 +10,16 @@ import shlex
 import shutil
 import subprocess
 
+from slopmeister.errors import SlopmeisterError
 from slopmeister.install.check import state_directory
 from slopmeister.launch import arguments, terminal
+from slopmeister.launch.command import saved_run
 from slopmeister.launch.model import REPORT, ROOT, Launch, die, plain
 from slopmeister.launch.workspace import session_root
 from slopmeister.opencode import native
 from slopmeister.paths import plot_declarations
 from slopmeister.plots import load_all, query
+from slopmeister.session import prompt_record
 from slopmeister.workstation.kickoff import MODE_LINES, MODES
 
 DIST = ROOT / "dist"
@@ -69,6 +72,47 @@ def policy(launch: Launch) -> None:
     launch.approval_required = (
         launch.service_actions or launch.git_prompts or bool(launch.proof_for)
     )
+
+
+def saved_roles(launch: Launch) -> None:
+    """Redispatch keeps a proof session's native approval, so its arguments are checked again,
+    and a managed worker's manager inbox, so its prompts still reach the manager."""
+    state, _ = state_directory(launch.wt)
+    record = state / "state.json"
+    saved = json.loads(record.read_text()) if record.is_file() and not record.is_symlink() else {}
+    if saved.get("proof_owner"):
+        launch.approval_required = True
+        arguments.check_tool_arguments(launch)
+    run = saved.get("manager_run")
+    if isinstance(run, str) and prompt_record.ROUTE.fullmatch(run):
+        launch.manager_run = run
+
+
+def owners(launch: Launch) -> None:
+    """A proof owner's terminal and a manager's inbox come only from their own launch records.
+
+    That binds a proof session to its owner's instance, and a prompt notice never takes an
+    address from kickoff or issue text.
+    """
+    if launch.proof_for:
+        handle = _recorded_handle(launch.state_dir / f"{launch.proof_for}.orca")
+        if handle is None:
+            raise die(
+                f"--proof-for {launch.proof_for} needs that session's launch record and its live "
+                "Orca terminal; launch the owner first"
+            )
+        launch.proof_handle = handle
+    if launch.managed_by:
+        try:
+            run = saved_run(launch.state_dir / f"{launch.managed_by}.run")
+        except SlopmeisterError, OSError:
+            run = None
+        if run is None:
+            raise die(
+                f"--managed-by {launch.managed_by} needs that session's inbox record; "
+                "launch the manager first"
+            )
+        launch.manager_run = run
 
 
 def declaration(launch: Launch) -> None:
@@ -216,29 +260,3 @@ def _recorded_handle(record: Path) -> str | None:
     handle = "" if record.is_symlink() or not record.is_file() else record.read_text().strip()
     live = terminal.terminals() if handle else None
     return handle if live is not None and handle in live else None
-
-
-def saved_proof(launch: Launch) -> None:
-    """Redispatch keeps a proof session's native approval, so its arguments are checked again."""
-    state, _ = state_directory(launch.wt)
-    record = state / "state.json"
-    if (
-        not record.is_symlink()
-        and record.is_file()
-        and json.loads(record.read_text()).get("proof_owner")
-    ):
-        launch.approval_required = True
-        arguments.check_tool_arguments(launch)
-
-
-def proof_owner(launch: Launch) -> None:
-    """The owner's own launch record and live terminal bind a proof session to that instance."""
-    if not launch.proof_for:
-        return
-    handle = _recorded_handle(launch.state_dir / f"{launch.proof_for}.orca")
-    if handle is None:
-        raise die(
-            f"--proof-for {launch.proof_for} needs that session's launch record and its live "
-            "Orca terminal; launch the owner first"
-        )
-    launch.proof_handle = handle

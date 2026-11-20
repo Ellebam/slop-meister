@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 import re
 import tomllib
 
@@ -11,13 +12,19 @@ from slopmeister.launch.tool_arguments import config_override as config_override
 
 USAGE = (
     "usage: slopmeister plot-session [<repo-path>] <plot> <name> "
-    "[--redispatch | --abandon --handoff <path>] [--directory] [--manager] [--proof-for <name>] "
+    "[--redispatch | --abandon --handoff <path>] [--directory] [--manager] [--weekly-update] "
+    "[--proof-for <name>] [--managed-by <manager>] "
     "[--tool claude|codex|opencode] "
     "[--host <alias>] [--model <model>] [--repository <path>] "
+    "[--push-branch <main-checkout> <branch>] "
     "[--issue <n> | --issue-id <n> | --note <path>] [-- <extra tool args>]"
 )
 SESSION_NAME = re.compile(r"[a-z0-9][a-z0-9-]*")
 MODEL_KEY = re.compile(r"""^\s*(?:model|"model"|'model')\s*=""")
+EFFORT_KEY = re.compile(
+    r"""^\s*(?:model_reasoning_effort|"model_reasoning_effort"|'model_reasoning_effort')\s*="""
+)
+SPLIT_SELECTORS = {"--model", "-m", "--effort", "-c", "--config"}
 
 
 def usage() -> Stop:
@@ -48,16 +55,28 @@ def _issue(launch: Launch, flag: str, args: list[str]) -> None:
     raise usage()
 
 
-def _option(launch: Launch, args: list[str]) -> int:
-    flag = args[0]
-    if flag == "--repository":
+def _repository(launch: Launch, args: list[str]) -> int:
+    if args[0] == "--repository":
         launch.repositories.append(_value(args))
         return 2
+    if len(args) < 3:
+        raise usage()
+    repo = str(Path(args[1]).expanduser().resolve())
+    if repo in launch.push_branches:
+        raise die("--push-branch may name each repository once")
+    launch.push_branches[repo] = args[2]
+    return 3
+
+
+def _option(launch: Launch, args: list[str]) -> int:
+    flag = args[0]
+    if flag in ("--repository", "--push-branch"):
+        return _repository(launch, args)
     if flag == "--directory":
         launch.directory_requested = True
         return 1
-    if flag in ("--redispatch", "--abandon", "--manager"):
-        setattr(launch, flag[2:], True)
+    if flag in ("--redispatch", "--abandon", "--manager", "--weekly-update"):
+        setattr(launch, flag[2:].replace("-", "_"), True)
         return 1
     if flag == "--model":
         _model(launch, args)
@@ -65,8 +84,8 @@ def _option(launch: Launch, args: list[str]) -> int:
         launch.proof_for = _value(args)
         if not launch.proof_for:
             raise die("--proof-for needs a name, an empty owner would launch an ordinary session")
-    elif flag in ("--handoff", "--tool", "--note"):
-        setattr(launch, flag[2:], _value(args))
+    elif flag in ("--handoff", "--tool", "--note", "--managed-by"):
+        setattr(launch, flag[2:].replace("-", "_"), _value(args))
     else:
         _issue(launch, flag, args)
     return 2
@@ -96,13 +115,24 @@ def check_model(launch: Launch) -> None:
         raise plain(
             "--model requires a nonempty value without option prefixes or control characters"
         )
-    for index, token in enumerate(launch.extra):
-        conflict = token == "--model" or token.startswith("--model=")
-        if launch.tool == "codex":
-            conflict |= token.startswith("-m")
-            conflict |= bool(MODEL_KEY.match(config_override(token, launch.extra, index)))
-        if conflict:
-            raise plain("--model conflicts with a model selector in the tool arguments")
+    if selector(launch.tool, launch.extra, "model"):
+        raise plain("--model conflicts with a model selector in the tool arguments")
+
+
+def selector(tool: str, tokens: list[str], setting: str) -> list[str]:
+    """The native tokens that select the model or the effort, empty when none do."""
+    for index, token in enumerate(tokens):
+        config = config_override(token, tokens, index) if tool == "codex" else ""
+        if setting == "model":
+            found = token == "--model" or token.startswith("--model=")
+            found |= tool == "codex" and (token.startswith("-m") or bool(MODEL_KEY.match(config)))
+        elif tool == "claude":
+            found = token == "--effort" or token.startswith("--effort=")
+        else:
+            found = bool(EFFORT_KEY.match(config))
+        if found:
+            return tokens[index : index + 1 + (token in SPLIT_SELECTORS)]
+    return []
 
 
 def _config_model(config: str) -> str | None:
@@ -171,9 +201,25 @@ def check_sources(launch: Launch) -> None:
         raise die("--handoff requires --abandon")
     if launch.manager and (launch.redispatch or launch.abandon):
         raise die("a manager is declared at first dispatch, redispatch keeps it")
+    # Its auto-mode exception is Claude's, and a directory session cannot ship the batch.
+    roles = launch.manager or launch.proof_for or launch.redispatch or launch.abandon
+    if launch.weekly_update and (roles or launch.tool != "claude" or launch.directory):
+        raise die(
+            "a weekly update session is a Claude worker in a repository, declared at first "
+            "dispatch, redispatch keeps it"
+        )
 
 
 def check_proof(launch: Launch) -> None:
+    if launch.managed_by and (
+        launch.redispatch or launch.abandon or launch.proof_for or launch.manager
+    ):
+        raise die(
+            "a managed worker is declared at first dispatch as a plain worker, redispatch keeps "
+            "its manager"
+        )
+    if launch.managed_by and not SESSION_NAME.fullmatch(launch.managed_by):
+        raise die(f"--managed-by '{launch.managed_by}' must match {SESSION_NAME.pattern}")
     if not launch.proof_for:
         return
     if launch.redispatch or launch.abandon or launch.manager or launch.issue_id:

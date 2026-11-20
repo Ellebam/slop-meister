@@ -1,4 +1,4 @@
-"""The diff check's guide scenarios: their IDs and the grading of the checker's reported results."""
+"""The diff check's guide scenarios, their grading, and the quote check shared with findings."""
 
 import json
 from pathlib import Path
@@ -79,19 +79,26 @@ def _scenario(name: str, rows: list[dict], root: Path) -> Scenario:
 
 
 def _citation(item: tuple[str, str], root: Path) -> str:
-    path, quote = item
     evidence = root / "evidence"
+    if evidence.is_symlink():
+        return f"{item[0]} is not a saved file under evidence/"
+    return quote_problem(item, root, (evidence,))
+
+
+def quote_problem(item: tuple[str, str], base: Path, roots: tuple[Path, ...]) -> str:
+    """Why a cited quote proves nothing, or "" when it is in a file under one of `roots`.
+
+    The path resolves against `base` unless absolute, and symlinks resolve before the root test,
+    so reviewer output cannot point the check outside the directories it was given.
+    """
+    path, quote = item
     if not quote.strip():
         return f"empty quote from {path}"
     try:
-        resolved = (root / path).resolve()
-        saved = (
-            not evidence.is_symlink()
-            and resolved.is_relative_to(evidence.resolve())
-            and resolved.is_file()
-        )
-        if not saved:
-            problem = f"{path} is not a saved file under evidence/"
+        resolved = (base / path).resolve()
+        inside = any(resolved.is_relative_to(root.resolve()) for root in roots)
+        if not inside or not resolved.is_file():
+            problem = f"{path} is not a file in the reviewed directories"
         elif quote not in resolved.read_text(errors="replace"):
             problem = f"quote is absent from {path}"
         else:

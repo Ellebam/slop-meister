@@ -11,6 +11,7 @@ from unittest.mock import patch
 import pytest
 
 from slopmeister.install import snapshot
+from slopmeister.install.service_actions import SHEBANG
 from tests.integration.install.helpers import ROOT, profile, unlock_deliveries
 from tests.support.repos import git, scratch_repo
 
@@ -87,9 +88,8 @@ def _assert_payload(workspace):
         assert delivered.stat().st_mode & 0o777 == 0o555
         for path in delivered.rglob("*"):
             mode = path.stat().st_mode & 0o777
-            assert mode == (
-                0o555 if path.is_dir() else 0o400 if path.name == "config.json" else 0o444
-            )
+            executable = path.is_dir() or path == delivered / "entry.py"
+            assert mode == (0o555 if executable else 0o400 if path.name == "config.json" else 0o444)
 
 
 def _assert_drift(workspace, env):
@@ -123,9 +123,13 @@ def _assert_manifest(workspace, shape):
     assert {name: manifest[name] for name in expected} == expected
     for tool in (".codex", ".claude"):
         delivered = workspace / tool / "service-actions/jira-read"
-        assert (delivered / "entry.py").read_bytes() == (sources / "entry.py").read_bytes()
+        assert (delivered / "entry.py").read_bytes() == SHEBANG + (
+            sources / "entry.py"
+        ).read_bytes()
         for source in (p for p in sources.iterdir() if p.suffix in (".py", ".cnf")):
-            if source.name in ("entry.py", "native_tool.py"):
+            if source.name == "entry.py":
+                continue
+            if source.name == "native_tool.py":
                 assert (delivered / source.name).read_bytes() == source.read_bytes()
                 continue
             assert (delivered / "service_actions" / source.name).read_bytes() == source.read_bytes()

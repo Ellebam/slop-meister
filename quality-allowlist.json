@@ -6,7 +6,7 @@
    "path": "docs/service-actions.md",
    "metric": "document_words",
    "symbol": "__file__",
-   "ceiling": 4489,
+   "ceiling": 3583,
    "target": 2000,
    "owner": "maintainer",
    "rationale": "Existing reference retained while introducing the word budget. No growth is permitted."

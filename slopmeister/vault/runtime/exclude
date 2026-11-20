@@ -5,7 +5,8 @@
 .obsidian/cache
 # Third-party plugin code, re-downloadable from community-plugins.json
 .obsidian/plugins/
-# macOS noise
+# macOS noise. Google Drive names its folder icon Icon plus a carriage return.
 .DS_Store
+Icon?
 # Python bytecode from an evaluation harness, never content
 __pycache__/

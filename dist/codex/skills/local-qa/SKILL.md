@@ -61,7 +61,3 @@ Write `## Validation` in the notes file, free-form, with the date and PASS or FA
 
 - No remote mutation here. Shipping belongs to `execute-plan`.
 - Source edits here fix only concrete findings from this step, a falsified claim, ineffective proof, uncovered required behavior or a security defect. Apply `prune` to unsupported extras. If a fix would change the plan's approach rather than its code, stop and tell the operator.
-
-## Arguments
-
-$TASK_DESCRIPTION

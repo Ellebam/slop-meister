@@ -23,6 +23,7 @@ class Box:
     events: list[str] = field(default_factory=list)
     states: dict[int, str] = field(default_factory=dict)
     identities: int = 0
+    censuses: int = 0
     clock: float = 0
 
     def run(self, args, **_):
@@ -37,6 +38,7 @@ class Box:
             rows = "".join(f"{pid} {self.parents.get(pid, 1)}\n" for pid in self.alive)
             result = 0, rows
         elif "-axo" in args:
+            self.censuses += 1
             rows = "".join(f"{pid} ttys001 /bin/{kind}\n" for pid, (kind, *_) in self.alive.items())
             result = (1, "") if self.fault == "ps" else (0, rows)
         else:
@@ -44,23 +46,34 @@ class Box:
         return result
 
     def process(self, args):
-        pid = int(args[2])
+        """One PID answers bare, a census list answers each living PID on a row led by its PID."""
+        columns, listed = args[args.index("-o") + 1], args[args.index("-p") + 1]
+        fields, batched = columns.removeprefix("pid="), columns.startswith("pid=")
+        rows = [
+            (pid, self.row(pid, fields.lstrip(","), batched)) for pid in map(int, listed.split(","))
+        ]
+        lines = [f"{pid} {row}" if batched else row for pid, row in rows if row is not None]
+        return (0 if lines else 1), "".join(line + "\n" for line in lines)
+
+    def row(self, pid, fields, batched):
         if pid not in self.alive:
-            return 1, ""
-        if args[-1] == "args=":
-            return 0, "agent --remote-control=example-client-old" if self.alive[pid][2] else "agent"
-        self.identities += 1
-        if self.fault == "reparent" and pid == 4001 and self.identities > 3:
+            return None
+        if fields == "args=":
+            return "agent --remote-control=example-client-old" if self.alive[pid][2] else "agent"
+        # Census reads leave this count to closure's own identity checks.
+        self.identities += not batched
+        if self.fault == "reparent" and pid == 4001 and self.identities > 1:
             self.alive.pop(4000, None)
             self.parents[4001] = 1
-        stale = self.fault == "identity" and self.identities > 1
+        stale = self.fault == "identity" and self.censuses > 1
         identity = "changed" if stale else "Mon Sep  7 10:00:00 2026 agent"
-        if args[-1] == "stat=,lstart=,comm=":
-            return 0, f"{self.states.get(pid, 'S')} {identity}"
-        return 0, identity
+        return f"{self.states.get(pid, 'S')} {identity}"
 
     def lsof(self, args):
-        return (1, "") if self.fault == "lsof" else (0, f"n{self.alive[int(args[3])][1]}\n")
+        if self.fault == "lsof":
+            return 1, ""
+        pids = [pid for pid in map(int, args[3].split(",")) if pid in self.alive]
+        return 0, "".join(f"p{pid}\nn{self.alive[pid][1]}\n" for pid in pids)
 
     def listing(self, **_):
         return None if self.fault == "orca-down" else dict(self.terminals)

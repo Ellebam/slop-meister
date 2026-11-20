@@ -52,6 +52,7 @@ class Request:
     model: str | None
     after_compaction: bool = False
     identity_known: bool = True
+    trigger: str | None = None
 
 
 @dataclass
@@ -80,6 +81,7 @@ class Session:
     malformed: int = 0
     unsupported: int = 0
     tools: list[ToolEvent] = field(default_factory=list)
+    messages: list[tuple[datetime | None, str]] = field(default_factory=list)
 
 
 def records(path: Path, session: Session, hints: tuple[str, ...]) -> Iterator[dict[str, object]]:

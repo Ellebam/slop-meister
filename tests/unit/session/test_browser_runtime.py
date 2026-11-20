@@ -1,12 +1,15 @@
-"""Page commands stay inside their allowlist and the extension token stays out of every output."""
+"""Page commands stay inside their allowlist and inside this session's own tab of the profile."""
 
 import json
 
 import pytest
 
-from slopmeister.session import browser_display as display
 from slopmeister.session import browser_runtime as runtime
-from tests.support.browser import CONNECT, commands
+from slopmeister.session import browser_state as state
+from tests.support.browser import commands
+
+SAVED = "playwright/.playwright-cli"
+OTHER = "- 0: [Other plot](https://other.example/private)\n"
 
 
 @pytest.mark.parametrize("url", ["http://example.com", "https://u:p@example.com", "file:///x"])
@@ -36,327 +39,193 @@ def test_foreign_or_linked_state_is_refused(root):
         (["request-body", "1"], "COMMAND_REFUSED"),
         (["route", "**"], "COMMAND_REFUSED"),
         (["run-code", "1"], "COMMAND_REFUSED"),
-        (["attach", "--extension=chrome"], "COMMAND_REFUSED"),
+        (["attach", "keep"], "COMMAND_REFUSED"),
         (["detach"], "COMMAND_REFUSED"),
         (["open", "https://example.com/"], "COMMAND_REFUSED"),
+        (["tab-new", "https://example.com/"], "COMMAND_REFUSED"),
+        (["close"], "COMMAND_REFUSED"),
         ([], "COMMAND_REFUSED"),
         (["screenshot", "--filename=/etc/passwd"], "OPTION_REFUSED"),
         (["snapshot", "--filename", "../../outside.yml"], "OPTION_REFUSED"),
         (["eval", "() => 1", "--config=/tmp/other.json"], "OPTION_REFUSED"),
-        (["click", "e1", "-s=other"], "OPTION_REFUSED"),
+        (["click", "e1", "-s=keep"], "OPTION_REFUSED"),
         (["mousewheel", "0", "-500", "--filename=x"], "OPTION_REFUSED"),
+        (["tab-list", "--json"], "OPTION_REFUSED"),
         (["goto", "file:///etc/passwd"], "URL_REFUSED"),
-        (["tab-new", "http://example.com/"], "URL_REFUSED"),
     ],
 )
-def test_page_commands_outside_the_allowlist_start_nothing(root, tool, command, reason):
-    calls, _ = tool
+def test_page_commands_outside_the_allowlist_start_nothing(root, chrome, command, reason):
     with pytest.raises(ValueError, match=reason):
         runtime.page(root, command)
-    assert calls == []
+    assert chrome.calls == [] and chrome.helper == []
 
 
-def test_page_tool_keeps_its_files_in_the_state_and_gets_no_credentials(root, tool, monkeypatch):
-    calls, _ = tool
+def test_page_tool_keeps_its_files_in_the_state_and_its_lists_in_the_profile(
+    root, chrome, monkeypatch
+):
     monkeypatch.setenv("BROWSER_LOGIN_PASSWORD", "dummy-private-value")
-    monkeypatch.setenv(runtime.TOKEN, "dummy-private-value")
     runtime.page(root, ["goto", "https://example.com/"])
-    argv, options = calls[0]
+    argv, options = chrome.calls[1]
     assert argv == ["-s=" + runtime.SESSION, "goto", "https://example.com/"]
+    profile = state.RUNTIME / "test"
     assert options["cwd"] == root / "playwright"
-    assert options["env"]["PWTEST_SOCKETS_DIR"] == str(root / "sockets")
+    assert options["env"]["PWTEST_SOCKETS_DIR"] == str(profile / "sockets")
+    assert options["env"]["PWTEST_DAEMON_SESSION_DIR"] == str(profile / "daemon")
+    assert options["env"]["PWTEST_SERVER_REGISTRY"] == str(profile / "registry")
     assert options["env"]["PWTEST_CLI_GLOBAL_CONFIG"] == str(root / "playwright")
     assert options["env"]["TMPDIR"] == str(root / "playwright/tmp")
     assert "dummy-private-value" not in json.dumps(options["env"])
-    assert (root / "playwright").stat().st_mode & 0o777 == 0o700
+    for folder in (root / "playwright", profile, state.RUNTIME):
+        assert folder.stat().st_mode & 0o777 == 0o700
+    config = json.loads((root / "playwright/.playwright/cli.config.json").read_text())
+    assert config == {"console": {"level": "none"}}, "page console capture must stay off"
 
 
 @pytest.mark.parametrize("command", [["snapshot"], ["click", "e3"]])
-@pytest.mark.parametrize("reply", ["FILLED", "EMPTY", "PAGE_OPERATION_FAILED"])
+@pytest.mark.parametrize("reply", ["FILLED", "PAGE_OPERATION_FAILED"])
 def test_no_page_command_runs_while_a_password_field_holds_a_value_even_before_any_fill(
-    root, tool, monkeypatch, command, reply
+    root, chrome, command, reply
 ):
-    calls, _ = tool
     runtime.save(root, {**runtime.metadata(root), "credential_fields": ["#user"]})
-    checks = []
-    monkeypatch.setattr(
-        runtime, "request", lambda _, payload: checks.append(payload) or {"result": reply}
-    )
-    if reply != "EMPTY":
-        with pytest.raises(ValueError, match="PAGE_REFUSED"):
-            runtime.page(root, command)
-        assert calls == [], "the page tool saves a snapshot, so nothing may start"
-    else:
+    chrome.answers["filled"] = {"result": reply}
+    with pytest.raises(ValueError, match="PAGE_REFUSED"):
         runtime.page(root, command)
-        assert commands(calls) == [command[0]]
-    assert checks[0] == {
-        "action": "filled",
-        "selectors": ["input[type=password]", 'input[autocomplete="one-time-code"]', "#user"],
-    }
+    assert commands(chrome.calls) == ["tab-list"], "the page tool saves a snapshot"
+    assert chrome.helper == [
+        {
+            "action": "filled",
+            "selectors": ["input[type=password]", 'input[autocomplete="one-time-code"]', "#user"],
+            "current": 1,
+        }
+    ]
 
 
-def test_a_password_revealed_by_an_action_withholds_its_output_and_snapshot(
-    root, tool, monkeypatch
-):
-    calls, replies = tool
-    replies["click"] = (0, "### Page\nprivate output\n")
-    replies_seen = iter(["EMPTY", "FILLED"])
-    monkeypatch.setattr(runtime, "request", lambda *_: {"result": next(replies_seen)})
-    saved = root / "playwright/.playwright-cli"
+def test_a_password_revealed_by_an_action_withholds_its_output_and_snapshot(root, chrome):
+    chrome.replies["click"] = (0, "### Page\nprivate output\n")
+    chrome.answers["filled"] = [{"result": "EMPTY", "owned": [1]}, {"result": "FILLED"}]
+    saved = root / SAVED
     saved.parent.mkdir(mode=0o700, exist_ok=True)
     saved.mkdir(mode=0o700)
     (saved / "page.yml").write_text("revealed password")
     with pytest.raises(ValueError, match="PAGE_REFUSED: a credential field holds a value"):
         runtime.page(root, ["click", "e1"])
-    assert commands(calls) == ["click"] and not saved.exists()
+    assert commands(chrome.calls) == ["tab-list", "click", "tab-list"] and not saved.exists()
 
 
-@pytest.mark.parametrize("command", ["snapshot", "tab-list", "click"])
-def test_connect_address_never_reaches_page_output(root, tool, command):
-    _, replies = tool
-    replies[command] = (
+def test_a_current_tab_of_another_session_runs_nothing(root, chrome):
+    chrome.tabs = OTHER.replace("- 0:", "- 0: (current)") + "- 1: [Page](https://a.example/)\n"
+    chrome.answers["filled"] = {"result": "FOREIGN"}
+    with pytest.raises(ValueError, match="not this session's own page"):
+        runtime.page(root, ["press", "Enter"])
+    assert commands(chrome.calls) == ["tab-list"] and chrome.helper[0]["current"] == 0
+
+
+def test_an_action_that_lands_on_another_sessions_tab_withholds_its_output(root, chrome):
+    chrome.replies["click"] = (0, "### Page\nanother plot's page\n")
+    chrome.answers["filled"] = [{"result": "EMPTY", "owned": [1]}, {"result": "FOREIGN"}]
+    saved = root / SAVED
+    saved.parent.mkdir(mode=0o700, exist_ok=True)
+    saved.mkdir(mode=0o700)
+    (saved / "page.yml").write_text("another plot's page")
+    with pytest.raises(ValueError, match="may have reached another session's page"):
+        runtime.page(root, ["click", "e1"])
+    assert not saved.exists()
+
+
+def test_every_reply_drops_the_open_tabs_of_other_sessions(root, chrome):
+    chrome.replies["snapshot"] = (
         0,
-        f"- 0: [Welcome]({CONNECT})\n- 1: (current) [Page](https://a.example/)\n",
+        f"### Open tabs\n{OTHER}{chrome.tabs}### Page\n- Page Title: Mine\n",
     )
-    output = runtime.page(root, [command]).stdout
-    assert "dummy-private-token" not in output and "https://a.example/" in output
+    output = runtime.page(root, ["snapshot"]).stdout
+    assert "other.example" not in output and "Other plot" not in output
+    assert "Page Title: Mine" in output
 
 
-def test_negative_numbers_are_data_not_options(root, tool):
-    calls, _ = tool
+def test_the_tab_list_shows_only_own_tabs(root, chrome):
+    chrome.tabs = (
+        f"{OTHER}- 1: (current) [Mine](https://a.example/)\n- 2: [Popup](https://c.example/)\n"
+    )
+    chrome.answers["filled"] = {"result": "EMPTY", "main": 1, "owned": [1, 2]}
+    output = runtime.page(root, ["tab-list"]).stdout
+    assert "other.example" not in output and "Other plot" not in output
+    assert "[Mine](https://a.example/)" in output and "[Popup](https://c.example/)" in output
+
+
+def test_the_tab_list_finds_the_way_back_from_another_sessions_current_tab(root, chrome):
+    chrome.tabs = f"{OTHER.replace('- 0:', '- 0: (current)')}- 1: [Mine](https://a.example/)\n"
+    chrome.answers["filled"] = {"result": "EMPTY", "main": 1, "owned": [1]}
+    output = runtime.page(root, ["tab-list"]).stdout
+    assert "[Mine](https://a.example/)" in output and "other.example" not in output
+    assert [p["current"] for p in chrome.helper] == [None, None]
+
+
+def test_tab_select_reaches_only_an_own_tab(root, chrome):
+    chrome.tabs = (
+        f"{OTHER}- 1: (current) [Mine](https://a.example/)\n- 2: [Popup](https://c.example/)\n"
+    )
+    chrome.answers["filled"] = {"result": "EMPTY", "main": 1, "owned": [1, 2]}
+    with pytest.raises(ValueError, match="select one of this session's own tabs"):
+        runtime.page(root, ["tab-select", "0"])
+    assert commands(chrome.calls) == ["tab-list"]
+    assert chrome.helper[0]["current"] is None, "a peer's current tab must not block a return"
+    runtime.page(root, ["tab-select", "2"])
+    assert chrome.calls[-2][0] == ["-s=" + runtime.SESSION, "tab-select", "2"]
+
+
+@pytest.mark.parametrize("index", ["0", "1"])
+def test_tab_close_refuses_the_main_tab_and_other_sessions_tabs(root, chrome, index):
+    chrome.tabs = (
+        f"{OTHER}- 1: (current) [Mine](https://a.example/)\n- 2: [Popup](https://c.example/)\n"
+    )
+    chrome.answers["filled"] = {"result": "EMPTY", "main": 1, "owned": [1, 2]}
+    with pytest.raises(ValueError, match="close one of this session's own popups"):
+        runtime.page(root, ["tab-close", index])
+    assert commands(chrome.calls) == ["tab-list"]
+
+
+def test_tab_close_closes_an_own_popup_by_its_target_and_returns_to_the_own_tab(root, chrome):
+    chrome.tabs = "- 1: [Mine](https://a.example/)\n- 2: (current) [Popup](https://c.example/)\n"
+    chrome.answers["filled"] = {"result": "EMPTY", "main": 1, "owned": [1, 2]}
+    runtime.page(root, ["tab-close"])
+    assert chrome.helper[1] == {"action": "close", "index": 2}
+    assert "tab-close" not in commands(chrome.calls), "a shifted index could close a peer's tab"
+    assert chrome.calls[-2][0] == ["-s=" + runtime.SESSION, "tab-select", "1"]
+
+
+def test_negative_numbers_are_data_not_options(root, chrome):
     runtime.page(root, ["mousewheel", "0", "-500"])
-    assert calls[-1][0][1:] == ["mousewheel", "0", "-500"]
+    assert chrome.calls[1][0][1:] == ["mousewheel", "0", "-500"]
 
 
-def test_start_connects_opens_its_own_tab_and_hides_every_token_path(started, tmp_path, capsys):
-    calls, replies = started
-    replies["attach"] = (0, f"### Page\n- Page URL: {CONNECT}\n")
-    replies["tab-new"] = (0, f"- 0: [Welcome]({CONNECT})\n")
-    done = runtime.start("https://example.com/login")
-    assert commands(calls) == ["attach", "tab-new", "tab-close", "resize"]
-    assert calls[0][0] == ["attach", "--extension=chrome", "--session=" + runtime.SESSION]
-    assert calls[0][1]["env"][runtime.TOKEN] == "dummy-private-token"
-    assert all(runtime.TOKEN not in options["env"] for _, options in calls[1:])
-    assert "dummy-private-token" not in json.dumps(done) + capsys.readouterr().out
-    assert done["result"] == "BROWSER_READY" and done["url"] == "https://example.com/login"
-    assert json.loads((tmp_path / done["state"] / "owner.json").read_text())["worktree"] == str(
-        tmp_path.resolve()
-    )
+def test_every_helper_request_names_the_own_tab(root, monkeypatch, profiles):
+    sockets = state.runtime("test") / "sockets/browser"
+    sockets.mkdir()
+    (sockets / "a.sock").touch()
+    sent = []
+    monkeypatch.setattr(runtime, "node", lambda: "node")
+    monkeypatch.setattr(runtime, "protocol_request", lambda _r, _n, p: sent.append(p) or {})
+    runtime.request(root, {"action": "fill", "steps": []})
+    assert sent[0]["own"] == "T1" and sent[0]["socket"] == str(sockets / "a.sock")
 
 
-def test_start_deletes_the_automatic_snapshots(started, tmp_path, monkeypatch):
-    real = runtime.page_tool
-
-    def capture(root, arguments, token=""):
-        done = real(root, arguments, token)
-        saved = root / "playwright/.playwright-cli"
-        saved.mkdir(exist_ok=True)
-        (saved / "page.yml").write_text("private page")
-        return done
-
-    monkeypatch.setattr(runtime, "page_tool", capture)
-    done = runtime.start("https://example.com/")
-    assert not (tmp_path / done["state"] / "playwright/.playwright-cli").exists()
-
-
-@pytest.mark.parametrize("value", ["", "op://vault/item/credential"])
-def test_start_without_a_resolved_token_touches_nothing(tool, monkeypatch, value):
-    calls, _ = tool
-    monkeypatch.setenv(runtime.TOKEN, value)
-    with pytest.raises(ValueError, match="BROWSER_TOKEN_UNRESOLVED"):
-        runtime.start("https://example.com/")
-    assert calls == []
-
-
-def test_a_missing_page_tool_leaves_no_state_behind(started, tmp_path, monkeypatch):
-    monkeypatch.setattr(runtime, "PAGE_ENTRY", tmp_path / "absent.js")
-    before = set(tmp_path.iterdir())
-    with pytest.raises(ValueError, match="BROWSER_PREREQUISITE"):
-        runtime.start("https://example.com/")
-    assert set(tmp_path.iterdir()) == before
-
-
-def test_a_failed_connection_names_the_blocker_and_opens_no_tab(started):
-    calls, replies = started
-    replies["attach"] = (1, "")
-    with pytest.raises(ValueError, match="BROWSER_EXTENSION_UNAVAILABLE"):
-        runtime.start("https://example.com/")
-    assert commands(calls) == ["attach"]
-
-
-def test_close_removes_its_tabs_and_state_and_leaves_the_browser(root, tool):
-    calls, replies = tool
-    replies["list"] = (0, f"- {runtime.SESSION}:\n")
-    replies["tab-list"] = (
-        0,
-        "- 0: [One](https://a.example/)\n- 1: (current) [Two](https://b.example/)\n",
-    )
-    assert runtime.close(root) == {"result": "BROWSER_CLOSED"}
-    assert commands(calls) == ["list", "tab-list", "tab-close", "tab-close", "detach"]
-    assert not root.exists()
-
-
-def test_close_after_chrome_quit_still_removes_the_state(root, tool):
-    calls, replies = tool
-    replies["list"] = (0, "(no browsers)\n")
-    assert runtime.close(root)["result"] == "BROWSER_CLOSED"
-    assert commands(calls) == ["list"] and not root.exists()
-
-
-@pytest.mark.parametrize("failing", ["list", "tab-list", "tab-close", "detach"])
-def test_unconfirmed_close_retains_the_state(root, tool, failing):
-    _, replies = tool
-    replies["list"] = (0, f"- {runtime.SESSION}:\n")
-    replies["tab-list"] = (0, "- 0: [One](https://a.example/)\n")
-    replies[failing] = (1, replies.get(failing, (0, ""))[1])
-    with pytest.raises(ValueError, match="CLOSE_UNCONFIRMED"):
-        runtime.close(root)
-    assert root.exists()
-
-
-def test_a_desktop_with_no_monitor_refuses_start_before_chrome_launches(
-    started, tmp_path, monkeypatch
-):
-    calls, _ = started
-    monkeypatch.setattr(display, "monitorless", lambda: True)
-    before = set(tmp_path.iterdir())
-    with pytest.raises(ValueError, match="BROWSER_NO_MONITOR: .*--private-display"):
-        runtime.start("https://example.com/")
-    assert calls == [] and set(tmp_path.iterdir()) == before
-
-
-@pytest.mark.parametrize(
-    ("platform", "chrome", "monitors", "expected"),
-    [
-        ("linux", 1, (0, "Monitors: 0\n"), True),
-        ("linux", 0, (0, "Monitors: 0\n"), False),
-        ("linux", 1, (0, "Monitors: 1\n 0: +*XWAYLAND0 1920/0x1080/0+0+0  XWAYLAND0\n"), False),
-        ("linux", 1, (1, "Can't open display\n"), False),
-        ("linux", 1, None, False),
-        ("darwin", 1, (0, "Monitors: 0\n"), False),
-    ],
-)
-def test_only_a_closed_chrome_on_a_desktop_with_zero_monitors_counts_as_monitorless(
-    monkeypatch, platform, chrome, monitors, expected
-):
-    monkeypatch.setattr(display.sys, "platform", platform)
-    monkeypatch.setattr(
-        display.shutil,
-        "which",
-        lambda name: None if name == "xrandr" and monitors is None else f"/usr/bin/{name}",
-    )
-
-    def run(argv, **options):
-        assert "env" in options and runtime.TOKEN not in options["env"]
-        code, output = (chrome, "") if argv[0].endswith("pgrep") else monitors
-        return display.subprocess.CompletedProcess(argv, code, output, "")
-
-    monkeypatch.setenv(runtime.TOKEN, "dummy-private-token")
-    monkeypatch.setattr(display.subprocess, "run", run)
-    assert display.monitorless() is expected
-
-
-@pytest.fixture
-def units(started, monkeypatch):
-    """Record systemd calls beside the page tool calls, in one order, and run neither."""
-    calls, _ = started
-    page_tool = runtime.subprocess.run
-    replies = {"stop": 0, "is-active": 3}
-    monkeypatch.setattr(runtime.shutil, "which", lambda name: f"/usr/bin/{name}")
-    monkeypatch.setattr(display, "chrome_ready", lambda: True)
-
-    def run(argv, **options):
-        if str(argv[0]).endswith("node"):
-            return page_tool(argv, **options)
-        calls.append((argv, options))
-        verb = next(a for a in argv[1:] if not a.startswith("-"))
-        return runtime.subprocess.CompletedProcess(argv, replies.get(verb, 0), "", "")
-
-    monkeypatch.setattr(runtime.subprocess, "run", run)
-    return calls, replies
-
-
-def test_private_display_runs_chrome_in_an_owner_only_x_display_without_tcp(
-    units, tmp_path, monkeypatch
-):
-    calls, _ = units
-    monkeypatch.setattr(display, "monitorless", lambda: True)
-    done = runtime.start("https://example.com/", private_display=True)
-    state = tmp_path / done["state"]
-    unit, options = calls[0]
-    assert unit[:5] == [
-        "/usr/bin/systemd-run",
-        "--user",
-        "--collect",
-        "--quiet",
-        "--unit=" + state.name,
-    ]
-    assert "--property=RuntimeMaxSec=1800" in unit
-    assert unit[unit.index("/usr/bin/env") :] == [
-        "/usr/bin/env", "-u", "WAYLAND_DISPLAY", "/usr/bin/xvfb-run", "-a",
-        "-f", str(state / "display/xauth"), "-s", "-screen 0 1920x1080x24 -nolisten tcp",
-        "/usr/bin/google-chrome-stable", "--ozone-platform=x11",
-    ]  # fmt: skip
-    assert runtime.TOKEN not in options["env"]
-    assert (state / "display").stat().st_mode & 0o777 == 0o700
-    assert commands(calls[1:]) == ["attach", "tab-new", "tab-close", "resize"]
-    assert json.loads((state / "owner.json").read_text())["display"] is True
-
-
-def test_attach_waits_for_the_display_chrome_and_never_launches_another(units, monkeypatch):
-    calls, _ = units
-    monkeypatch.setattr(display, "chrome_ready", lambda: False)
-    monkeypatch.setattr(display, "READY_SECONDS", 0)
-    with pytest.raises(ValueError, match="BROWSER_DISPLAY_FAILED: .*retain state"):
-        runtime.start("https://example.com/", private_display=True)
-    assert [argv[0] for argv, _ in calls] == ["/usr/bin/systemd-run"]
-
-
-@pytest.mark.parametrize(("active", "closed"), [(3, True), (4, True), (0, False), (1, False)])
-def test_close_stops_the_display_chrome_and_keeps_the_state_until_it_is_gone(
-    root, units, active, closed
-):
-    calls, replies = units
-    runtime.save(root, {**runtime.metadata(root), "display": True})
-    replies["is-active"] = active
-    if closed:
-        assert runtime.close(root)["result"] == "BROWSER_CLOSED"
-    else:
-        with pytest.raises(ValueError, match="CLOSE_UNCONFIRMED"):
-            runtime.close(root)
-    assert [argv[2:] for argv, _ in calls[1:]] == [
-        ["stop", root.name],
-        ["is-active", "--quiet", root.name],
-    ]
-    assert root.exists() is not closed
-
-
-def test_close_stops_the_display_chrome_even_when_detach_fails(root, units, tool):
-    calls, replies = units
-    _, pages = tool
-    runtime.save(root, {**runtime.metadata(root), "display": True})
-    pages["list"] = (0, f"- {runtime.SESSION}:\n")
-    pages["detach"] = (1, "")
-    with pytest.raises(ValueError, match="CLOSE_UNCONFIRMED"):
-        runtime.close(root)
-    assert [argv[2] for argv, _ in calls[-2:]] == ["stop", "is-active"]
-    assert root.exists()
+def test_a_lost_connection_is_named(root, profiles):
+    with pytest.raises(ValueError, match="CONNECTION_LOST"):
+        runtime.socket(root)
 
 
 @pytest.mark.parametrize("failing", [False, True])
-def test_page_output_hides_the_query_and_fragment_of_every_address(root, tool, failing):
-    _, replies = tool
+def test_page_output_hides_the_query_and_fragment_of_every_address(root, chrome, failing):
     authorize = "https://id.example/authorize?state=s1&login_hint=a%40b.example&code_challenge=c1"
-    replies["eval"] = (
+    chrome.replies["eval"] = (
         int(failing),
         f'"{authorize}"\n- 0: [Back](https://app.example/cb#code=c2&id_token=t1)\n'
-        f"- 1: [Welcome]({CONNECT})\n- 2: [Plain](https://a.example/path)\n"
+        "- 2: [Plain](https://a.example/path)\n"
         "- /url: /reset?login_hint=r1\n- /url: reset?code=r2\n- /url: #token=r3\n"
         '- 3: [Reset](/reset?code=r4)\n"https://a.example/cb?a)b&code=r5"\n',
     )
     output = runtime.page(root, ["eval", "() => location.href"]).stdout
-    leaks = ("s1", "a%40b", "c1", "c2", "t1", "r1", "r2", "r3", "r4", "r5")
-    for value in (*leaks, "dummy-private-token"):
+    for value in ("s1", "a%40b", "c1", "c2", "t1", "r1", "r2", "r3", "r4", "r5"):
         assert value not in output
     assert '"https://id.example/authorize?hidden"' in output
     assert "(https://app.example/cb?hidden)" in output and "(https://a.example/path)" in output

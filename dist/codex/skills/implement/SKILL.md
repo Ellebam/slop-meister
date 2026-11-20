@@ -74,7 +74,3 @@ In scoped fix-pass mode, prove the edited lines with every affected suite and ac
 - Fail loudly. If a gate fails and the fix is not obvious, report it rather than making speculative changes.
 - No gold plating. No extra error handling, logging, comments, or annotations beyond what the plan and the surrounding code do.
 - Do not commit. That is the ship step.
-
-## Arguments
-
-$TASK_DESCRIPTION

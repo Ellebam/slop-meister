@@ -17,6 +17,8 @@ from slopmeister.check.scheduler import Settings, run_checks
 from slopmeister.errors import UsageError
 from slopmeister.paths import ROOT
 
+INTERRUPTS = (signal.SIGINT, signal.SIGTERM)
+
 
 def parse(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="slopmeister check")
@@ -64,13 +66,16 @@ def clean_leftovers(stream) -> bool:
 
 def run_with_interrupts(checks, settings):
     def interrupt(*_: object) -> None:
+        # Mark first: the raise can land inside threading internals and surface as another error.
+        settings.cancelled.set()
         raise KeyboardInterrupt
 
-    previous = signal.signal(signal.SIGTERM, interrupt)
+    previous = {signum: signal.signal(signum, interrupt) for signum in INTERRUPTS}
     try:
         return run_checks(checks, settings)
     finally:
-        signal.signal(signal.SIGTERM, previous)
+        for signum, handler in previous.items():
+            signal.signal(signum, handler)
 
 
 def main(argv: Sequence[str]) -> int:

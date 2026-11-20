@@ -16,17 +16,19 @@ Slopmeister is a **development framework where coding agents earn their merge.**
 
 </div>
 
-Every agent produces a little slop. Slopmeister gives the farm some fences. Write your instructions once, open workers in [Orca](https://onorca.dev), and bring the other tool in to review and test their work. You choose the direction and accept the result. Project knowledge stays in a separate Markdown vault.
+Slopmeister helps you run a coding task with Claude Code and Codex. One tool builds the change in its own Git worktree. The other checks the plan and tests the result. You choose the direction before implementation and decide when the work is ready to merge.
 
-- **Sow.** Give a worker a task, the same task branch in each repository it needs and fixed instructions.
-- **Tend.** The worker first builds and runs a thin path to the user's result, then widens it, tests it and receives an independent review.
-- **Harvest.** Inspect the evidence, accept testing and explicitly invoke `/harvest` or `$harvest` when the session should end.
+Suppose you want a search box for a shop. Your global rules tell both tools how to work. Your **plot** gives the project’s rules and permissions. The **kickoff** names the task, such as “Add a search box.” The worker receives all three and looks up project knowledge in a separate Markdown vault.
+
+[![Global rules, project plot and task kickoff reach one worker. The vault supplies project knowledge.](assets/three-layers.svg)](assets/three-layers.svg)
+
+[Follow the search-box task from dispatch to acceptance.](docs/session-walkthrough.md)
 
 ## Quick start
 
 The basic tools are **Git, Claude Code, Codex, Orca, 1Password and Tailscale**. Both agent subscriptions and Orca are required. Start on macOS or Ubuntu. Your agent handles the remaining prerequisites through the [onboarding skill](src/skills/workstation/SKILL.md).
 
-### 1. Pick a patch of ground
+### 1. Clone the project
 
 ```bash
 git clone https://github.com/Ellebam/slop-meister.git ~/dev/slop-meister
@@ -35,7 +37,7 @@ cd ~/dev/slop-meister
 
 Use a fork when you intend to publish your own configuration changes. Keep machine facts, customer information and credentials outside the checkout.
 
-### 2. Bring in an agent
+### 2. Set up your workstation
 
 Start `claude` or `codex` in this directory and say **“onboard me”**. If needed, invoke `/workstation` or `$workstation` explicitly.
 
@@ -55,34 +57,15 @@ Use `codex` instead of `claude` for a Codex dispatcher. The dispatcher waits for
 
 [Follow a complete session](docs/session-walkthrough.md) from the first task to final acceptance.
 
-## How the farm runs
+## Who works on a task
 
-```mermaid
-sequenceDiagram
-    actor You
-    participant D as Dispatcher
-    participant W as Worker
-    participant O as Other tool
-    You->>D: Dispatch a task
-    D->>W: Own workspace and fixed instructions
-    W->>You: Goal, plan and decisions
-    You->>W: Your answer
-    W->>O: Review the plan
-    O-->>W: Findings
-    W->>W: Build, prove and try to break it
-    W->>O: Review diff and run the test guide
-    O-->>W: Evidence and findings
-    W->>You: Testing handoff
-    You->>W: Accept testing, then harvest
-```
+For one task, tell the dispatcher which issue to launch. A worker gets its own worktree and sends you its plan. For several related tasks, you can name a manager to carry your decisions to the workers and bring their reports back.
 
-The **plot** describes a project's rules, task source and permissions. The **field** in your vault holds its knowledge. Workers **sow** a plan, **groom** documentation, **prune** unnecessary work and check whether the result is **ripe**. **Bloom** explains complex work visually, and optional **Grove** hosting lets you read those pages on your phone.
+[![The dispatcher starts one worker directly or a manager for a group of workers.](assets/dispatcher-manager.svg)](assets/dispatcher-manager.svg)
 
-Plots can declare setup commands. An independent check [borrows its worker's slot](docs/slots.md#independent-checks). [Peer mailboxes](src/skills/plot-session/communicate.md) carry information without granting authority. [Harvest](src/skills/harvest/SKILL.md) is the operator-ordered ending for every session state. Sessions no longer create automatic retro notes. Existing notes and [explicit legacy-log commands](docs/vault-version-control.md#session-retros-and-legacy-logs) remain available.
+The [session walkthrough](docs/session-walkthrough.md) shows how the second tool reviews the change, what evidence you receive, and when you can accept testing and order harvest. A change to your rules applies to new workspaces. Existing workers keep the instructions they received at launch.
 
-A worker receives a fixed copy of its instructions. Changing the sources affects later sessions. Commit, shipping, publication and stronger actions retain their separate permission boundaries.
-
-## Your project brain
+## Where project knowledge lives
 
 Start with [the example vault](examples/vault/), written entirely as neutral examples. Copy it to a new location outside this checkout, then follow onboarding to initialize its external history before agents edit notes.
 
@@ -106,7 +89,7 @@ Secrets use two tiers on macOS and Ubuntu. Tier one resolves through a local 1Pa
 
 The 1Password desktop integration is the second route. You can order it for an exact command in any session, including when Home Assistant is unavailable. [Secret requests](docs/1password-access.md) explains setup, approvals and limits.
 
-Workers can [sign into websites through the Chrome extension](docs/browser-login.md) under the existing secret-tier rules. The connection uses the operator’s Chrome and opens its own task tabs. [Item metadata search](docs/1password-access.md#item-metadata) finds 1Password item titles without reading values. Metadata search always requires your explicit instruction and a Home Assistant approval.
+Workers can [sign into websites in dedicated Chrome profiles](docs/browser-login.md) under the existing secret-tier rules. Each task opens its own tab in the selected profile. [Item metadata search](docs/1password-access.md#item-metadata) finds 1Password item titles without reading values. Metadata search always requires your explicit instruction and a Home Assistant approval.
 
 [Phone access](docs/phone-access.md) covers the Claude app and Orca Mobile. [Context Meter](https://github.com/Ellebam/orca-context-meter), our Orca plugin, shows how full every agent's context is. Install it with `orca plugin install Ellebam/orca-context-meter`. Tailscale provides private access to the optional Linux services. Pairing, certificates and real approvals need checks on your own devices.
 

@@ -1,5 +1,6 @@
 """Directory subjects freeze exact inputs and the entire surrounding tree."""
 
+import hashlib
 import json
 
 import pytest
@@ -98,4 +99,33 @@ def test_declared_symlink_is_never_copied_into_a_reviewer_or_tester_root(tmp_pat
         )
     )
     with pytest.raises(ValueError, match="must not use a symlink"):
+        subject.load(manifest)
+
+
+def test_subject_hashes_the_same_manifest_bytes_it_parsed(tmp_path, monkeypatch):
+    """Escaping bug: a rewrite between the parse and the hash bound one manifest to another's
+    identity."""
+    root = tmp_path / "candidate"
+    root.mkdir()
+    (root / "note.md").write_text("content\n")
+    manifest = subject.freeze(root, [{"path": "note.md"}], tmp_path / "subject.json").manifest
+    parsed = manifest.read_bytes()
+    digest = subject.tree_digest
+
+    def rewrite_then_digest(path):
+        manifest.write_bytes(parsed.replace(b'"note.md"', b'"other.md"'))
+        return digest(path)
+
+    monkeypatch.setattr(subject, "tree_digest", rewrite_then_digest)
+    loaded = subject.load(manifest)
+    assert [item.path for item in loaded.files] == ["note.md"]
+    assert loaded.manifest_sha256 == hashlib.sha256(parsed).hexdigest()
+
+
+def test_subject_refuses_a_root_that_is_not_a_string(tmp_path):
+    manifest = tmp_path / "subject.json"
+    manifest.write_text(
+        json.dumps({"version": 1, "root": 7, "files": [{"path": "a"}], "tree_sha256": "0" * 64})
+    )
+    with pytest.raises(ValueError, match="version, root or files are invalid"):
         subject.load(manifest)

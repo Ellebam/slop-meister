@@ -1,30 +1,30 @@
-"""Detect a Linux desktop with no monitor, and run Chrome in a private X display instead."""
+"""Detect a Linux desktop with no monitor, and give a profile's Chrome a private X display."""
 
 import os
 from pathlib import Path
 import shutil
-from socket import AF_UNIX
-from socket import socket as unix_socket
 import subprocess
 import sys
 import time
 
-from slopmeister.session.browser_state import SECONDS, environment, metadata, save
+from slopmeister.session.browser_state import SECONDS, environment
 
 NO_MONITOR = (
-    "BROWSER_NO_MONITOR: Chrome is closed and the desktop session has no monitor, so a Chrome "
-    "started there opens no window. Start again with --private-display"
+    "BROWSER_NO_MONITOR: the desktop session has no monitor, so a Chrome started there opens no "
+    "window. Start again with --private-display"
 )
 # Probes of the local desktop answer at once or not at all.
 PROBE_SECONDS = 5
 # The private display has no TCP listener, and its auth file lives in the owner-only state.
 SCREEN = "-screen 0 1920x1080x24 -nolisten tcp"
-# Systemd stops a display Chrome an interrupted session left behind, so it frees the profile lock.
+# Systemd stops a display an interrupted session left behind, which ends its Chrome and frees the
+# profile lock.
 DISPLAY_SECONDS = 1800
 READY_SECONDS = 20
 # Systemctl is-active answers 3 for an inactive unit and 4 for a removed one. Any other answer,
 # such as 1 when the user bus is unreachable, confirms nothing.
 STOPPED = (3, 4)
+X_SOCKETS = Path("/tmp/.X11-unix")
 
 
 def probe(argv: list[str]) -> subprocess.CompletedProcess | None:
@@ -40,78 +40,68 @@ def probe(argv: list[str]) -> subprocess.CompletedProcess | None:
         return None
 
 
-def chrome_running() -> bool:
-    done = probe(["pgrep", "-u", str(os.getuid()), "-x", "chrome"])
-    return done is not None and done.returncode == 0
-
-
 def monitorless() -> bool:
-    """A closed Chrome on a Linux desktop with zero monitors, where a new Chrome hangs or traps."""
-    if not sys.platform.startswith("linux") or chrome_running():
+    """A Linux desktop with zero monitors, where a new Chrome hangs or traps."""
+    if not sys.platform.startswith("linux"):
         return False
     done = probe(["xrandr", "--listmonitors"])
     return done is not None and done.returncode == 0 and done.stdout.startswith("Monitors: 0")
 
 
 def check(private_display: bool) -> None:
-    """Report the cause before an attach launches a Chrome that never opens a window."""
+    """Report the cause before the page tool launches a Chrome that never opens a window."""
     if not private_display and monitorless():
         raise ValueError(NO_MONITOR)
 
 
-def chrome_ready() -> bool:
-    """Chrome answers on its profile socket, so a second Chrome start hands over to it."""
-    with unix_socket(AF_UNIX) as probe_socket:
-        # A full backlog would block the connect past the readiness deadline.
-        probe_socket.settimeout(1)
-        try:
-            probe_socket.connect(str(Path.home() / ".config/google-chrome/SingletonSocket"))
-        except OSError:
-            return False
-    return True
+def unit(runtime: Path) -> str:
+    return f"slopmeister-browser-{runtime.name}"
 
 
-def start(root: Path) -> None:
-    """Run Chrome in an X display only this user can reach, as a unit that close stops."""
-    tools = [shutil.which(name) for name in ("systemd-run", "xvfb-run", "google-chrome-stable")]
+def start(runtime: Path) -> dict[str, str]:
+    """An X display only this user can reach, as a unit that the last close stops."""
+    tools = [shutil.which(name) for name in ("systemd-run", "xvfb-run")]
     if None in tools:
         raise ValueError("BROWSER_PREREQUISITE: the private display needs systemd and xvfb-run")
-    systemd_run, xvfb_run, chrome = tools
-    (root / "display").mkdir(mode=0o700)
-    # Recorded first, so close stops the unit whatever happens next.
-    save(root, {**metadata(root), "display": True})
-    unit = [
-        systemd_run, "--user", "--collect", "--quiet", "--unit=" + root.name,
+    systemd_run, xvfb_run = tools
+    folder = runtime / "display"
+    folder.mkdir(mode=0o700)
+    number = folder / "number"
+    command = [
+        systemd_run, "--user", "--collect", "--quiet", "--unit=" + unit(runtime),
         f"--property=RuntimeMaxSec={DISPLAY_SECONDS}",
         "/usr/bin/env", "-u", "WAYLAND_DISPLAY", xvfb_run, "-a",
-        "-f", str(root / "display/xauth"), "-s", SCREEN, chrome, "--ozone-platform=x11",
+        "-f", str(folder / "xauth"), "-s", SCREEN,
+        "/bin/sh", "-c", 'echo "$DISPLAY" > "$0" && exec sleep infinity', str(number),
     ]  # fmt: skip
     try:
-        started = subprocess.run(unit, capture_output=True, env=environment(root), timeout=SECONDS)
+        started = subprocess.run(
+            command, capture_output=True, env=environment(runtime), timeout=SECONDS
+        )
     except OSError, subprocess.TimeoutExpired:
         started = None
-    ready = started is not None and not started.returncode
     deadline = time.monotonic() + READY_SECONDS
-    while ready and not chrome_ready():
+    while started is not None and not started.returncode and time.monotonic() < deadline:
+        value = number.read_text().strip() if number.is_file() else ""
+        if value.startswith(":") and (X_SOCKETS / f"X{value[1:]}").exists():
+            return {"DISPLAY": value, "XAUTHORITY": str(folder / "xauth")}
         time.sleep(0.25)
-        ready = time.monotonic() < deadline
-    if not ready:
-        raise ValueError(
-            f"BROWSER_DISPLAY_FAILED: Chrome did not start in the private display; "
-            f"retain state {root} for cleanup"
-        )
+    stop(runtime)
+    raise ValueError("BROWSER_DISPLAY_FAILED: the private display did not start")
 
 
-def stop(root: Path, data: dict) -> None:
-    if not data.get("display"):
+def stop(runtime: Path) -> None:
+    """Stop the profile's display, which ends a Chrome still drawing in it."""
+    if not (runtime / "display").exists():
         return
-    options = {"capture_output": True, "env": environment(root), "timeout": SECONDS}
+    options = {"capture_output": True, "env": environment(runtime), "timeout": SECONDS}
     try:
-        subprocess.run(["systemctl", "--user", "stop", root.name], **options)
+        subprocess.run(["systemctl", "--user", "stop", unit(runtime)], **options)
         active = subprocess.run(
-            ["systemctl", "--user", "is-active", "--quiet", root.name], **options
+            ["systemctl", "--user", "is-active", "--quiet", unit(runtime)], **options
         )
     except OSError, subprocess.TimeoutExpired:
         raise ValueError("BROWSER_CLOSE_UNCONFIRMED") from None
     if active.returncode not in STOPPED:
         raise ValueError("BROWSER_CLOSE_UNCONFIRMED")
+    shutil.rmtree(runtime / "display")

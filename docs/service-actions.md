@@ -38,15 +38,15 @@ The Atlassian actions use fixed Python 3.14, `op` and curl paths from `slopmeist
 
 `NATIVE_APPROVAL_REQUIRED` can be a local fault before provider contact. Reasons are `client` (client-path mismatch), `ask` (missing native write approval rule) and `local` (other local faults). Repair the setup and start a fresh admitted session. Do not bypass refusal by changing arguments or using a browser.
 
-The fixed entry and standard-library implementation under `slopmeister/session/service_actions/` are copied byte for byte into read-only action trees and recorded in the session-source manifest. Each service-account CLI call sets `OP_BIOMETRIC_UNLOCK_ENABLED=false` and `XDG_CONFIG_HOME` to the operator's `~/.config`. On macOS it sets `HOME=/var/empty` to avoid the desktop app's protected-container check and [app-data prompt](1password.md#macos-app-data-consent). Linux keeps the operator's home. Both use only the service-account token, without desktop fallback. Launch a fresh session through the [plot launcher](session-walkthrough.md) to receive consumer changes. Existing snapshots are retained. A changed plot action selection prevents redispatch into its older workspaces.
+The standard-library modules under `slopmeister/session/service_actions/` are copied byte for byte into read-only action trees and recorded in the session-source manifest. Each service-account CLI call sets `OP_BIOMETRIC_UNLOCK_ENABLED=false` and `XDG_CONFIG_HOME` to the operator's `~/.config`. On macOS it sets `HOME=/var/empty` to avoid the desktop app's protected-container check and [app-data prompt](1password.md#macos-app-data-consent). Linux keeps the operator's home. Both use only the service-account token, without desktop fallback. Launch a fresh session through the [plot launcher](session-walkthrough.md) to receive consumer changes. Existing snapshots are retained. A changed plot action selection prevents redispatch into its older workspaces.
 
 ## Run the action
 
-Run the exact absolute entry shown in the delivered instructions with literal selectors. On Linux use the selected Linux Python path. Reads need no precreated output file, research budget or approval. Do not add a wrapper, shell chain, redirection or module invocation.
+Run the exact absolute entry shown in the delivered instructions with literal selectors. The installed read entry selects the fixed Python interpreter for the platform and starts it with `-EsS`. Reads need no precreated output file, research budget or approval. Do not add a wrapper, shell chain, redirection or module invocation.
 
 ```bash
-/opt/homebrew/bin/python3 -E -s -S <workspace>/.codex/service-actions/jira-read/entry.py --find --assignee me
-/opt/homebrew/bin/python3 -E -s -S <workspace>/.claude/service-actions/jira-read/entry.py --find --assignee me
+<workspace>/.codex/service-actions/jira-read/entry.py --find --assignee me
+<workspace>/.claude/service-actions/jira-read/entry.py --find --assignee me
 ```
 
 The fixed entry creates a private `0600` result file and prints one JSON line with `result` and `result_file`. Collect the same native session if the tool yields before completion. Accept success only after exit 0 and the expected result code. Read the returned file with ordinary file tools. Keep failures for diagnosis and do not resubmit an uncertain execution.
@@ -55,7 +55,7 @@ Both tools allow only the selected absolute read command. A different command re
 
 Claude's Edit deny rules use absolute workspace paths for both delivered action directories. The launcher passes these rules through an explicit settings file, where a single leading slash would anchor them at that file's directory. Edit rules also cover the native Write tool.
 
-Both tools receive read-only action files (`0444`), owner-readable private profiles (`0400`) and read-only action directories (`0555`). This blocks ordinary patch, edit and file-creation attempts independently of command sandboxing. The existing installer snapshot detects changes to content or permissions. These modes do not prevent the local owner from deliberately changing permissions. Preserve existing snapshots and start a fresh session to receive a changed consumer. Remove an explicitly retired workspace through the [supported removal command](workspace-removal.md).
+Both tools receive executable read entries (`0555`), read-only implementation and write files (`0444`), owner-readable private profiles (`0400`) and read-only action directories (`0555`). This blocks ordinary patch, edit and file-creation attempts independently of command sandboxing. The existing installer snapshot detects changes to content or permissions. These modes do not prevent the local owner from deliberately changing permissions. Preserve existing snapshots and start a fresh session to receive a changed consumer. Remove an explicitly retired workspace through the [supported removal command](workspace-removal.md).
 
 The fixed entry passes raw argv to the supervisor without Task template expansion. Use only its absolute command, never a cwd-relative Python module call. The allow rules bind the selected read to that entry; they remain secondary guardrails, not isolation against a hostile process with the same local account.
 
@@ -76,8 +76,8 @@ Select `confluence-read` in the plot declaration and provision its own `confluen
 Use the selected tool's absolute entry. It creates one private result file per read:
 
 ```text
-/opt/homebrew/bin/python3 -E -s -S <workspace>/.codex/service-actions/confluence-read/entry.py --page <PAGE_ID_OR_URL>
-/opt/homebrew/bin/python3 -E -s -S <workspace>/.claude/service-actions/confluence-read/entry.py --latest-edited
+<workspace>/.codex/service-actions/confluence-read/entry.py --page <PAGE_ID_OR_URL>
+<workspace>/.claude/service-actions/confluence-read/entry.py --latest-edited
 ```
 
 Page input accepts a positive numeric ID, a same-application `/pages/viewpage.action?pageId=...` URL, or a same-application `/spaces/<space>/pages/<id>/<title>` URL. Include the configured application prefix before either path, when present. It becomes a numeric ID before credential release. Requests always use the profile's origin and fixed REST paths. There is no arbitrary URL or CQL passthrough. The direct entry passes raw read arguments to the supervisor without Task template expansion.

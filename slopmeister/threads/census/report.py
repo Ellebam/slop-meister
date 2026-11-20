@@ -175,3 +175,19 @@ def _peaks(sessions: list[Session], client: str) -> dict | None:
     if any(None in contexts for contexts in values):
         return None
     return quantiles([max(contexts) for contexts in values])
+
+
+def messages(sessions: list[Session], interval: Interval) -> dict:
+    """Count prompts per kind and the requests each kind triggered, per week."""
+    weeks: dict = defaultdict(lambda: {"messages": defaultdict(int), "requests": defaultdict(int)})
+    for session in sessions:
+        for timestamp, kind in session.messages:
+            if interval.contains(timestamp):
+                weeks[interval.week(timestamp)]["messages"][kind] += 1
+        for request in session.requests:
+            if interval.contains(request.timestamp):
+                weeks[interval.week(request.timestamp)]["requests"][request.trigger or "none"] += 1
+    return {
+        week: {name: dict(sorted(counts.items())) for name, counts in value.items()}
+        for week, value in sorted(weeks.items())
+    }

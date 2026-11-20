@@ -299,4 +299,24 @@ def test_a_stopped_job_is_named_with_its_log(tmp_path):
     _bundle_stale(home, bin_dir)
     found = results(home, bin_dir)["vault-history"]
     assert "older than two days" in found["evidence"]
-    assert "vault-commit.log" in found["fix"] and "docs/vault-version-control.md" in found["fix"]
+    assert "vault-commit.log" in found["fix"] and "docs/vault-history-scheduled.md" in found["fix"]
+
+
+def test_vault_walk_skips_a_vanished_note_only(tmp_path, monkeypatch):
+    monkeypatch.setenv("SLOPMEISTER_PLATFORM", "darwin")
+    note = tmp_path / "moving.md"
+    note.touch()
+    lstat = Path.lstat
+    for error in (FileNotFoundError, PermissionError):
+
+        def race(path, error=error):
+            if path == note:
+                raise error
+            return lstat(path)
+
+        monkeypatch.setattr(Path, "lstat", race)
+        if error is FileNotFoundError:
+            assert doctor._vault_local(tmp_path)[0].status == "ok"
+        else:
+            with pytest.raises(PermissionError):
+                doctor._vault_local(tmp_path)

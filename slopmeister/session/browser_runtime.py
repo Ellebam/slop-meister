@@ -1,26 +1,30 @@
-"""Connect to the operator's Chrome through the Playwright Extension and run page commands."""
+"""Run page commands in a session's own tab of a named, persistent Chrome profile."""
 
-import json
-import os
 from pathlib import Path
 import re
 import shutil
-import stat
 import subprocess
 import tempfile
 
 from slopmeister.session import browser_display as display
+from slopmeister.session import browser_state as state
 from slopmeister.session.browser_state import (
     PREFIX,
     SECONDS,
     TEMP_ROOT,
     data_home,
     environment,
+    hide,
     https_url,
+    locked,
     metadata,
+    node,
     private_directory,
     save,
     workspace,
+)
+from slopmeister.session.browser_state import (
+    configuration as _configuration,
 )
 from slopmeister.session.browser_state import owned as owned
 from slopmeister.session.browser_state import request as protocol_request
@@ -28,149 +32,169 @@ from slopmeister.session.browser_state import request as protocol_request
 PAGE_TOOL = data_home() / "playwright"
 PAGE_ENTRY = PAGE_TOOL / "node_modules/@playwright/cli/playwright-cli.js"
 LIBRARY = PAGE_TOOL / "node_modules/playwright-core"
-TOKEN = "PLAYWRIGHT_MCP_EXTENSION_TOKEN"
 SESSION = "job"
+# The page tool session that holds the profile's Chrome while any state uses it.
+KEEPER = "keep"
 VIEWPORT = ("1280", "800")
-# Files the page tool and the private display create inside the state, all removed at close.
-OWNED = ("playwright", "sockets", "display")
-# The extension's connect page carries the token in its address.
-CONNECT_ADDRESS = re.compile(r"chrome-extension://[^\s)\]\"']+")
-HIDDEN = "chrome-extension://hidden"
-# A page address can carry an account name or a flow value in its query or fragment, and no page
-# command needs them. A query can hold any punctuation, so a run ends only at a space, quote or
-# angle bracket. Each run is cut once, so the scan stays linear.
-ADDRESS_RUN = re.compile(r"[^\s\"'<>]+")
-ADDRESS_TAIL = re.compile(r"[?#]")
+# Files the page tool creates inside the state, all removed at close.
+OWNED = ("playwright",)
+SNAPSHOTS = "playwright/.playwright-cli"
 # The owner-only state has a size limit, so a long address must not reach it.
 ADDRESS_LIMIT = 1024
 # Page work only. Cookie, storage, saved state, network bodies, routing, code running,
 # recording and session commands stay out, because they reach credentials or other browsers.
+# A new tab would belong to no session, so tab-new stays out too.
 COMMANDS = frozenset(
     {
         "goto", "click", "dblclick", "fill", "type", "press", "keydown", "keyup", "hover",
         "select", "check", "uncheck", "drag", "upload", "snapshot", "find", "eval",
         "dialog-accept", "dialog-dismiss", "resize", "go-back", "go-forward", "reload",
-        "mousemove", "mousedown", "mouseup", "mousewheel", "screenshot", "tab-list", "tab-new",
+        "mousemove", "mousedown", "mouseup", "mousewheel", "screenshot", "tab-list",
         "tab-close", "tab-select",
     }
 )  # fmt: skip
+TAB_COMMANDS = frozenset({"tab-list", "tab-close", "tab-select"})
 # Output names stay generated inside the state, so no option may choose a file or a session.
+# JSON output carries the tab list as one string, which the per-line tab filter cannot cut.
 OPTIONS = frozenset(
     {"--modifiers", "--submit", "--depth", "--boxes", "--type", "--full-page", "--hires",
-     "--regex", "--raw", "--json"}
+     "--regex", "--raw"}
 )  # fmt: skip
 # The command line forces a full snapshot after actions. Console capture can be stopped: no known
 # level matches "none", so the pinned tool records no console message. Recheck on a version change.
 CONFIG = {"console": {"level": "none"}}
-# Chrome drops an extension's debugger from any tab holding another extension's frame and refuses
-# to reattach while that frame exists, and 1Password adds one to login pages. With shadow roots
-# disabled on its elements, its attachShadow call throws, even from its isolated world, so no frame
-# appears. Recheck these names after a 1Password update.
-FRAME_BLOCK = """\
-for (const name of ['menu', 'uso', 'notification', 'modal'])
-  customElements.define(`com-1password-${name}`, class extends HTMLElement {
-    static disabledFeatures = ['shadow'];
-  });
-"""
+# One line of the page tool's tab list, such as "- 2: (current) [Title](https://...)".
+TAB_LINE = re.compile(r"^- (\d+):( \(current\))? .*$", re.MULTILINE)
+# Every reply lists all tabs of the profile, and another session's titles and addresses stay out.
+OPEN_TABS = re.compile(r"^### Open tabs\n(?:- .*\n?)*", re.MULTILINE)
+ATTACHED = re.compile(r"^- [^\n]+:\n  - status: open\n  - browser-type: \w+ \(attached\)$", re.M)
 FILLED = "BROWSER_PAGE_REFUSED: a credential field holds a value"
 UNANSWERED = "BROWSER_PAGE_REFUSED: the page does not answer"
-TAB_LOST = (
-    "BROWSER_TAB_LOST: Chrome took the task tab away from this session. The usual cause is another "
-    "extension's frame in the page, such as a 1Password prompt. Close the state and report this"
+FOREIGN = (
+    "BROWSER_PAGE_REFUSED: the current tab is not this session's own page, so the output is "
+    "withheld and the command may have reached another session's page. Find an own tab with "
+    "tab-list and select it with tab-select"
 )
+TAB_LOST = "BROWSER_TAB_LOST: this session's own tab is gone. Close the state and start again"
 
 
-def node() -> Path:
-    found = shutil.which("node")
-    if found is None:
-        raise ValueError("BROWSER_PREREQUISITE: Node required")
-    engine = Path(found).resolve()
-    cwd = workspace()
-    inside = cwd not in {Path.home().resolve(), Path(cwd.anchor)} and engine.is_relative_to(cwd)
-    if inside or engine.is_relative_to(TEMP_ROOT):
-        raise ValueError(
-            "BROWSER_PREREQUISITE: use installed Node outside the workspace and temp root"
-        )
-    return engine
-
-
-def start(url: str, private_display: bool = False) -> dict:
+def start(url: str, profile: str, private_display: bool = False) -> dict:
     origin, path = https_url(url)
-    token = os.environ.get(TOKEN, "")
-    if not token or token.startswith("op://"):
-        raise ValueError("BROWSER_TOKEN_UNRESOLVED: start under op run with this machine's token")
     if not PAGE_ENTRY.is_file():
         raise ValueError("BROWSER_PREREQUISITE: run task browser:install")
     node()
-    display.check(private_display)
-    root = Path(tempfile.mkdtemp(prefix=PREFIX, dir=TEMP_ROOT)).resolve()
-    save(root, {"worktree": str(workspace()), "address": (origin + path)[:ADDRESS_LIMIT]})
-    if private_display:
-        display.start(root)
-    # The address of the connect tab and the attach snapshot never leave this function.
-    if page_tool(root, ["attach", "--extension=chrome", "--session=" + SESSION], token).returncode:
-        raise ValueError(
-            f"BROWSER_EXTENSION_UNAVAILABLE: check Chrome, its extension and the token; "
-            f"retain state {root} for cleanup"
-        )
-    for command in (["tab-new", url], ["tab-close", "0"], ["resize", *VIEWPORT]):
-        done = session(root, command)
-        if done.returncode:
-            save(root, {**metadata(root), "tab_unproven": True})
-            raise ValueError(
-                f"BROWSER_START_FAILED: {failure(done)}; retain state {root} for cleanup"
-            )
-    shutil.rmtree(root / "playwright/.playwright-cli", ignore_errors=True)
-    data = metadata(root)
-    try:
-        guard(root, data)
-    except ValueError as error:
-        save(root, {**data, "tab_unproven": True})
-        raise ValueError(
-            f"BROWSER_PAGE_NOT_REACHED: {error}; retain state {root} for cleanup"
-        ) from None
+    runtime = state.runtime(profile)
+    with locked(runtime):
+        # Two first starts of one profile would otherwise seed it at the same time.
+        folder = state.profile(profile)
+        root = Path(tempfile.mkdtemp(prefix=PREFIX, dir=TEMP_ROOT)).resolve()
+        address = (origin + path)[:ADDRESS_LIMIT]
+        save(root, {"worktree": str(workspace()), "address": address, "profile": profile})
+        try:
+            open_keeper(runtime, folder, private_display)
+            attach(root, url)
+        except (ValueError, OSError) as error:
+            try:
+                teardown(root, metadata(root), runtime)
+            except ValueError, OSError:
+                raise ValueError(f"{error}; retain state {root} for cleanup") from None
+            finally:
+                # The attach, tab and teardown output can name another session's page.
+                shutil.rmtree(root / SNAPSHOTS, ignore_errors=True)
+            raise ValueError(f"{error}; the state is closed") from None
     return {
         "result": "BROWSER_READY",
         "state": str(root),
-        "route": "Playwright Extension",
-        "url": data["address"],
+        "profile": profile,
+        "url": metadata(root)["address"],
     }
 
 
+def open_keeper(runtime: Path, folder: Path, private_display: bool) -> None:
+    if keeper_open(runtime):
+        return
+    # A display an interrupted session left behind has no Chrome any more.
+    display.stop(runtime)
+    display.check(private_display)
+    env = display.start(runtime) if private_display else {}
+    arguments = ["open", "--persistent", f"--profile={folder}", "--browser=chrome", "--headed"]
+    done = keeper(runtime, [*arguments, "about:blank"], env)
+    if done.returncode:
+        raise ValueError(f"BROWSER_START_FAILED: Chrome did not open the profile: {failure(done)}")
+
+
+def attach(root: Path, url: str) -> None:
+    done = page_tool(root, ["attach", KEEPER, "--session=" + SESSION])
+    if done.returncode:
+        raise ValueError(f"BROWSER_START_FAILED: {failure(done)}")
+    data = {**metadata(root), "tab_unproven": True}
+    save(root, data)
+    done = session(root, ["tab-new", url])
+    current = current_tab(session(root, ["tab-list"]))
+    if done.returncode or current is None:
+        raise ValueError(f"BROWSER_START_FAILED: {failure(done)}")
+    data["own"] = request(root, {"action": "own", "index": current})["target"]
+    del data["tab_unproven"]
+    save(root, data)
+    done = session(root, ["resize", *VIEWPORT])
+    if done.returncode:
+        raise ValueError(f"BROWSER_START_FAILED: {failure(done)}")
+    shutil.rmtree(root / SNAPSHOTS, ignore_errors=True)
+    try:
+        guard(root, data)
+    except ValueError as error:
+        raise ValueError(f"BROWSER_PAGE_NOT_REACHED: {error}") from None
+
+
+def current_tab(done: subprocess.CompletedProcess) -> int | None:
+    found = [int(m.group(1)) for m in TAB_LINE.finditer(done.stdout) if m.group(2)]
+    return found[0] if not done.returncode and len(found) == 1 else None
+
+
 def socket(root: Path) -> str:
-    found = list((root / "sockets/browser").glob("*.sock"))
+    found = list((runtime_of(root) / "sockets/browser").glob("*.sock"))
     if len(found) != 1:
         raise ValueError("BROWSER_CONNECTION_LOST: close the state and start again")
     return str(found[0])
 
 
+def runtime_of(root: Path) -> Path:
+    name = metadata(root).get("profile")
+    if not isinstance(name, str):
+        raise ValueError("BROWSER_STATE_REFUSED")
+    return state.runtime(name)
+
+
 def request(root: Path, payload: dict) -> dict:
-    metadata(root)
-    full = {**payload, "socket": socket(root), "library": str(LIBRARY)}
+    """Ask the page helper, which acts only on the state's own tab and its popups."""
+    full = {"own": metadata(root).get("own"), **payload}
+    full.update(socket=socket(root), library=str(LIBRARY))
     return protocol_request(root, node(), full)
 
 
-def page_tool(root: Path, arguments: list[str], token: str = "") -> subprocess.CompletedProcess:
-    """Run the pinned page tool with its sockets and output inside the owned state."""
+def tool(
+    work: Path, runtime: Path, arguments: list[str], extra: dict[str, str] | None = None
+) -> subprocess.CompletedProcess:
+    """Run the pinned page tool with the profile's sockets and lists and output in work."""
     if not PAGE_ENTRY.is_file():
         raise ValueError("BROWSER_PREREQUISITE: run task browser:install")
-    work = root / "playwright"
-    for directory in (work, work / "tmp", work / ".playwright", root / "sockets"):
+    for directory in (work, work / "tmp", work / ".playwright"):
         private_directory(directory)
-    block = work / "frame-block.js"
-    block.write_text(FRAME_BLOCK)
-    config = {**CONFIG, "browser": {"initScript": [str(block)]}}
-    _configuration(work / ".playwright/cli.config.json", config)
+    _configuration(work / ".playwright/cli.config.json", CONFIG)
     env = {
-        **environment(root),
+        **environment(work),
         "TMPDIR": str(work / "tmp"),
-        "PWTEST_SOCKETS_DIR": str(root / "sockets"),
+        # Each profile has its own sockets and session lists, so two keepers never meet.
+        "PWTEST_SOCKETS_DIR": str(runtime / "sockets"),
+        "PWTEST_DAEMON_SESSION_DIR": str(runtime / "daemon"),
+        "PWTEST_SERVER_REGISTRY": str(runtime / "registry"),
         # Chrome discovery needs the real HOME, so its global page tool settings are replaced.
         "PWTEST_CLI_GLOBAL_CONFIG": str(work),
         "NO_UPDATE_NOTIFIER": "1",
     }
-    if token:
-        env[TOKEN] = token
+    if extra:
+        env.pop("WAYLAND_DISPLAY", None)
+        env.update(extra)
     try:
         done = subprocess.run(
             [str(node()), str(PAGE_ENTRY), *arguments],
@@ -188,119 +212,160 @@ def page_tool(root: Path, arguments: list[str], token: str = "") -> subprocess.C
     return done
 
 
+def keeper(
+    runtime: Path, arguments: list[str], extra: dict[str, str] | None = None
+) -> subprocess.CompletedProcess:
+    return tool(runtime / "keeper", runtime, ["-s=" + KEEPER, *arguments], extra)
+
+
+def keeper_open(runtime: Path) -> bool:
+    listed = tool(runtime / "keeper", runtime, ["list"])
+    return f"- {KEEPER}:\n  - status: open" in listed.stdout
+
+
+def page_tool(root: Path, arguments: list[str]) -> subprocess.CompletedProcess:
+    return tool(root / "playwright", runtime_of(root), arguments)
+
+
 def session(root: Path, arguments: list[str]) -> subprocess.CompletedProcess:
     return page_tool(root, ["-s=" + SESSION, *arguments])
 
 
-def page(root: Path, arguments: list[str]) -> subprocess.CompletedProcess:
+def allowed(arguments: list[str]) -> str:
     if not arguments or arguments[0] not in COMMANDS:
         raise ValueError("BROWSER_COMMAND_REFUSED")
     # A leading dash followed by a digit is a negative number, such as a scroll distance.
     switches = [a for a in arguments[1:] if a.startswith("-") and not a[1:2].isdigit()]
     if any(a.split("=")[0] not in OPTIONS for a in switches):
         raise ValueError("BROWSER_OPTION_REFUSED")
-    if arguments[0] in {"goto", "tab-new"} and len(arguments) > 1:
+    if arguments[0] == "goto" and len(arguments) > 1:
         https_url(arguments[1])
+    return arguments[0]
+
+
+def page(root: Path, arguments: list[str]) -> subprocess.CompletedProcess:
+    command = allowed(arguments)
     # The page tool saves a snapshot after every action, so it never runs while a credential
     # field holds a value. The check uses the page helper, not the page tool.
     data = metadata(root)
-    guard(root, data)
-    done = session(root, arguments)
-    if arguments[0] == "tab-close":
-        data["pages"] = data.get("pages", 1) - 1
-    # An action can make Chrome reveal a saved password, so its snapshot and output are withheld.
+    # A tab command reads no page and shows only own tabs, so it finds the way back to one.
+    reply = guard(root, data, foreign=command in TAB_COMMANDS)
+    if command == "tab-close":
+        done = close_tab(root, data, reply, arguments[1:])
+    else:
+        if command == "tab-select" and tab_index(arguments[1:]) not in reply["owned"]:
+            raise ValueError("BROWSER_COMMAND_REFUSED: select one of this session's own tabs")
+        done = session(root, arguments)
+    # An action can make Chrome reveal a saved password or move to another session's tab, so
+    # its snapshot and output are withheld.
     try:
-        guard(root, data)
+        reply = guard(root, data, foreign=command == "tab-list")
     except ValueError, OSError:
-        shutil.rmtree(root / "playwright/.playwright-cli", ignore_errors=True)
+        shutil.rmtree(root / SNAPSHOTS, ignore_errors=True)
         raise
-    done.stdout = hide(done.stdout)
+    text = OPEN_TABS.sub("", done.stdout)
+    if command in TAB_COMMANDS:
+        text = TAB_LINE.sub(lambda m: m.group() if int(m.group(1)) in reply["owned"] else "", text)
+    done.stdout = hide(text)
     if done.returncode:
-        done.stdout += hide(done.stderr)
+        done.stdout += hide(OPEN_TABS.sub("", done.stderr))
     return done
 
 
-def cut(run: re.Match) -> str:
-    # A snapshot shows a link's own address, which can be relative to the page. Any tail that
-    # holds a parameter is cut, and so is any tail of an absolute or root-relative address.
-    token = run.group()
-    tail = ADDRESS_TAIL.search(token)
-    if tail is not None and "=" not in token[tail.start() :]:
-        start = 0 if token.startswith("/") else token.find("://")
-        tail = ADDRESS_TAIL.search(token, start) if start >= 0 else None
-    if tail is None:
-        return token
-    # The brackets that close a Markdown link stay, so the line keeps its shape.
-    closing = token[len(token.rstrip(")]")) :]
-    return token[: tail.start()] + "?hidden" + closing
+def tab_index(arguments: list[str]) -> int | None:
+    return int(arguments[0]) if arguments and arguments[0].isdigit() else None
 
 
-def hide(text: str) -> str:
-    return ADDRESS_RUN.sub(cut, CONNECT_ADDRESS.sub(HIDDEN, text))
+def close_tab(
+    root: Path, data: dict, reply: dict, arguments: list[str]
+) -> subprocess.CompletedProcess:
+    """Close an own popup by its Chrome target, so a shifted tab index cannot reach a peer's tab."""
+    index = tab_index(arguments) if arguments else reply["current"]
+    if index not in reply["owned"] or index == reply["main"]:
+        raise ValueError("BROWSER_COMMAND_REFUSED: close one of this session's own popups")
+    request(root, {"action": "close", "index": index})
+    # The page tool moves its current tab to a neighbour, which can be another session's tab.
+    main = guard(root, data, foreign=True)["main"]
+    return session(root, ["tab-select", str(main)])
 
 
 def failure(done: subprocess.CompletedProcess) -> str:
-    """The page tool's own error line, with no address that carries the extension token."""
-    text = hide(f"{done.stdout}\n{done.stderr}")
-    found = (line for line in text.splitlines() if re.match(r"\w*Error: ", line))
+    """The page tool's own error line, with no address tail and no other session's tab."""
+    text = hide(OPEN_TABS.sub("", f"{done.stdout}\n{done.stderr}"))
+    # A navigation failure names Chrome's network error with no error type before it.
+    found = (line for line in text.splitlines() if re.match(r"\w*Error: |net::ERR_", line))
     return next(found, "the page tool gave no error")
 
 
-def guard(root: Path, data: dict) -> None:
-    """Refuse the page tool unless the helper finds a live page with no credential value."""
+def guard(root: Path, data: dict, foreign: bool = False) -> dict:
+    """Refuse the page tool unless its current tab is an own live page with no credential value."""
+    tabs = session(root, ["tab-list"])
+    current = current_tab(tabs)
+    if current is None and not foreign:
+        raise ValueError(UNANSWERED)
     selectors = [
         "input[type=password]",
         'input[autocomplete="one-time-code"]',
         *data.get("credential_fields", []),
     ]
+    payload = {"action": "filled", "selectors": selectors}
     try:
-        reply = request(root, {"action": "filled", "selectors": selectors})
+        reply = request(root, {**payload, "current": None if foreign else current})
     except ValueError as error:
         if "OPERATION_FAILED" in str(error):
             raise ValueError(UNANSWERED) from None
         raise
     result = reply.get("result")
     if result == "PAGE_LOST":
-        data["tab_unproven"] = True
-        save(root, data)
         raise ValueError(TAB_LOST)
+    if result == "FOREIGN":
+        raise ValueError(FOREIGN)
     if result != "EMPTY":
         raise ValueError(FILLED if result == "FILLED" else UNANSWERED)
-    # A surviving popup hides a lost tab from the blank check, so a drop in live pages counts too.
-    # A popup may also close itself, which is why this reports at close and refuses nothing.
-    count = reply.get("pages", 0)
-    if count < data.get("pages", 0):
-        data["tab_unproven"] = True
-    if "address" in reply and not data.get("tab_unproven"):
+    if "address" in reply:
         data["address"] = reply["address"]
-    data["pages"] = count
-    save(root, data)
+        save(root, data)
+    return {**reply, "current": current}
 
 
-def close_tabs(root: Path, data: dict) -> None:
-    tabs = session(root, ["tab-list"])
-    listed = re.findall(r"^- \d+:.*$", tabs.stdout, re.MULTILINE)
-    # A tab can vanish after the last guard, and a surviving popup keeps the session attached.
-    if sum("](about:blank)" not in tab for tab in listed) < data.get("pages", 0):
-        data["tab_unproven"] = True
-    steps = [["tab-close", "0"] for _ in listed]
-    if tabs.returncode or any(session(root, step).returncode for step in [*steps, ["detach"]]):
+def attached(runtime: Path) -> int | None:
+    """How many states of the profile hold a page tool session, or None when the list failed."""
+    listed = tool(runtime / "keeper", runtime, ["list", "--all"])
+    if listed.returncode:
+        return None
+    return len(ATTACHED.findall(listed.stdout.split("### Browser servers")[0]))
+
+
+def teardown(root: Path, data: dict, runtime: Path) -> bool:
+    """Close the state's pages and session, and Chrome and its display after the last state.
+
+    Runs under the profile lock. Returns whether own tabs may remain in a Chrome still open.
+    """
+    listed = page_tool(root, ["list"])
+    if listed.returncode:
         raise ValueError("BROWSER_CLOSE_UNCONFIRMED")
+    left = bool(data.get("tab_unproven"))
+    # The helper reaches Chrome through the keeper, so own tabs close even without the session.
+    if data.get("own"):
+        try:
+            request(root, {"action": "close"})
+        except ValueError:
+            left = True
+    joined = f"- {SESSION}:\n  - status: open" in listed.stdout
+    if joined and session(root, ["detach"]).returncode:
+        raise ValueError("BROWSER_CLOSE_UNCONFIRMED")
+    if attached(runtime) == 0:
+        closed = not keeper_open(runtime) or not keeper(runtime, ["close"]).returncode
+        # The display holds the Chrome, so it stops even when the keeper did not answer.
+        display.stop(runtime)
+        if not closed:
+            raise ValueError("BROWSER_CLOSE_UNCONFIRMED: the profile's Chrome did not close")
+        left = False
+    remove(root)
+    return left
 
 
-def close(root: Path) -> dict:
-    data = metadata(root)
-    try:
-        # The session ends with Chrome, so a gone session leaves only this state to remove.
-        listed = page_tool(root, ["list"])
-        if listed.returncode:
-            raise ValueError("BROWSER_CLOSE_UNCONFIRMED")
-        attached = SESSION in listed.stdout
-        if attached:
-            close_tabs(root, data)
-    finally:
-        # A display Chrome holds the profile lock, so it stops even when the connection failed.
-        display.stop(root, data)
+def remove(root: Path) -> None:
     if any(p.name not in {*OWNED, "owner.json"} for p in root.iterdir()):
         raise ValueError("BROWSER_STATE_REFUSED")
     if any((root / name).is_symlink() for name in OWNED):
@@ -310,20 +375,17 @@ def close(root: Path) -> dict:
             shutil.rmtree(root / name)
     (root / "owner.json").unlink()
     root.rmdir()
-    if attached and not data.get("tab_unproven"):
+
+
+def close(root: Path) -> dict:
+    data = metadata(root)
+    runtime = runtime_of(root)
+    with locked(runtime):
+        left = teardown(root, data, runtime)
+    if not left:
         return {"result": "BROWSER_CLOSED"}
     tab = data.get("address", "A tab of this state")
     return {
         "result": "BROWSER_CLOSED",
-        "tabs_left": f"{tab} may still be open in Chrome. Tell the operator, this route lost it",
+        "tabs_left": f"{tab} may still be open in the profile's Chrome. Tell the operator",
     }
-
-
-def _configuration(config: Path, data: dict) -> None:
-    fd = os.open(config, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
-    with os.fdopen(fd, "w") as stream:
-        info = os.fstat(stream.fileno())
-        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_uid != os.getuid():
-            raise ValueError("BROWSER_PAGE_CONFIG_REFUSED")
-        stream.truncate(0)
-        stream.write(json.dumps(data))

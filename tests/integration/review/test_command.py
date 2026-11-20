@@ -23,7 +23,7 @@ from tests.support.review_helpers import (
 
 
 def _assert_finding_schema(schema):
-    required = ["severity", "file", "line", "title", "rationale", "suggested_action", "confidence"]
+    required = ["evidence", "failure", "file", "line", "severity", "suggested_action", "title"]
     item = schema["properties"]["findings"]["items"]
     assert schema == json.loads(review_json_schema())
     assert schema["additionalProperties"] is False
@@ -32,10 +32,10 @@ def _assert_finding_schema(schema):
     assert item["required"] == required
     assert set(item["properties"]) == set(required)
     assert item["properties"]["severity"] == {
-        "enum": ["MUST-FIX", "NITPICK", "SHOULD-FIX"],
+        "enum": ["MUST-FIX", "SHOULD-FIX"],
         "type": "string",
     }
-    assert item["properties"]["confidence"] == {"enum": ["high", "low", "medium"], "type": "string"}
+    assert item["properties"]["evidence"]["minItems"] == 1
     assert item["properties"]["line"] == {"minimum": 1, "type": "integer"}
 
 

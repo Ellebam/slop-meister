@@ -39,12 +39,12 @@ def _prompt(args: argparse.Namespace) -> str:
     if args.prompt_file == "-":
         value = sys.stdin.read()
         if not value.strip():
-            raise CrossToolReviewError("review prompt from stdin is empty")
+            raise _refuse("review prompt from stdin is empty")
         return value
     try:
         return Path(args.prompt_file).read_text(encoding="utf-8")
     except OSError as error:
-        raise CrossToolReviewError(f"review prompt could not be read: {error}") from error
+        raise _refuse(f"review prompt could not be read: {error}") from error
 
 
 def _config(args: argparse.Namespace, direction: ReviewDirection) -> ReviewerConfig:
@@ -75,7 +75,7 @@ def _review(args: argparse.Namespace) -> int:
     identity = launch_identity.read(Path.cwd(), direction.value.split("-to-")[0])
     path = result_path(args, identity["task"])
     if args.candidate and (args.mode != "diff" or args.subject_manifest):
-        raise CrossToolReviewError("candidate review requires repository diff mode")
+        raise _refuse("candidate review requires repository diff mode")
     frozen = repository_candidate.load(Path(args.cwd), identity["task"]) if args.candidate else None
     if frozen is None and args.mode == "diff" and not args.subject_manifest:
         frozen = check.committed_group(Path(args.cwd).resolve())
@@ -95,14 +95,14 @@ def _existing(args, path: Path, frozen) -> int | None:
     if path.exists():
         gate, code, bound = read_result(path)
         if bound != (frozen.identity if frozen else None):
-            raise CrossToolReviewError("candidate differs from final review result")
+            raise _refuse("candidate differs from final review result")
         _feedback(f"replaying final result from {path}")
         print(gate)
         return code
     if args.exempt_reason is None:
         return None
     if not args.exempt_reason.strip():
-        raise CrossToolReviewError("review exemption needs a nonempty reason")
+        raise _refuse("review exemption needs a nonempty reason")
     gate = "Independent review: N/A - " + sanitize_text(args.exempt_reason)
     save_result(path, gate, (0, frozen.identity if frozen else None))
     _feedback(f"result artifact: {path}")

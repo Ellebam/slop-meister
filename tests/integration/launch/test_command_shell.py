@@ -77,7 +77,14 @@ def _assert_supported_models(world, repo, record, native):
         )
         supported = json.loads(record.read_text())
         before, after = native(world, repo / f".worktrees/{name}", supported)
-        assert supported == [*before, "--model", model, *after]
+        assert supported == [
+            *before,
+            "--model",
+            model,
+            "-c",
+            'model_reasoning_effort="high"',
+            *after,
+        ]
         assert "model_context_window" not in supported
 
 
@@ -118,7 +125,8 @@ def test_command_file_preserves_argv(tmp_path, tool, binary, extra, native):
     subprocess.run(["zsh", "-f", command], env={**world.env, "MODEL_ARGS": str(record)}, check=True)
     recorded = json.loads(record.read_text())
     before, after = native(world, repo / ".worktrees/example-client-argv-shell", recorded)
-    assert recorded == [*before, "--model", MODEL, *extra, *after]
+    effort = ["-c", 'model_reasoning_effort="high"'] if tool == "codex" else []
+    assert recorded == [*before, "--model", MODEL, *effort, *extra, *after]
     assert "model_context_window" not in recorded
     if tool == "codex":
         _assert_supported_models(world, repo, record, native)

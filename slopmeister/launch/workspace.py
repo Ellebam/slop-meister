@@ -134,8 +134,13 @@ def _install(launch: Launch, action: str) -> None:
         (launch.wt_file_name or None) if action in ("--preflight", "--prepare") else None,
         launch.grants[1::2],
         manager=launch.manager and action in ("--prepare", "--directory"),
+        weekly_update=launch.weekly_update and action == "--prepare",
         proof_owner={"name": launch.proof_for, "handle": launch.proof_handle}
         if launch.proof_for and action in ("--prepare", "--directory")
+        else None,
+        manager_run=launch.manager_run if action in ("--prepare", "--directory") else None,
+        push_branch=launch.push_branches.get(str(launch.repo.resolve()))
+        if launch.push_branches
         else None,
     )
     try:

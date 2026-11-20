@@ -17,13 +17,14 @@ def _run(args):
     def done(out):
         return subprocess.CompletedProcess(args, 0, out, "")
 
-    if args[:2] == ["ps", "-axo"]:
+    if args[:3] == ["ps", "-ww", "-axo"]:
         return done("".join(f"{pid} ttys001 {row[0]}\n" for pid, row in PROCESSES.items()))
-    pid = int(args[args.index("-p") + 1])
-    command, argv, cwd = PROCESSES[pid]
+    pids = [int(pid) for pid in args[args.index("-p") + 1].split(",")]
     if args[0] == "lsof":
-        return done(f"p{pid}\nfcwd\nn{cwd}\n")
-    return done(argv + "\n" if args[-1] == "args=" else f"Mon Jan 1 {command}\n")
+        return done("".join(f"p{pid}\nfcwd\nn{PROCESSES[pid][2]}\n" for pid in pids))
+    if args[-1] == "pid=,args=":
+        return done("".join(f"{pid} {PROCESSES[pid][1]}\n" for pid in pids))
+    return done("".join(f"{pid} S Mon Jan 1 {PROCESSES[pid][0]}\n" for pid in pids))
 
 
 def test_only_opencode_workers_inside_the_worktree_occupy_it(monkeypatch):

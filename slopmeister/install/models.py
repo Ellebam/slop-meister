@@ -14,7 +14,10 @@ class InstallRequest:
     dispatcher_jira: bool = False
     manager: bool = False
     proof_owner: dict | None = None
+    manager_run: str | None = None
     session: str | None = None
+    weekly_update: bool = False
+    push_branch: str | None = None
 
 
 @dataclass(frozen=True)

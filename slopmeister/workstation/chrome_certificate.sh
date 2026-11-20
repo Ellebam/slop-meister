@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Operator-run setup. Agents never run it, because it reads a private key through real op.
-# Puts a client certificate from 1Password into Chrome's Linux store and lets Chrome choose it
-# without its prompt, which no agent can answer.
+# Lets Chrome choose a client certificate without its prompt, which no agent can answer. On Linux it
+# puts the certificate from 1Password into Chrome's store, on a Mac Chrome reads it from the keychain.
 set -euo pipefail
 
 if [ "$#" -ne 3 ]; then
@@ -13,8 +13,37 @@ if [ "${SLOPMEISTER_SECRET_BROKER:-}" = 1 ]; then
     echo "browser:certificate: run this in your own terminal, not in an agent session" >&2
     exit 2
 fi
+if [ "$(uname -s)" = Darwin ]; then
+    # Chrome on a Mac takes this policy only as a managed setting, so a defaults write is ignored.
+    # A Mac mktemp ignores TMPDIR without a template.
+    profile="$(mktemp -d "${TMPDIR:-/tmp}/slopmeister-certificate.XXXXXX")/slopmeister-client-certificate.mobileconfig"
+    python3 -c '
+import json, plistlib, sys, uuid
+rule = json.dumps({"pattern": sys.argv[1], "filter": {}})
+name = "slopmeister.chrome.client-certificate"
+chrome = {
+    "PayloadType": "com.google.Chrome",
+    "PayloadIdentifier": name + ".chrome",
+    "PayloadUUID": str(uuid.uuid5(uuid.NAMESPACE_DNS, name + ".chrome")).upper(),
+    "PayloadVersion": 1,
+    "AutoSelectCertificateForUrls": [rule],
+}
+sys.stdout.buffer.write(plistlib.dumps({
+    "PayloadType": "Configuration",
+    "PayloadDisplayName": "Chrome client certificate selection",
+    "PayloadIdentifier": name,
+    "PayloadUUID": str(uuid.uuid5(uuid.NAMESPACE_DNS, name)).upper(),
+    "PayloadScope": "User",
+    "PayloadVersion": 1,
+    "PayloadContent": [chrome],
+}))
+' "$pattern" > "$profile"
+    open "$profile"
+    echo "Install the profile in System Settings, General, Device Management. The certificate must be in your login keychain, else import it with Keychain Access. Then restart Chrome."
+    exit 0
+fi
 if [ "$(uname -s)" != Linux ]; then
-    echo "browser:certificate: on a Mac, import the certificate into Keychain Access" >&2
+    echo "browser:certificate: runs on Linux and macOS only" >&2
     exit 2
 fi
 

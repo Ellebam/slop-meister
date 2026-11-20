@@ -9,6 +9,8 @@ from datetime import date
 from pathlib import Path
 import re
 
+from slopmeister.session.launch_identity import replace_bytes
+
 TASK_DIR = "To-Do"
 TASK_DIR_INDEX = "README.md"
 
@@ -35,7 +37,7 @@ def find_root(start: Path) -> Path:
 def task_files(root: Path) -> dict[str, Path]:
     # A run must never write through a link to a file outside the vault.
     return {
-        path.stem.lower(): path
+        path.stem.lower(): path.resolve()
         for path in sorted((root / TASK_DIR).glob("*.md"))
         if path.name != TASK_DIR_INDEX and path.is_file() and path.resolve().is_relative_to(root)
     }
@@ -110,23 +112,22 @@ def _roll_active(
 
 
 def _add_tasks(active: list[str], additions: list[str], *context) -> list[str]:
-    today, result = context
+    today, result, newline = context
     if not additions:
         return active
     insertion = [f"- [ ] {task} 📅 {today.isoformat()}" for task in additions]
     result.added = insertion
     result.changed = True
-    while active and active[0] == "":
+    while active and active[0] in ("\n", "\r", "\r\n"):
         active.pop(0)
-    return insertion + ([""] if active else []) + active
+    return [line + newline for line in insertion] + ([newline] if active else []) + active
 
 
 def process_file(path: Path, field_name: str, *change) -> tuple[Result, str]:
     today, additions = change
     result = Result(field=field_name)
-    original = path.read_text(encoding="utf-8")
-    lines = original.splitlines()
-    trailing_newline = original.endswith("\n")
+    with path.open(encoding="utf-8", newline="") as stream:
+        lines = stream.readlines()
 
     active_start, active_end = section_bounds(lines, "## Active")
     done_start, done_end = section_bounds(lines, "## Done")
@@ -136,17 +137,24 @@ def process_file(path: Path, field_name: str, *change) -> tuple[Result, str]:
     done = lines[done_start + 1 : done_end]
 
     new_active, moved = _roll_active(active, today, result)
-    new_active = _add_tasks(new_active, additions, today, result)
+    heading = lines[active_start]
+    newline = heading[len(heading.rstrip("\r\n")) :] or "\n"
+    new_active = _add_tasks(new_active, additions, today, result, newline)
 
     # Existing Done lines keep their bytes, the moved blocks go in below the heading's blank lines.
-    top = next((index for index, line in enumerate(done) if line), len(done))
+    top = next((index for index, line in enumerate(done) if line.rstrip("\r\n")), len(done))
     newest_first = sorted(moved, key=_done_date, reverse=True)
     done = done[:top] + [line for block in newest_first for line in block] + done[top:]
 
     rebuilt = lines[: active_start + 1] + new_active
     rebuilt += lines[active_end : done_start + 1] + done + lines[done_end:]
-    suffix = "\n" if trailing_newline else ""
-    return result, "\n".join(rebuilt) + suffix
+    # Moving a block across the end of the note may move the unterminated line into its middle.
+    for index, line in enumerate(rebuilt[:-1]):
+        if not line.endswith(("\n", "\r")):
+            rebuilt[index] += newline
+    if not lines[-1].endswith(("\n", "\r")):
+        rebuilt[-1] = rebuilt[-1].rstrip("\r\n")
+    return result, "".join(rebuilt)
 
 
 def _arguments(argv: Sequence[str]):
@@ -208,7 +216,7 @@ def main(argv: Sequence[str]) -> int:
     results: list[Result] = []
     for path, result, new_text in planned:
         if args.apply and result.changed:
-            path.write_text(new_text, encoding="utf-8")
+            replace_bytes(path, new_text.encode())
         results.append(result)
 
     _report(results, args.apply, today)

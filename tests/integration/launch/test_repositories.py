@@ -211,11 +211,15 @@ def test_changed_delivery_prints_quoted_retry_without_creating_member(
         repositories.add(primary, repo)
     lines = str(refused.value).splitlines()
     command = shlex.split(
-        next(line.removeprefix("Retry: ") for line in lines if line.startswith("Retry: "))
+        next(
+            line.removeprefix("Retry from a matching checkout: ")
+            for line in lines
+            if line.startswith("Retry from a matching checkout: ")
+        )
     )
     assert command[1:] == ["repository", "add", "--workspace", str(primary), "--repo", str(repo)]
     assert command[0].endswith("bin/slopmeister")
-    assert "unchanged" in str(refused.value)
+    assert "matching the launch source and permissions" in str(refused.value)
     assert not (primary / ".slopmeister-repos" / repo.name).exists()
     assert len(saved.members(primary)) == 1
     assert not git(repo, "for-each-ref", f"refs/heads/{primary.name}").strip()

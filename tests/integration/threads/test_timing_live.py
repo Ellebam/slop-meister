@@ -36,7 +36,7 @@ def test_live_cli_keeps_unreadable_session_and_withholds_names(tmp_path):
         f"print({json.dumps(envelope)!r})\n"
     )
     binary.chmod(0o755)
-    env = os.environ | {"HOME": str(tmp_path), "PATH": f"{tools}:{os.environ['PATH']}"}
+    env = os.environ | {"HOME": str(tmp_path), "PLOT_SESSION_ORCA": str(binary)}
     env.pop("SLOPMEISTER_PRIVATE_PATTERNS", None)
     env["ORCA_ENVIRONMENT"] = "wrong-remote"
     before = {

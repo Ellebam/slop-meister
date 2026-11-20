@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Illustration: how a result is accepted</title>
+<style>
+  :root {
+    --ground: #f6f4ee; --card: #ffffff; --line: #d8d4c6; --ink: #1f2a22; --muted: #566056;
+    --green: #35654d; --green-tint: #e2efe7; --green-line: #9fc7b0;
+    --amber: #9b6639; --amber-ink: #8a5527; --amber-tint: #fbeedb;
+    --blue: #36598a; --blue-tint: #e5edf8; --blue-line: #a9c0e0;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--ground); }
+  body { min-height: 100vh; display: grid; place-items: center; }
+  .stage {
+    position: relative; width: 640px; height: 400px; overflow: hidden; background: var(--ground);
+    color: var(--ink); font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  }
+  .top { position: absolute; left: 32px; right: 32px; top: 16px; display: flex; justify-content: space-between; align-items: center; }
+  .top .name { font-size: 15px; font-weight: 700; color: var(--muted); }
+  .tag { font-size: 11.5px; font-weight: 700; letter-spacing: 1.2px; color: var(--muted); border: 1.5px solid #b9b4a4; border-radius: 999px; padding: 3px 10px; }
+  .scene { position: absolute; left: 32px; top: 52px; width: 576px; height: 284px; }
+  .card { position: relative; height: 100%; background: var(--card); border: 1.2px solid var(--line); border-radius: 14px; padding: 16px 20px; box-shadow: 0 1px 4px rgba(31, 42, 34, 0.10); }
+  .card.blue { border: 1.8px solid var(--blue); }
+  .head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 12px; }
+  .head .h { font-size: 21px; font-weight: 700; }
+  .muted { color: var(--muted); font-size: 15px; }
+
+  /* scene 1: the demo shop */
+  .search { display: flex; align-items: center; gap: 10px; height: 46px; padding: 0 14px; border: 2px solid var(--green); border-radius: 10px; font-size: 19px; }
+  .search .typed { font-weight: 600; }
+  .search .caret { width: 2px; height: 22px; background: var(--ink); margin-left: -8px; }
+  .search .count { margin-left: auto; font-size: 14px; font-weight: 600; color: var(--muted); }
+  .product { display: flex; align-items: center; gap: 12px; height: 36px; margin-top: 6px; padding: 0 12px; border-radius: 9px; font-size: 18px; }
+  .product .swatch { width: 16px; height: 16px; border-radius: 5px; }
+  .product.found { background: var(--green-tint); font-weight: 700; }
+  .product .hit { margin-left: auto; font-size: 13px; font-weight: 700; color: var(--green); }
+
+  /* scene 2: the independent check */
+  .line { display: flex; align-items: baseline; gap: 12px; height: 38px; font-size: 18px; }
+  .line .k { width: 92px; font-size: 14px; font-weight: 700; letter-spacing: 0.6px; color: var(--blue); }
+  .line b { font-weight: 700; }
+  .record { position: absolute; left: 20px; right: 20px; bottom: 16px; height: 68px; display: flex; align-items: center; gap: 14px; padding: 0 18px; background: var(--blue-tint); border: 1.5px solid var(--blue-line); border-radius: 12px; font-size: 18px; font-weight: 700; }
+  .pass { margin-left: auto; font-size: 15px; font-weight: 800; letter-spacing: 1.5px; color: #ffffff; background: var(--green); border-radius: 8px; padding: 6px 14px; }
+
+  /* scene 3: the handoff */
+  .evidence { display: flex; align-items: center; gap: 12px; height: 52px; padding: 0 14px; background: var(--blue-tint); border-radius: 10px; font-size: 17px; }
+  .evidence b { font-weight: 700; }
+  .decision { display: flex; align-items: center; justify-content: space-between; height: 76px; margin-top: 12px; padding: 0 18px; background: var(--amber-tint); border: 2px solid var(--amber); border-radius: 12px; }
+  .decision .over { font-size: 12px; font-weight: 700; letter-spacing: 1.2px; color: var(--amber-ink); }
+  .decision .q { font-size: 19px; font-weight: 700; margin-top: 2px; }
+  .btn { font-size: 16px; font-weight: 700; border-radius: 9px; padding: 9px 16px; border: 1.8px solid var(--amber); background: var(--amber); color: #ffffff; }
+  .btn.done { background: var(--green); border-color: var(--green); }
+  .after { position: absolute; left: 20px; right: 20px; bottom: 16px; display: flex; align-items: center; gap: 10px; font-size: 16px; color: var(--muted); }
+  .after .pin { width: 10px; height: 10px; border-radius: 50%; border: 2px solid #a9b0a6; }
+
+  .caption { position: absolute; left: 32px; right: 32px; bottom: 16px; height: 34px; display: flex; align-items: center; gap: 8px; }
+  .step { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 14px; font-weight: 700; color: var(--muted); border: 1.8px solid #b9b4a4; }
+  .step.on { background: var(--ink); border-color: var(--ink); color: #ffffff; }
+  #cap { margin-left: 8px; font-size: 18px; font-weight: 700; }
+
+  .cursor { position: absolute; left: 0; top: 0; width: 80px; height: 40px; pointer-events: none; }
+  .cursor .you { position: absolute; left: 22px; top: 18px; font-size: 12px; font-weight: 700; color: #ffffff; background: var(--amber); border-radius: 999px; padding: 2px 9px; }
+</style>
+</head>
+<body>
+<div class="stage" id="stage" role="img" aria-label="Illustration in three steps. The search box of a demo shop finds Blue mug. The independent check records the result as a pass. You accept testing. Merge has not happened yet.">
+  <div class="top"><span class="name">How a result is accepted</span><span class="tag">ILLUSTRATION</span></div>
+
+  <section class="scene" id="s1">
+    <div class="card">
+      <div class="head"><span class="h">Demo shop</span><span class="muted">the change at work</span></div>
+      <div class="search">
+        <svg width="22" height="22" viewBox="0 0 22 22"><circle cx="9.500" cy="9.500" r="6.500" fill="none" stroke="#35654d" stroke-width="2.2"/><path d="M14.500 14.500 L20 20" stroke="#35654d" stroke-width="2.2" stroke-linecap="round"/></svg>
+        <span class="typed" id="typed"></span><span class="caret" id="caret"></span>
+        <span class="count" id="count"></span>
+      </div>
+      <div class="product" data-name="red kettle"><span class="swatch" style="background:#b4543f"></span><span>Red kettle</span></div>
+      <div class="product" data-name="blue mug" id="mug"><span class="swatch" style="background:#36598a"></span><span>Blue mug</span><span class="hit" id="hit">found</span></div>
+      <div class="product" data-name="green plate"><span class="swatch" style="background:#35654d"></span><span>Green plate</span></div>
+      <div class="product" data-name="yellow bowl"><span class="swatch" style="background:#c9a23a"></span><span>Yellow bowl</span></div>
+    </div>
+  </section>
+
+  <section class="scene" id="s2">
+    <div class="card blue">
+      <div class="head"><span class="h">Independent check</span><span class="muted">the other tool, on a clean copy</span></div>
+      <div class="line" id="l1"><span class="k">SCENARIO</span><span>Search the shop for <b>blue</b></span></div>
+      <div class="line" id="l2"><span class="k">EXPECTED</span><span>Blue mug</span></div>
+      <div class="line" id="l3"><span class="k">FOUND</span><span><b>Blue mug</b></span></div>
+      <div class="record" id="rec">
+        <svg width="26" height="26" viewBox="0 0 26 26"><circle cx="13" cy="13" r="12" fill="#36598a"/><path d="M7.500 13.500 L11.500 17.500 L18.500 9.500" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>Result recorded</span><span class="pass" id="pass">PASS</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="scene" id="s3">
+    <div class="card">
+      <div class="head"><span class="h">Testing handoff</span><span class="muted">Add a search box</span></div>
+      <div class="evidence">
+        <svg width="26" height="26" viewBox="0 0 26 26"><circle cx="13" cy="13" r="12" fill="#36598a"/><path d="M7.500 13.500 L11.500 17.500 L18.500 9.500" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>Independent check: <b>1 of 1 scenario passed</b></span>
+      </div>
+      <div class="decision" id="dec">
+        <div><div class="over">YOUR CALL</div><div class="q" id="q">Accept testing?</div></div>
+        <span class="btn" id="btn">Accept testing</span>
+      </div>
+      <div class="after" id="after"><span class="pin"></span><span>Not merged yet. Merge waits for your order.</span></div>
+    </div>
+  </section>
+
+  <div class="caption">
+    <span class="step" id="c1">1</span><span class="step" id="c2">2</span><span class="step" id="c3">3</span>
+    <span id="cap"></span>
+  </div>
+
+  <div class="cursor" id="cursor">
+    <svg width="22" height="24" viewBox="0 0 22 24"><path d="M2 2 L2 19 L7 14.500 L10.500 22 L13.500 20.500 L10 13.500 L17 13.500 Z" fill="#1f2a22" stroke="#ffffff" stroke-width="1.6" stroke-linejoin="round"/></svg>
+    <span class="you">You</span>
+  </div>
+</div>
+
+<script>
+  // The whole animation is a pure function of time, so a recorder can ask for any frame.
+  const DURATION = 17500;
+  const $ = (id) => document.getElementById(id);
+  const clamp01 = (v) => Math.max(0, Math.min(1, v));
+  const ease = (p) => 1 - Math.pow(1 - p, 3);
+  const prog = (t, start, length) => ease(clamp01((t - start) / length));
+  const lerp = (a, b, p) => a + (b - a) * p;
+
+  // Write to the page only when a value changes, so a resting frame stays pixel-identical.
+  const css = (el, name, value) => { if (el.style[name] !== value) el.style[name] = value; };
+  const cls = (el, value) => { if (el.className !== value) el.className = value; };
+  const txt = (el, value) => { if (el.textContent !== value) el.textContent = value; };
+
+  function place(el, opacity, dx, dy) {
+    css(el, 'opacity', String(Number(opacity.toFixed(3))));
+    css(el, 'visibility', opacity > 0.001 ? 'visible' : 'hidden');
+    css(el, 'transform', `translate(${Math.round(dx)}px, ${Math.round(dy)}px)`);
+  }
+  // A scene slides in from the right and leaves to the left.
+  function scene(el, t, inAt, outAt) {
+    const pin = inAt === null ? 1 : prog(t, inAt, 400);
+    const pout = outAt === null ? 0 : prog(t, outAt, 400);
+    place(el, pin * (1 - pout), lerp(28, 0, pin) - 28 * pout, 0);
+  }
+  const rise = (el, t, at) => { const p = prog(t, at, 300); place(el, p, 0, lerp(10, 0, p)); };
+
+  const CAPTIONS = ['The search box finds “Blue mug”', 'The independent check records it', 'You accept testing'];
+  const QUERY = 'blue';
+  const TYPE_FROM = 1200;
+  const TYPE_EVERY = 450;
+  const products = [...document.querySelectorAll('.product')];
+
+  function render(t) {
+    scene($('s1'), t, null, 5600);
+    scene($('s2'), t, 5800, 11000);
+    scene($('s3'), t, 11200, null);
+
+    // Scene 1: one letter at a time, and the list narrows with each letter.
+    const letters = t < TYPE_FROM ? 0 : Math.min(QUERY.length, 1 + Math.floor((t - TYPE_FROM) / TYPE_EVERY));
+    const typed = QUERY.slice(0, letters);
+    txt($('typed'), typed);
+    const shown = products.filter((p) => p.dataset.name.includes(typed));
+    products.forEach((p) => { css(p, 'display', shown.includes(p) ? 'flex' : 'none'); });
+    txt($('count'), letters === 0 ? '4 items' : shown.length === 1 ? '1 result' : `${shown.length} results`);
+    const done = letters === QUERY.length && t >= TYPE_FROM + TYPE_EVERY * QUERY.length;
+    cls($('mug'), 'product' + (done ? ' found' : ''));
+    css($('hit'), 'visibility', done ? 'visible' : 'hidden');
+    css($('caret'), 'visibility', done ? 'hidden' : 'visible');
+
+    // Scene 2: the check writes down what it did and what it saw.
+    rise($('l1'), t, 6400);
+    rise($('l2'), t, 7100);
+    rise($('l3'), t, 7800);
+    rise($('rec'), t, 8700);
+    const stamp = prog(t, 9000, 250);
+    css($('pass'), 'opacity', String(Number(stamp.toFixed(3))));
+    css($('pass'), 'transform', `scale(${Number(lerp(1.5, 1, stamp).toFixed(2))})`);
+
+    // Scene 3: the pointer presses the button, steps aside, then the note about merge appears.
+    const accepted = t >= 13900;
+    cls($('btn'), 'btn' + (accepted ? ' done' : ''));
+    txt($('btn'), accepted ? 'Accepted' : 'Accept testing');
+    txt($('q'), accepted ? 'Testing accepted' : 'Accept testing?');
+    rise($('after'), t, 14500);
+
+    const stepNow = t < 5800 ? 0 : t < 11200 ? 1 : 2;
+    ['c1', 'c2', 'c3'].forEach((id, i) => { cls($(id), 'step' + (i === stepNow ? ' on' : '')); });
+    txt($('cap'), CAPTIONS[stepNow]);
+
+    const appear = prog(t, 12200, 300);
+    const move = prog(t, 12500, 1000);
+    const press = t >= 13800 && t < 14000 ? 2 : 0;
+    const rest = prog(t, 14100, 500);
+    place($('cursor'), appear, lerp(lerp(360, 505, move), 524, rest) + press, lerp(lerp(300, 208, move), 262, rest) + press);
+  }
+
+  window.__duration = DURATION;
+  window.__seek = render;
+
+  if (location.hash.includes('capture')) {
+    render(0);
+  } else {
+    const began = performance.now();
+    const tick = (now) => { render((now - began) % DURATION); requestAnimationFrame(tick); };
+    requestAnimationFrame(tick);
+  }
+</script>
+</body>
+</html>

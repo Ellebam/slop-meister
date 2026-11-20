@@ -1,8 +1,9 @@
 """Phases first, parallel, last. Every selected check runs once or the gate is incomplete."""
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+import threading
 import time
 
 from slopmeister.check import ownership
@@ -42,6 +43,7 @@ class Settings:
     cwd: Path
     logs: Path
     child_umask: int = -1
+    cancelled: threading.Event = field(default_factory=threading.Event)
 
 
 def _execute_all(checks: list[Check], context: Context, jobs: int) -> list[dict]:
@@ -49,8 +51,12 @@ def _execute_all(checks: list[Check], context: Context, jobs: int) -> list[dict]
     executor = ThreadPoolExecutor(max_workers=jobs)
     try:
         results = _run_phases(checks, context, executor)
-    except KeyboardInterrupt:
+    except BaseException as error:
+        # A signal sets cancelled first, its interrupt may surface as another error from threading.
+        signalled = context.cancelled.is_set() or isinstance(error, KeyboardInterrupt)
         context.cancelled.set()
+        if not signalled:
+            raise
     finally:
         executor.shutdown(wait=True, cancel_futures=True)
     return [row for row in results if row is not None]
@@ -60,7 +66,12 @@ def run_checks(checks: list[Check], settings: Settings) -> dict:
     validate(checks, settings.jobs)
     settings.logs.mkdir(parents=True, exist_ok=False, mode=0o700)
     started, started_at = time.monotonic(), ownership.utc()
-    context = Context(cwd=settings.cwd, logs=settings.logs, child_umask=settings.child_umask)
+    context = Context(
+        cwd=settings.cwd,
+        logs=settings.logs,
+        child_umask=settings.child_umask,
+        cancelled=settings.cancelled,
+    )
     results = _execute_all(checks, context, settings.jobs)
     complete = sorted(row["id"] for row in results) == sorted(check.id for check in checks)
     return {

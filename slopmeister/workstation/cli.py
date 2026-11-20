@@ -10,6 +10,7 @@ from pathlib import Path
 from slopmeister.errors import EXIT_USAGE
 from slopmeister.workstation import (
     codex_config,
+    codex_hooks,
     doctor,
     drift,
     glab_login,
@@ -25,9 +26,13 @@ from slopmeister.workstation import (
 def _change(item: state.Item, home: Path) -> str:
     if item.name in rules.NAMES:
         return rules.change(home, item.name)
-    if item.name in (manifest.CODEX_CONFIG, orca.NAME):
-        change = codex_config.change if item.name == manifest.CODEX_CONFIG else orca.change
-        return change(home)
+    reports = {
+        codex_hooks.NAME: codex_hooks.change,
+        manifest.CODEX_CONFIG: codex_config.change,
+        orca.NAME: orca.change,
+    }
+    if item.name in reports:
+        return reports[item.name](home)
     if item.entry is None:
         return f"  would build: {item.name} (osacompile)"
     live = home / item.name

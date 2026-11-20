@@ -172,12 +172,12 @@ def test_worker_or_failed_census_refuses_before_deletion(workspace, invoke, snap
     if census == "occupied":
         script = """#!/bin/sh
 case "$*" in
-  '-axo pid=,tty=,comm=') echo '123456 ?? codex' ;;
-  '-p 123456 -o lstart=,comm=') echo 'started codex' ;;
-  '-p 123456 -o args=') echo 'codex' ;;
+  '-ww -axo pid=,tty=,comm=') echo '123456 ?? codex' ;;
+  '-ww -p 123456 -o pid=,stat=,lstart=,comm=') echo '123456 S started codex' ;;
+  '-ww -p 123456 -o pid=,args=') echo '123456 codex' ;;
 esac
 """
-        (binaries / "lsof").write_text(f"#!/bin/sh\nprintf 'n%s\\n' '{worktree}'\n")
+        (binaries / "lsof").write_text(f"#!/bin/sh\nprintf 'p123456\\nn%s\\n' '{worktree}'\n")
         (binaries / "lsof").chmod(0o755)
     (binaries / "ps").write_text(script)
     before = snapshot(worktree)

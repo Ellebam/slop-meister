@@ -14,6 +14,22 @@ NATIVE = {"allow": "allow", "needs_intent": "prompt", "deny": "forbidden"}
 ASKED = {"allow": "allow", "needs_intent": "ask", "deny": "deny"}
 
 
+MEMORY_PATH = re.compile(r"~(?:/[A-Za-z0-9_.*-]+)+")
+
+
+def _check_private_memory(source: Path, memory: dict) -> None:
+    paths = memory.get("paths")
+    if not memory.get("why") or not isinstance(paths, list) or not paths:
+        raise ValueError(f"{source}: private memory needs its folders and a justification")
+    if not all(isinstance(path, str) and MEMORY_PATH.fullmatch(path) for path in paths):
+        raise ValueError(f"{source}: unsupported private memory folder")
+
+
+def memory_denies(contract: dict) -> list[str]:
+    """Claude's Edit rules cover every file tool, so one rule per folder refuses each write."""
+    return [f"Edit({path}/**)" for path in contract["private_memory"]["paths"]]
+
+
 def permission_contract(source: Path) -> dict:
     with source.open("rb") as stream:
         contract = tomllib.load(stream)
@@ -33,6 +49,7 @@ def permission_contract(source: Path) -> dict:
     _check_service_actions(source, contract.get("service_action", []))
     _check_service_read(source, contract["service_read"])
     _check_service_read(source, contract["ci_rerun"])
+    _check_private_memory(source, contract["private_memory"])
     return contract
 
 
@@ -156,8 +173,10 @@ def _soft_deny(contract: dict) -> list:
         "read commands when they provide the requested result. Write an API read as gh api "
         "or glab api with --method GET or -X GET directly after api and the query in the URL. "
         "A launched session runs that form by rule. A second method option, a request body or "
-        "field option, another host and a listed credential endpoint, such as variables, tokens "
-        "or secrets, ask the operator. Other gh api and glab api commands "
+        "field option, --hostname after the method and a listed credential endpoint, such as "
+        "variables, tokens or secrets, ask the operator. For a GitLab read from another host, "
+        "put --hostname and the host directly after api and before the method. The reviewer "
+        "checks that destination. Other gh api and glab api commands "
         "retain native review of the exact command. The task supplies authority for "
         "requested repository and tracker reads through the existing signed-in client, "
         "including a read requested in the kickoff. This is read authority, never write "
@@ -186,6 +205,7 @@ def _claude_settings(source: Path, contract: dict) -> dict:
         if excepted:
             asked = permissions.setdefault("ask", [])
             asked.extend(f"Bash({form})" for form in exception_forms(entry))
+    permissions.setdefault("deny", []).extend(memory_denies(contract))
     return settings
 
 

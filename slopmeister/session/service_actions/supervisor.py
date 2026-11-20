@@ -1,4 +1,7 @@
-"""Authorize one fixed provider read without exposing the service-account token."""
+"""Authorize one fixed provider read or write without exposing the service-account token.
+
+A write runs only from its delivered native entry, behind the native per-tool approval.
+"""
 
 import base64
 import json

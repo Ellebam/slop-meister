@@ -1,6 +1,6 @@
 # Documentation
 
-New here? Start with the [project overview](../README.md), then follow [one session from dispatch to finish](session-walkthrough.md).
+Start with the [quick start](../README.md#quick-start) to set up a workstation. Then follow the [shop search example](session-walkthrough.md) to see the plan, independent check and testing decision for one task.
 
 ## Contents
 
@@ -48,7 +48,7 @@ New here? Start with the [project overview](../README.md), then follow [one sess
 
 | Question | Read |
 |---|---|
-| What are the layers and the vocabulary? | [Project overview](../README.md#how-the-farm-runs) |
+| What does the worker receive, and who acts on a task? | [Session walkthrough](session-walkthrough.md#what-the-worker-receives) and [project roles](../README.md#who-works-on-a-task) |
 | What does each skill do, and who starts it? | [Skills index](skills.md) |
 | What happens during a task? | [Session walkthrough](session-walkthrough.md) |
 | What rules does a Slopmeister worker load? | [Rendered agreement](../dist/codex/plots/slopmeister.md) |

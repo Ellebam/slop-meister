@@ -53,3 +53,12 @@ def test_prompt_lets_the_reviewer_run_the_work_but_not_change_it():
     assert "Run any command or test" in prompt
     assert "Never change code or files" in prompt
     assert "read-only" not in prompt
+
+
+def test_prompt_asks_for_proof_and_grades_only_product_behavior():
+    """Baseline noise: unproven findings and setup faults graded as product failures."""
+    prompt = build_review_prompt(ReviewTarget("Review.", check_root="/run", scenarios=("a",)))
+    assert "A finding whose quote is not in its file is withheld from the worker." in prompt
+    assert "Do not report wording, naming, style, formatting or preference" in prompt
+    assert "A scenario fails only when the product behaves wrongly." in prompt
+    assert "report could_not_run and name that fault in the reason" in prompt

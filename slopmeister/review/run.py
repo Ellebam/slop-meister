@@ -215,7 +215,7 @@ def _run_repository_review(
     if check:
         check.verify()
     check_returncode(review)
-    parsed = parse_result(direction, review, check)
+    parsed = parse_result(direction, review, target, check)
     return replace(parsed, preexisting_dirty=dirty and check is None)
 
 
@@ -246,7 +246,7 @@ def _run_directory_review(direction, target, options) -> ReviewResult:
             raise CrossToolReviewError("reviewer changed directory subject copy")
         directory_subject.load(subject.manifest)
         check_returncode(review)
-        parsed = parse_result(direction, review, options.get("check"))
+        parsed = parse_result(direction, review, isolated, options.get("check"))
         return replace(parsed, preexisting_dirty=False)
     finally:
         cleanup_schema_file(argv)

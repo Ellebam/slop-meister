@@ -14,6 +14,7 @@ from slopmeister.errors import SlopmeisterError, UsageError
 from slopmeister.launch import closure
 from slopmeister.launch.model import Launch, Stop
 from slopmeister.removal import nested
+from slopmeister.review.check import remove_finished
 from slopmeister.slots import allocation, claimed, leftover, setup, tester
 from slopmeister.slots.down_arguments import Request as Request
 from slopmeister.slots.down_arguments import parse as parse
@@ -273,6 +274,7 @@ def _release(request: Request) -> int:
     if present:
         released.append("worktree")
     allocation.run(["git", "-C", str(root), "worktree", "prune"])
+    remove_finished(worktree.resolve())
     message = f"slot: {project} released, {' '.join(released)}"
     print(message if released else f"slot: nothing live for {project}")
     print(f"slot: kept branch '{request.name}', launcher trust and kickoff files")
