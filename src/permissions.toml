@@ -1,3 +1,4 @@
+private_memory = { paths = ["~/.claude/projects/*/memory", "~/.codex/memories", "~/.codex/memories_v2"], why = "The vault is the only memory. Claude denies file edits in these client memory folders, and a Codex home hook refuses patches there, also from a shell. Other shell writes stay uncovered." }
 # Tool-neutral permission contract. One source, rendered by bin/slopmeister render into
 # Claude settings, Codex rules and the OpenCode permission map. Every entry carries a why,
 # so an agent reading the rendered rule learns what to do instead of only what it may not.
@@ -26,7 +27,7 @@ ci_rerun = { decision = "allow", why = "The fixed CI helper retries initially fa
 service_read = { decision = "allow", why = "The fixed delivered reader only retrieves data and needs no question, budget or review, like a gh read" }
 
 [[command]]
-prefixes = ["git add -A", "git add --all", "git add .", "git commit -a"]
+prefixes = ["git add -A", "git add --all", "git add .", "git add -u", "git commit -a", "git commit -am", "git commit --all"]
 decision = "deny"
 why = "Name each needed file, a sweep commits what nobody chose"
 

@@ -54,7 +54,3 @@ Under a valid grant of [Night mode](../plot-session/SKILL.md#night-mode), you or
 ## After the answer
 
 Fold the operator's feedback into `## Plan` in place, without a second question. Run `cross-tool-review` in plan mode for every new plan, then continue with `execute-plan`. For a follow-up, first check the reuse rule in `execute-plan`.
-
-## Arguments
-
-$TASK_DESCRIPTION

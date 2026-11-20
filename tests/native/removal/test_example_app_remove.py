@@ -157,8 +157,8 @@ def _directory_session(tmp_path, env, notes):
         PLOT_SESSION_ROOT=str(session.parent),
         PLOT_SESSION_ORCA=str(fake_binary(tmp_path / "bin", "orca", ORCA)),
         CLOSED=str(tmp_path / "closed"),
-        # The launcher opens a directory session's tab in the Slopmeister checkout.
-        TAB=str(ROOT),
+        # Orca registers the new directory as its own folder.
+        TAB=str(session),
     )
     return session, logs
 

@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 640" width="720" height="640" role="img" aria-labelledby="dm-title dm-desc" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif">
+  <title id="dm-title">Dispatcher, manager and workers</title>
+  <desc id="dm-desc">The operator gives the dispatcher a task. One path goes directly to a single worker, which decides and reports with the operator itself. A second path goes through a manager named shop-search-mgr to two workers. The manager carries the operator's decisions down and the workers' reports up. Peer mail between workers carries information only.</desc>
+  <style>
+    .over { font-size: 12.5px; font-weight: 700; letter-spacing: 1.2px; }
+    .title { font-size: 19px; font-weight: 700; fill: #1f2a22; }
+    .task { font-size: 16.5px; font-weight: 700; fill: #1f2a22; }
+    .sub { font-size: 14.5px; fill: #566056; }
+    .lbl { font-size: 14px; fill: #566056; }
+    .amber { font-size: 14px; font-weight: 600; fill: #8a5527; }
+    .blue { font-size: 14px; font-weight: 600; fill: #36598a; }
+    .mono { font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', monospace; font-size: 13px; font-weight: 600; fill: #35654d; }
+    .card { fill: #ffffff; stroke: #d8d4c6; stroke-width: 1.2; }
+    .path { fill: none; stroke: #7d877d; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .talk { fill: none; stroke: #9b6639; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .mail { fill: none; stroke: #36598a; stroke-width: 1.8; stroke-dasharray: 2 6; stroke-linecap: round; stroke-linejoin: round; }
+  </style>
+  <defs>
+    <marker id="dm-grey" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M1 1 L9 5 L1 9 Z" fill="#7d877d"/>
+    </marker>
+    <marker id="dm-amber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M1 1 L9 5 L1 9 Z" fill="#9b6639"/>
+    </marker>
+    <filter id="dm-shadow" x="-5%" y="-10%" width="110%" height="130%">
+      <feDropShadow dx="0" dy="1.5" stdDeviation="2.5" flood-color="#1f2a22" flood-opacity="0.09"/>
+    </filter>
+  </defs>
+
+  <rect width="720" height="640" rx="20" fill="#f6f4ee"/>
+
+  <!-- task path -->
+  <path class="path" d="M360 98 V132" marker-end="url(#dm-grey)"/>
+  <path class="path" d="M300 214 V240 Q300 250 290 250 H186 Q176 250 176 260 V442" marker-end="url(#dm-grey)"/>
+  <path class="path" d="M420 214 V240 Q420 250 430 250 H468 Q478 250 478 260 V288" marker-end="url(#dm-grey)"/>
+
+  <!-- decisions and reports -->
+  <path class="talk" d="M242 62 H82 Q72 62 72 72 V442" marker-start="url(#dm-amber)" marker-end="url(#dm-amber)"/>
+  <path class="talk" d="M478 62 H642 Q652 62 652 72 V327 Q652 337 642 337 H626" marker-start="url(#dm-amber)" marker-end="url(#dm-amber)"/>
+  <path class="talk" d="M430 386 V408 Q430 418 420 418 H394 Q384 418 384 428 V442" marker-start="url(#dm-amber)" marker-end="url(#dm-amber)"/>
+  <path class="talk" d="M526 386 V408 Q526 418 536 418 H562 Q572 418 572 428 V442" marker-start="url(#dm-amber)" marker-end="url(#dm-amber)"/>
+
+  <!-- peer mail -->
+  <path class="mail" d="M132 524 V548 Q132 558 142 558 H562 Q572 558 572 548 V524"/>
+  <path class="mail" d="M384 524 V558"/>
+
+  <g filter="url(#dm-shadow)">
+    <rect x="250" y="28" width="220" height="68" rx="14" fill="#fbeedb" stroke="#9b6639" stroke-width="1.8"/>
+    <rect class="card" x="230" y="140" width="260" height="74" rx="14"/>
+    <rect x="338" y="296" width="280" height="82" rx="14" fill="#e2efe7" stroke="#35654d" stroke-width="1.8"/>
+    <rect class="card" x="44" y="450" width="176" height="74" rx="14"/>
+    <rect class="card" x="296" y="450" width="176" height="74" rx="14"/>
+    <rect class="card" x="484" y="450" width="176" height="74" rx="14"/>
+  </g>
+
+  <g fill="none" stroke="#8a5527" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="290" cy="54" r="7"/>
+    <path d="M276 78 Q276 65 290 65 Q304 65 304 78"/>
+  </g>
+  <text class="title" x="320" y="58">Operator</text>
+  <text class="sub" x="320" y="79">that is you</text>
+
+  <text class="lbl" x="372" y="121">gives a task</text>
+
+  <text class="title" x="360" y="172" text-anchor="middle">Dispatcher</text>
+  <text class="sub" x="360" y="195" text-anchor="middle">launches the work</text>
+
+  <text class="lbl" x="238" y="241" text-anchor="middle">direct</text>
+  <text class="lbl" x="490" y="276">through a manager</text>
+
+  <text class="amber" x="84" y="330">decisions</text>
+  <text class="amber" x="84" y="350">and reports,</text>
+  <text class="amber" x="84" y="370">directly</text>
+
+  <text class="amber" x="640" y="162" text-anchor="end">your decisions</text>
+  <text class="amber" x="640" y="182" text-anchor="end">go down,</text>
+  <text class="amber" x="640" y="202" text-anchor="end">reports come up</text>
+
+  <text class="over" x="358" y="322" fill="#35654d">MANAGER</text>
+  <rect x="440" y="306" width="158" height="24" rx="12" fill="#ffffff" stroke="#9fc7b0" stroke-width="1.2"/>
+  <text class="mono" x="519" y="322.5" text-anchor="middle">shop-search-mgr</text>
+  <text class="sub" x="358" y="347">Carries decisions and reports</text>
+  <text class="sub" x="358" y="366">for its group of workers</text>
+
+  <text class="over" x="60" y="476" fill="#35654d">WORKER</text>
+  <text class="task" x="60" y="503">Update the footer</text>
+  <text class="over" x="312" y="476" fill="#35654d">WORKER</text>
+  <text class="task" x="312" y="503">Add a search box</text>
+  <text class="over" x="500" y="476" fill="#35654d">WORKER</text>
+  <text class="task" x="500" y="503">Sort the results</text>
+
+  <g transform="translate(246 546)">
+    <rect x="0" y="0" width="30" height="24" rx="5" fill="#f6f4ee"/>
+    <rect x="3" y="3" width="24" height="18" rx="3" fill="#e5edf8" stroke="#36598a" stroke-width="1.6"/>
+    <path d="M4.500 5.500 L15 13 L25.500 5.500" fill="none" stroke="#36598a" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text class="blue" x="360" y="594" text-anchor="middle">Peer mail carries information only, never an order</text>
+
+  <g font-size="13" fill="#566056">
+    <path d="M150 618 H176" class="path" marker-end="url(#dm-grey)"/>
+    <text x="186" y="622.5">task path</text>
+    <path d="M276 618 H306" class="talk" marker-start="url(#dm-amber)" marker-end="url(#dm-amber)"/>
+    <text x="316" y="622.5">decisions and reports</text>
+    <path d="M478 618 H506" class="mail"/>
+    <text x="516" y="622.5">peer mail</text>
+  </g>
+</svg>

@@ -6,7 +6,7 @@ import re
 import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
-SETUP_UV = "uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4"
+SETUP_UV = "uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2"
 
 
 def trigger_block() -> str:
@@ -48,7 +48,7 @@ def test_each_ci_job_declares_its_failed_check_evidence(job: str) -> None:
     upload = block.index("uses: actions/upload-artifact@")
     assert setup_uv < tools < check < upload
     assert block.count(SETUP_UV) == 1
-    assert 'version: "0.12.15"' in block
+    assert 'version: "0.13.8"' in block
     assert "enable-cache: true" in block
     assert f"--report ci-evidence/{job}.json" in block
     assert f"failure() && steps.{step}.outcome == 'failure'" in block

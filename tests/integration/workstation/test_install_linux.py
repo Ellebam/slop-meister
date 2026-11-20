@@ -98,7 +98,7 @@ def test_the_unit_restarts_and_starts_at_boot():
 def test_linux_install_places_nothing_from_launchd(tmp_path):
     """Bug: the Linux install writes launchd files, builds the applet or stops on Orca's file."""
     home, bin_dir = machine(tmp_path)
-    # A fresh Orca profile has no settings file, so the install must not ask for one.
+    # A fresh Orca profile has no settings yet, so the install must not ask for them.
     (home / orca.NAME).unlink()
     assert linux(home, bin_dir, "install", "--all").returncode == 0
     assert not (home / "Library/LaunchAgents").exists() and not (home / APPLET).exists()

@@ -140,19 +140,36 @@ def test_command_file_execs_the_tool(tmp_path, monkeypatch, tool, redispatch):
     assert launch.command_file.stat().st_mode & 0o777 == 0o700
 
 
-@pytest.mark.parametrize("tool", ["claude", "codex"])
+CLAUDE_EFFORT = " '--effort' 'high'"
+CODEX_EFFORT = " '-c' 'model_reasoning_effort=\"high\"'"
+
+
 @pytest.mark.parametrize(
-    "selection",
+    "tool,selection",
     [
-        (True, [], " --model 'o'\\''k'"),
-        (False, [], ""),
-        (False, ["--model", "requested"], " '--model' 'requested'"),
+        ("claude", (True, [], " --model 'o'\\''k'" + CLAUDE_EFFORT)),
+        ("codex", (True, [], " --model 'o'\\''k'" + CODEX_EFFORT)),
+        ("claude", (False, [], " '--model' 'claude-opus-5-5'" + CLAUDE_EFFORT)),
+        ("codex", (False, [], " '--model' 'gpt-6.2-sol'" + CODEX_EFFORT)),
+        ("claude", (False, ["--model", "requested"], CLAUDE_EFFORT + " '--model' 'requested'")),
+        ("codex", (False, ["-mrequested"], CODEX_EFFORT + " '-mrequested'")),
+        ("claude", (True, ["--effort=low"], " --model 'o'\\''k' '--effort=low'")),
+        (
+            "codex",
+            (
+                True,
+                ["-cmodel_reasoning_effort=low"],
+                " --model 'o'\\''k' '-cmodel_reasoning_effort=low'",
+            ),
+        ),
     ],
 )
 def test_native_argv(tmp_path, monkeypatch, tool, selection):
-    """Bug: an explicit, omitted or native model selector changes the launch line shape."""
+    """Bug: an omitted model or effort falls to the client's own default, or a default replaces
+    or duplicates an explicit or native selector."""
     launch = _launch(tmp_path, tool, monkeypatch)
     launch.model_set, launch.extra, tail = selection
+    command.select(launch)
     line = command.line(launch)
     anchor = "--settings '/r/.worktrees/example-client-wt1/.claude/access-settings.json'"
     if tool == "codex":

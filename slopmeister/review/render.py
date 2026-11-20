@@ -46,12 +46,24 @@ def render_hard_gate(result: ReviewResult | CrossToolReviewError) -> str:
     if result.findings:
         lines += [
             "",
-            "| Severity | Location | Finding | Suggested action | Confidence |",
+            "| Severity | Location | Finding | Failure | Suggested action |",
             "|---|---:|---|---|---|",
             *(_finding_row(finding) for finding in result.findings),
+            "",
+            "**Finding evidence:**",
         ]
+        for finding in result.findings:
+            lines.append(f"- {sanitize_text(f'{finding.file}:{finding.line}')}")
+            lines.extend(_evidence_block(path, quote) for path, quote in finding.evidence)
     else:
         lines.append("**Findings:** 0")
+    if result.withheld:
+        count = len(result.withheld)
+        lines += [""] if result.findings else []
+        lines.append(
+            f"**Withheld:** {count} finding{'s' * (count != 1)} without a verified quote: "
+            + sanitize_text("; ".join(result.withheld))
+        )
     return "\n".join(lines + _scenario_lines(result))
 
 
@@ -75,19 +87,24 @@ def _scenario_lines(result: ReviewResult) -> list[str]:
 
 
 def _evidence_block(path: str, quote: str) -> str:
-    """A fence longer than any backtick run, so a quoted line stays inside its block."""
+    """A fence longer than any backtick run, so a quoted line stays inside its block.
+
+    Every quoted line carries the list item's indent, an unindented line would end the item
+    and its fence, and the rest of the quote would render as live Markdown.
+    """
     text = "".join(c if c.isprintable() or c in "\n\t" else " " for c in redact(quote))
     fence = "`" * max(3, 1 + max((len(run) for run in re.findall(r"`+", text)), default=0))
-    return f"  Evidence: {sanitize_text(path)}\n\n  {fence}text\n{text}\n  {fence}"
+    body = "\n".join(f"  {line}" for line in text.split("\n"))
+    return f"  Evidence: {sanitize_text(path)}\n\n  {fence}text\n{body}\n  {fence}"
 
 
 def _finding_row(finding) -> str:
     values = [
         finding.severity,
         f"{finding.file}:{finding.line}",
-        f"{finding.title} - {finding.rationale}",
+        finding.title,
+        finding.failure,
         finding.suggested_action,
-        finding.confidence,
     ]
     return "| " + " | ".join(sanitize_text(value) for value in values) + " |"
 
@@ -109,8 +126,8 @@ def _blocked_gate(error: CrossToolReviewError) -> str:
 def _blocked_options(error: CrossToolReviewError) -> list[str]:
     actions = {
         ReviewErrorCategory.START_PRECONDITION: (
-            "Install or repair the required reviewer CLI/control surface, then run the "
-            "standalone review again."
+            "Correct the named start condition, such as an argument, an input file or the "
+            "reviewer CLI, then run the standalone review again."
         ),
         ReviewErrorCategory.TIMEOUT: (
             "Inspect the timeout state and mutation assessment before deciding whether to "

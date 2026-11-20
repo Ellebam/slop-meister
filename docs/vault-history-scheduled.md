@@ -4,7 +4,7 @@
 
 ## Scheduled history
 
-The installed [commit job](../plots/vault/bin/vault-commit.sh) runs at 08:00 and 20:00. It stages the vault, applies a deletion guard, logs a non-blocking lint result and writes a daily `git bundle --all` into `Backups/` beside the real vault folder, so a mirrored parent can carry the history while the vault holds nothing Git-shaped. Without separate storage or sync, this bundle remains on the same disk. The job replaces it only when the repository holds every commit the bundle ends on, so a rebuilt repository never overwrites a longer history.
+The installed [commit job](../plots/vault/bin/vault-commit.sh) runs at 08:00 and 20:00. It stages the vault, applies a deletion guard and writes a daily `git bundle --all` into `Backups/` beside the real vault folder, so a mirrored parent can carry the history while the vault holds nothing Git-shaped. Without separate storage or sync, this bundle remains on the same disk. If the deletion guard skips a snapshot, the job still backs up the history already committed. The job replaces the bundle only when the repository holds every commit the bundle ends on, so a rebuilt repository never overwrites a longer history.
 
 The launchd file and the applet exist on the Mac only. On Linux `vault-commit.timer` runs the same job at the same hours, and `systemctl --user list-timers` shows its next run. On both platforms the bundle follows the configured real vault folder. Whether that parent folder is synchronized depends on the operator's sync configuration.
 

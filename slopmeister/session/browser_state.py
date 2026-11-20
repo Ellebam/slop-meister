@@ -1,8 +1,13 @@
-"""Private ownership records shared by the browser entry and its Chrome connection."""
+"""Private ownership records, profile folders and their runtime folders for the browser entry."""
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+import fcntl
 import json
 import os
 from pathlib import Path
+import re
+import shutil
 import stat
 import subprocess
 import sys
@@ -10,6 +15,28 @@ from urllib.parse import urlsplit
 
 PREFIX = "slopmeister-browser-"
 TEMP_ROOT = Path("/tmp").resolve()
+# A profile holds login cookies, so it lives in the user's state folder, never in Git or the vault.
+PROFILES = Path.home() / ".local/state/slopmeister/browsers"
+# A plain name keeps every profile folder directly inside PROFILES, so no name can traverse.
+PROFILE_NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,31}")
+# Sockets have a short path limit, so each profile's sockets, lock and display live here.
+RUNTIME = TEMP_ROOT / f"sm-browser-{os.getuid()}"
+OPERATOR_PROFILE = {
+    "linux": Path.home() / ".config/google-chrome/Default",
+    "darwin": Path.home() / "Library/Application Support/Google/Chrome/Default",
+}
+# A new profile takes the operator's extensions, bookmarks and settings. Account, sign-in, sync and
+# Google keys stay behind, and so do cookies, passwords and the stored data of extensions.
+SEED_KEYS = frozenset(
+    {"extensions", "protection", "browser", "bookmark_bar", "default_search_provider",
+     "default_search_provider_data", "intl", "spellcheck"}
+)  # fmt: skip
+SEED_PREFERENCES = ("Preferences", "Secure Preferences")
+# A page address can carry an account name or a flow value in its query or fragment, and no page
+# command needs them. A query can hold any punctuation, so a run ends only at a space, quote or
+# angle bracket. Each run is cut once, so the scan stays linear.
+ADDRESS_RUN = re.compile(r"[^\s\"'<>]+")
+ADDRESS_TAIL = re.compile(r"[?#]")
 WORKSPACE = "SLOPMEISTER_SESSION_WORKSPACE"
 # A program started from the checkout has no skill entry beside it.
 CHECKOUT_HELPER = Path(__file__).resolve().parents[2] / "src/skills/browser-login/scripts/input.cjs"
@@ -56,6 +83,71 @@ def owned(value: str) -> Path:
         raise ValueError("BROWSER_STATE_REFUSED")
     metadata(root)
     return root
+
+
+def private(folder: Path) -> Path:
+    """An owner-only folder, created when missing and refused when another user could swap it."""
+    refused = ValueError(f"BROWSER_PROFILE_REFUSED: {folder} must be an owner-only folder")
+    try:
+        folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+    except FileExistsError:
+        raise refused from None
+    info = folder.lstat()
+    if (
+        not stat.S_ISDIR(info.st_mode)
+        or info.st_uid != os.getuid()
+        or stat.S_IMODE(info.st_mode) != 0o700
+    ):
+        raise refused
+    return folder
+
+
+def profile_name(value: str) -> str:
+    if not PROFILE_NAME.fullmatch(value):
+        raise ValueError("BROWSER_PROFILE_REFUSED: use lowercase letters, digits and dashes")
+    return value
+
+
+def profile(name: str) -> Path:
+    """The named profile folder. A new one starts as a filtered copy of the operator's profile."""
+    folder = PROFILES / profile_name(name)
+    fresh = not folder.exists() and not folder.is_symlink()
+    private(PROFILES)
+    if sys.platform == "darwin":
+        # Time Machine copies the home folder off this Mac, and the profiles hold login cookies.
+        excluded = subprocess.run(["tmutil", "addexclusion", str(PROFILES)], capture_output=True)
+        if excluded.returncode:
+            raise ValueError("BROWSER_PROFILE_REFUSED: Time Machine exclusion failed")
+    private(folder)
+    if fresh:
+        seed(OPERATOR_PROFILE.get(sys.platform, Path("/nonexistent")), folder / "Default")
+    return folder
+
+
+def seed(source: Path, target: Path) -> None:
+    target.mkdir(mode=0o700)
+    if not source.is_dir():
+        return
+    if (source / "Bookmarks").is_file():
+        shutil.copyfile(source / "Bookmarks", target / "Bookmarks")
+    if (source / "Extensions").is_dir():
+        shutil.copytree(source / "Extensions", target / "Extensions", symlinks=True)
+    for name in SEED_PREFERENCES:
+        try:
+            data = json.loads((source / name).read_text())
+        except OSError, ValueError:
+            continue
+        if isinstance(data, dict):
+            kept = {key: value for key, value in data.items() if key in SEED_KEYS}
+            (target / name).write_text(json.dumps(kept))
+
+
+def runtime(name: str) -> Path:
+    """The profile's owner-only runtime folder for its sockets, registries, lock and display."""
+    folder = private(private(RUNTIME) / profile_name(name))
+    for part in ("sockets", "daemon", "registry", "keeper"):
+        private(folder / part)
+    return folder
 
 
 def https_url(value: str) -> tuple[str, str]:
@@ -165,3 +257,57 @@ def private_directory(path: Path) -> None:
         or path.resolve() != path
     ):
         raise ValueError("BROWSER_STATE_REFUSED")
+
+
+def node() -> Path:
+    found = shutil.which("node")
+    if found is None:
+        raise ValueError("BROWSER_PREREQUISITE: Node required")
+    engine = Path(found).resolve()
+    cwd = workspace()
+    inside = cwd not in {Path.home().resolve(), Path(cwd.anchor)} and engine.is_relative_to(cwd)
+    if inside or engine.is_relative_to(TEMP_ROOT):
+        raise ValueError(
+            "BROWSER_PREREQUISITE: use installed Node outside the workspace and temp root"
+        )
+    return engine
+
+
+def cut(run: re.Match) -> str:
+    # A snapshot shows a link's own address, which can be relative to the page. Any tail that
+    # holds a parameter is cut, and so is any tail of an absolute or root-relative address.
+    token = run.group()
+    tail = ADDRESS_TAIL.search(token)
+    if tail is not None and "=" not in token[tail.start() :]:
+        start = 0 if token.startswith("/") else token.find("://")
+        tail = ADDRESS_TAIL.search(token, start) if start >= 0 else None
+    if tail is None:
+        return token
+    # The brackets that close a Markdown link stay, so the line keeps its shape.
+    closing = token[len(token.rstrip(")]")) :]
+    return token[: tail.start()] + "?hidden" + closing
+
+
+def hide(text: str) -> str:
+    return ADDRESS_RUN.sub(cut, text)
+
+
+@contextmanager
+def locked(runtime: Path) -> Iterator[None]:
+    """One start or close of a profile at a time, so a keeper is never closed under a new state."""
+    descriptor = os.open(runtime / "lock", os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(descriptor)
+
+
+def configuration(config: Path, data: dict) -> None:
+    fd = os.open(config, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+    with os.fdopen(fd, "w") as stream:
+        info = os.fstat(stream.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_uid != os.getuid():
+            raise ValueError("BROWSER_PAGE_CONFIG_REFUSED")
+        stream.truncate(0)
+        stream.write(json.dumps(data))

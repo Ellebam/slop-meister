@@ -17,6 +17,10 @@ PART = re.compile(r"\.[0-9a-f]{32}\.part")
 DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
 
 
+class UnexpectedEntries(ValueError):
+    """Managed storage contains entries the cleaner must preserve."""
+
+
 @contextmanager
 def directory(path: Path):
     """Keep a descriptor to the real directory, even if a path is replaced concurrently."""
@@ -101,7 +105,9 @@ def _cleanup(folder: int, now: float, keep: str | None = None) -> tuple[int, int
             size -= info.st_size
             removed += 1
     if unexpected:
-        raise ValueError(f"cleaned managed pages; preserved {unexpected} unsupported Grove entries")
+        raise UnexpectedEntries(
+            f"cleaned managed pages; preserved {unexpected} unsupported Grove entries"
+        )
     return removed, size
 
 

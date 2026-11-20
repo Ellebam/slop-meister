@@ -295,7 +295,6 @@ def test_history_budget_failure_is_unknown_instead_of_empty(setup_live, monkeypa
 
 
 def test_inventory_fails_closed_on_partial_response(tmp_path, monkeypatch):
-    monkeypatch.setattr(live.shutil, "which", lambda _: "orca")
     monkeypatch.setattr(
         live,
         "invoke",

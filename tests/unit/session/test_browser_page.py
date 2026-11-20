@@ -18,13 +18,12 @@ def test_page_config_cannot_overwrite_an_unrelated_file(tmp_path, link):
     assert target.read_text() == "untouched"
 
 
-def test_linked_page_tool_directory_preserves_its_target(root, tool):
-    calls, _ = tool
+def test_linked_page_tool_directory_preserves_its_target(root, chrome):
     target = root.parent / "unrelated"
     target.mkdir()
     (target / "keep").write_text("unchanged")
     (root / "playwright").symlink_to(target)
     with pytest.raises(ValueError, match="STATE_REFUSED"):
         runtime.page(root, ["snapshot"])
-    assert calls == [] and (target / "keep").read_text() == "unchanged"
+    assert chrome.calls == [] and (target / "keep").read_text() == "unchanged"
     assert list(target.iterdir()) == [target / "keep"]

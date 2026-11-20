@@ -45,7 +45,11 @@ class ReleaseRepository:
 def release_repo(tmp_path: Path) -> ReleaseRepository:
     scratch_repo(tmp_path)
     (tmp_path / "pyproject.toml").write_text('[project]\nversion = "0.1.0"\n')
-    git(tmp_path, "add", "pyproject.toml")
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs/releases.md").write_text(
+        "## Upgrading to 0.1.0\n\nFind products by colour.\n\n## Publishing\n\nFor maintainers.\n"
+    )
+    git(tmp_path, "add", "pyproject.toml", "docs/releases.md")
     git(tmp_path, "commit", "-m", "Set version")
     sha = git(tmp_path, "rev-parse", "HEAD").strip()
     stub = tmp_path / "gh"

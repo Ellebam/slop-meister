@@ -4,7 +4,7 @@ Use this guidance for the `sow` message, freeform opening and closing, testing h
 
 ## The operator summary
 
-The operator is the first reader. They read on a phone, between many sessions, and must decide in under a minute. Open every such message with a summary that stands alone, and put nothing before it.
+The operator is the first reader. They read on a phone, between many sessions, and must decide in under a minute. Open every such message with a summary that stands alone, and put nothing before it. The summary is the labeled lines of the message's shape before Details, with every label in order. Its first line starts with the shape's first label, Goal or Result, so no paragraph comes before that label.
 
 - Use plain words and the operator's own term for each existing thing. Say what exists today, give one real example of the problem before any fork, and say what the user gets.
 - The summary has no file path, line number, command, command output, commit hash, code, function name, API name, backticks, procedure or step name, and no internal term the operator did not use first. Explain a technical term you cannot avoid in the same sentence. Put implementation identifiers under Details even when the ticket uses them.
@@ -42,6 +42,7 @@ For one or two open operator decisions, keep each recommendation and the pros an
 **Details**
 - This work follows <issue link>. <Explain each operator decision that departs from the issue.>
 - I <applied or dropped> <review finding or scenario that did not pass> because <reason>. <Use one bullet per finding, or write "There were no findings.">
+- Independent review: <value and detail of each delivery's line, one bullet per delivery, verbatim as `ship` step 2 records it>
 - Run <operator-check command from the test guide>. Expect <result>.
 - The pull request is <link>. Its merge state is <state>.
 - The changed files are listed in <location, normally the pull request>.
@@ -53,7 +54,7 @@ When the session worked a ticket and the vault has `fields/<plot>/tickets.md` fo
 
 A halt or a blocked exit uses the closing shape. **Result** states the blocker and its diagnosis, and **Your move** opens with the recommendation.
 
-The tracker closing comment has a different reader and survives cleanup. It opens with the same summary, keeps the full detail below it and has no limit on the whole. List each changed file with its role in one line, state what a local file would tell the reader instead of pointing at a local path, and add the three retro lines last: went well, went wrong including every operator intervention and any step that changed no decision, worth changing. No taxonomy, score or counter.
+The tracker closing comment has a different reader and survives cleanup. It opens with the same summary, keeps the full detail below it and has no limit on the whole. Where the plot does not fully own the project, it leaves out the `Independent review:` line, as `ship` step 2 does for request bodies. List each changed file with its role in one line, state what a local file would tell the reader instead of pointing at a local path, and add the three retro lines last: went well, went wrong including every operator intervention and any step that changed no decision, worth changing. No taxonomy, score or counter.
 
 ## Evidence
 

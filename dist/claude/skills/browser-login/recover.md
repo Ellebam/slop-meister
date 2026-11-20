@@ -6,11 +6,13 @@ The [skill](SKILL.md) owns the procedure. This file says what a failure means an
 
 | Result | Meaning | Next |
 |---|---|---|
-| `BROWSER_NO_MONITOR` | Chrome is closed and the Linux desktop has no monitor, for example while no remote desktop client is connected. A Chrome started there opens no window, so `start` refused before it launched one | Run `start --private-display <url>` with the same token file. It runs Chrome in a private display that accepts no network connection and has an owner-only auth file. Close the state as soon as the work is done. Close stops that Chrome, and the display stops by itself after 30 minutes. While it runs, it holds the Chrome profile, so a Chrome the operator starts opens there and stays invisible |
-| `BROWSER_DISPLAY_FAILED` | The private-display Chrome did not start in time | Close the state, which stops it. The start limit applies |
-| `BROWSER_TAB_LOST` | Chrome detached the tab from this session. See [Lost tabs](#lost-tabs) below. | Close the state and report the result, the address and the time. A new `start` would leave another tab behind |
-| `BROWSER_PAGE_NOT_REACHED` | `start` opened a tab, but no page arrived at the end. The reason follows the result | Close the state. Start once more only if the reason names a temporary fault such as a network error |
-| `BROWSER_START_FAILED` | A start step failed. The result carries the page tool's error | Close the state. The start limit applies |
+| `BROWSER_NO_MONITOR` | The profile's Chrome is not running and the Linux desktop has no monitor, for example while no remote desktop client is connected. A Chrome started there opens no window, so `start` refused before it launched one | Run `start --profile <name> --private-display <url>`. It runs the profile's Chrome in a private display that accepts no network connection and has an owner-only auth file. Close the state as soon as the work is done. The last close of the profile stops that Chrome, and the display stops by itself after 30 minutes. Other sessions of the profile use the same display until then |
+| `BROWSER_DISPLAY_FAILED` | The private display did not start in time, and `start` stopped it | Report it. The start limit applies |
+| `BROWSER_PROFILE_REFUSED` | The profile name is not lowercase letters, digits and dashes, or its folder is not an owner-only folder of this user | Correct the name. Report a refused folder, and never change its permissions yourself |
+| `BROWSER_TAB_LOST` | This session's own tab is gone, for example because the page closed itself | Close the state and report the result, the address and the time. The start limit applies |
+| `BROWSER_PAGE_NOT_REACHED` | `start` opened a tab, but no page arrived at the end. The reason follows the result | Close the state. Start once more only if the reason names a passing fault such as a network error |
+| `BROWSER_START_FAILED` | A start step failed. The result carries the page tool's error and says whether the state is closed. "Chrome did not open the profile" can mean another Chrome already holds the profile | Close a retained state. The start limit applies |
+| `BROWSER_PAGE_REFUSED: the current tab is not this session's own page` | The page tool's current tab moved to another session's tab, for example after a popup closed itself. The output is withheld | Run `tab-list` and `tab-select` an own tab. If the command could have changed another session's page, report it |
 | `BROWSER_CONNECTION_LOST` | The session ended. No credential field is involved | Close the state. The start limit applies |
 | `BROWSER_PAGE_REFUSED: the page does not answer` | The guard could not read the page, so it refused the page tool | Repeat once. If it persists, close the state and report it |
 | `BROWSER_PAGE_REFUSED: a credential field holds a value` | A field really holds a value | Use `fill`, or close the state and report it |
@@ -33,7 +35,7 @@ For any other failed or uncertain credential result, preserve its diagnostic and
 
 A signed-out service is no failure. Use [Log in](SKILL.md#log-in) with the required command order and Home Assistant approval. Do not ask for hand login merely because a session expired.
 
-An interrupted task can leave its tab open and its session attached. Close its recorded state. Never close a state another session started.
+An interrupted task can leave its tab open and its session attached, which keeps the profile's Chrome running. Close its recorded state. Never close a state another session started.
 
 ## Keep the login file correct
 

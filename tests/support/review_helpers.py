@@ -25,8 +25,9 @@ CLEAN_RESULT = ReviewResult((), SecurityLens(None, ("secrets",), "Nothing found.
 VALID_REVIEW_JSON = """{
   "findings": [{
     "severity": "MUST-FIX", "file": "scripts/lib/example.py", "line": 12,
-    "title": "Missing guard", "rationale": "The reviewer boundary trusts external JSON.",
-    "suggested_action": "Validate all fields before rendering.", "confidence": "high"
+    "title": "Missing guard", "failure": "A reviewer answer with a bad path reaches the gate.",
+    "evidence": [{"path": "scripts/lib/example.py", "quote": "json.loads(raw)"}],
+    "suggested_action": "Validate all fields before rendering."
   }],
   "security_lens": {
     "finding": 1,
@@ -110,15 +111,17 @@ def env_with_scrubbed_api_keys() -> tuple[dict[str, str], dict[str, str]]:
     return parent, project_child_env(parent)
 
 
-def finding(file: str, line: int, severity: str = "NITPICK") -> dict[str, object]:
+def finding(
+    file: str, line: int, severity: str = "SHOULD-FIX", quote: str = "q"
+) -> dict[str, object]:
     return {
         "severity": severity,
         "file": file,
         "line": line,
         "title": "t",
-        "rationale": "r",
+        "failure": "f",
+        "evidence": [{"path": file, "quote": quote}],
         "suggested_action": "a",
-        "confidence": "low",
     }
 
 

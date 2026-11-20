@@ -14,13 +14,13 @@ def _run(state):
         def done(code, out):
             return subprocess.CompletedProcess(args, code, out, "")
 
-        if args[:2] == ["ps", "-axo"]:
+        if args[:3] == ["ps", "-ww", "-axo"]:
             return done(0, f"{PID} ? claude\n")
         if args[0] == "lsof":
             return done(1, "")
-        if args[-1] == "stat=":
-            return done(0, state + "\n")
-        return done(0, "[claude] <defunct>\n" if args[-1] == "args=" else "Mon Jan 1 claude\n")
+        if args[-1] == "pid=,args=":
+            return done(0, f"{PID} [claude] <defunct>\n")
+        return done(0, f"{PID} {state} Mon Jan 1 claude\n" if state else "")
 
     return run
 
@@ -49,7 +49,7 @@ def test_a_process_collected_during_its_inspection_is_no_occupant(monkeypatch):
     collected = []
 
     def run(args):
-        if args[-1] == "stat=":
+        if "stat=" in args[-1]:
             collected.append(True)
         return _run("")(args)
 

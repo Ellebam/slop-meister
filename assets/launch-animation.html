@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Illustration: how a task starts</title>
+<style>
+  :root {
+    --ground: #f6f4ee; --card: #ffffff; --line: #d8d4c6; --ink: #1f2a22; --muted: #566056;
+    --green: #35654d; --green-tint: #e2efe7; --green-line: #9fc7b0;
+    --amber: #9b6639; --amber-ink: #8a5527; --amber-tint: #fbeedb;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--ground); }
+  body { min-height: 100vh; display: grid; place-items: center; }
+  .stage {
+    position: relative; width: 640px; height: 400px; overflow: hidden; background: var(--ground);
+    color: var(--ink); font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  }
+  .top { position: absolute; left: 32px; right: 32px; top: 16px; display: flex; justify-content: space-between; align-items: center; }
+  .top .name { font-size: 15px; font-weight: 700; color: var(--muted); }
+  .tag { font-size: 11.5px; font-weight: 700; letter-spacing: 1.2px; color: var(--muted); border: 1.5px solid #b9b4a4; border-radius: 999px; padding: 3px 10px; }
+  .scene { position: absolute; left: 32px; top: 52px; width: 576px; height: 284px; }
+  .card { height: 100%; background: var(--card); border: 1.2px solid var(--line); border-radius: 14px; padding: 16px 20px; box-shadow: 0 1px 4px rgba(31, 42, 34, 0.10); }
+  .head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 12px; }
+  .head .h { font-size: 21px; font-weight: 700; }
+  .muted { color: var(--muted); font-size: 15px; }
+  .chip { font-size: 13px; font-weight: 600; border-radius: 999px; padding: 3px 12px; background: #efede6; color: var(--muted); }
+  .chip.green { background: var(--green-tint); color: var(--green); }
+
+  .row { display: flex; align-items: center; gap: 14px; height: 58px; margin-top: 8px; padding: 0 16px; border: 1.5px solid #e8e4d8; border-radius: 12px; font-size: 19px; font-weight: 600; }
+  .row .dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid #a9b0a6; }
+  .row .chip { margin-left: auto; }
+  .row.hover { background: #f3f8f4; border-color: var(--green-line); }
+  .row.sel { background: var(--green-tint); border-color: var(--green); }
+  .row.sel .dot { background: var(--green); border-color: var(--green); }
+  .row.sel .chip { background: var(--green); color: #ffffff; }
+
+  .band { display: flex; align-items: baseline; gap: 12px; background: var(--green-tint); border-radius: 10px; padding: 10px 14px; font-size: 19px; }
+  .band b { font-weight: 700; }
+  .item { display: flex; align-items: center; gap: 12px; height: 46px; margin-top: 8px; font-size: 17px; }
+  .item b { font-weight: 700; }
+  .item svg { flex: none; }
+  code { font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', monospace; font-size: 14.5px; font-weight: 600; color: var(--green); background: var(--green-tint); border-radius: 6px; padding: 2px 8px; }
+
+  .say { font-size: 16px; color: var(--muted); margin: -4px 0 6px; }
+  .plan { margin: 0; padding: 0; list-style: none; }
+  .plan li { display: flex; align-items: center; gap: 12px; height: 32px; font-size: 17px; }
+  .plan .n { width: 22px; height: 22px; border-radius: 50%; background: var(--green); color: #fff; font-size: 13px; font-weight: 700; display: grid; place-items: center; }
+  .decision { position: absolute; left: 20px; right: 20px; bottom: 16px; height: 76px; display: flex; align-items: center; justify-content: space-between; padding: 0 18px; background: var(--amber-tint); border: 2px solid var(--amber); border-radius: 12px; }
+  .decision .over { font-size: 12px; font-weight: 700; letter-spacing: 1.2px; color: var(--amber-ink); }
+  .decision .q { font-size: 19px; font-weight: 700; margin-top: 2px; }
+  .btns { display: flex; gap: 10px; }
+  .btn { font-size: 16px; font-weight: 700; border-radius: 9px; padding: 9px 16px; border: 1.8px solid var(--amber); color: var(--amber-ink); background: #ffffff; }
+  .btn.primary { background: var(--amber); color: #ffffff; }
+
+  .caption { position: absolute; left: 32px; right: 32px; bottom: 16px; height: 34px; display: flex; align-items: center; gap: 8px; }
+  .step { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 14px; font-weight: 700; color: var(--muted); border: 1.8px solid #b9b4a4; }
+  .step.on { background: var(--ink); border-color: var(--ink); color: #ffffff; }
+  #cap { margin-left: 8px; font-size: 18px; font-weight: 700; }
+
+  .cursor { position: absolute; left: 0; top: 0; width: 80px; height: 40px; pointer-events: none; }
+  .cursor .you { position: absolute; left: 22px; top: 18px; font-size: 12px; font-weight: 700; color: #ffffff; background: var(--amber); border-radius: 999px; padding: 2px 9px; }
+</style>
+</head>
+<body>
+<div class="stage" id="stage" role="img" aria-label="Illustration in three steps. You choose the task Add a search box. A task workspace opens. The worker presents its plan and waits for your decision.">
+  <div class="top"><span class="name">How a task starts</span><span class="tag">ILLUSTRATION</span></div>
+
+  <section class="scene" id="s1">
+    <div class="card">
+      <div class="head"><span class="h">Dispatcher</span><span class="muted">Open tasks</span></div>
+      <div class="row" id="r1"><span class="dot"></span><span>Add a search box</span><span class="chip" id="r1chip">open</span></div>
+      <div class="row"><span class="dot"></span><span>Sort the results</span><span class="chip">open</span></div>
+      <div class="row"><span class="dot"></span><span>Update the footer</span><span class="chip">open</span></div>
+    </div>
+  </section>
+
+  <section class="scene" id="s2">
+    <div class="card">
+      <div class="head"><span class="h">Task workspace</span><span class="chip green">new</span></div>
+      <div class="band"><span class="muted">Task</span><b>Add a search box</b></div>
+      <div class="item" id="i1">
+        <svg width="26" height="26" viewBox="0 0 26 26"><circle cx="13" cy="13" r="12" fill="#35654d"/><path d="M7.500 13.500 L11.500 17.500 L18.500 9.500" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <b>Its own branch</b><code>add-search-box</code>
+      </div>
+      <div class="item" id="i2">
+        <svg width="26" height="26" viewBox="0 0 26 26"><circle cx="13" cy="13" r="12" fill="#35654d"/><path d="M7.500 13.500 L11.500 17.500 L18.500 9.500" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <b>Fixed instructions</b><span class="muted">a copy that stays as launched</span>
+      </div>
+      <div class="item" id="i3">
+        <svg width="26" height="26" viewBox="0 0 26 26"><circle cx="13" cy="13" r="12" fill="#35654d"/><path d="M7.500 13.500 L11.500 17.500 L18.500 9.500" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <b>One worker</b><span class="muted">starts on this task</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="scene" id="s3">
+    <div class="card">
+      <div class="head"><span class="h">Worker</span><span class="muted">Add a search box</span></div>
+      <div class="say">Here is my plan.</div>
+      <ol class="plan">
+        <li id="p1"><span class="n">1</span>Add a search field to the page</li>
+        <li id="p2"><span class="n">2</span>Filter the list while you type</li>
+        <li id="p3"><span class="n">3</span>Prove it with tests and a demo</li>
+      </ol>
+      <div class="decision" id="dec">
+        <div><div class="over">YOUR CALL</div><div class="q">Approve this plan?</div></div>
+        <div class="btns"><span class="btn primary">Approve</span><span class="btn">Change</span></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="caption">
+    <span class="step" id="c1">1</span><span class="step" id="c2">2</span><span class="step" id="c3">3</span>
+    <span id="cap"></span>
+  </div>
+
+  <div class="cursor" id="cursor">
+    <svg width="22" height="24" viewBox="0 0 22 24"><path d="M2 2 L2 19 L7 14.500 L10.500 22 L13.500 20.500 L10 13.500 L17 13.500 Z" fill="#1f2a22" stroke="#ffffff" stroke-width="1.6" stroke-linejoin="round"/></svg>
+    <span class="you">You</span>
+  </div>
+</div>
+
+<script>
+  // The whole animation is a pure function of time, so a recorder can ask for any frame.
+  const DURATION = 15500;
+  const $ = (id) => document.getElementById(id);
+  const clamp01 = (v) => Math.max(0, Math.min(1, v));
+  const ease = (p) => 1 - Math.pow(1 - p, 3);
+  const prog = (t, start, length) => ease(clamp01((t - start) / length));
+  const lerp = (a, b, p) => a + (b - a) * p;
+
+  // Write to the page only when a value changes, so a resting frame stays pixel-identical.
+  const css = (el, name, value) => { if (el.style[name] !== value) el.style[name] = value; };
+  const cls = (el, value) => { if (el.className !== value) el.className = value; };
+  const txt = (el, value) => { if (el.textContent !== value) el.textContent = value; };
+
+  function place(el, opacity, dx, dy) {
+    css(el, 'opacity', String(Number(opacity.toFixed(3))));
+    css(el, 'visibility', opacity > 0.001 ? 'visible' : 'hidden');
+    css(el, 'transform', `translate(${Math.round(dx)}px, ${Math.round(dy)}px)`);
+  }
+  // A scene slides in from the right and leaves to the left.
+  function scene(el, t, inAt, outAt) {
+    const pin = inAt === null ? 1 : prog(t, inAt, 400);
+    const pout = outAt === null ? 0 : prog(t, outAt, 400);
+    place(el, pin * (1 - pout), lerp(28, 0, pin) - 28 * pout, 0);
+  }
+  const rise = (el, t, at) => { const p = prog(t, at, 300); place(el, p, 0, lerp(10, 0, p)); };
+
+  const CAPTIONS = ['You choose a task', 'A task workspace opens', 'The worker shows its plan. You decide.'];
+
+  function render(t) {
+    scene($('s1'), t, null, 3800);
+    scene($('s2'), t, 4000, 8000);
+    scene($('s3'), t, 8200, null);
+
+    cls($('r1'), 'row' + (t >= 2300 ? ' sel' : t >= 1700 ? ' hover' : ''));
+    txt($('r1chip'), t >= 2300 ? 'dispatched' : 'open');
+
+    rise($('i1'), t, 4800);
+    rise($('i2'), t, 5400);
+    rise($('i3'), t, 6000);
+
+    rise($('p1'), t, 9000);
+    rise($('p2'), t, 9600);
+    rise($('p3'), t, 10200);
+    rise($('dec'), t, 11000);
+    // Two slow pulses draw the eye to the decision, then it rests.
+    const pulse = t >= 11600 && t < 13200 ? ((t - 11600) % 800) / 800 : 1;
+    css($('dec'), 'boxShadow', pulse < 1 ? `0 0 0 ${Math.round(pulse * 10)}px rgba(155, 102, 57, ${(0.35 * (1 - pulse)).toFixed(2)})` : 'none');
+
+    const stepNow = t < 4000 ? 0 : t < 8200 ? 1 : 2;
+    ['c1', 'c2', 'c3'].forEach((id, i) => { cls($(id), 'step' + (i === stepNow ? ' on' : '')); });
+    txt($('cap'), CAPTIONS[stepNow]);
+
+    // The pointer moves to the first task, presses it and leaves with the scene.
+    const move = prog(t, 700, 1000);
+    const press = t >= 2200 && t < 2400 ? 2 : 0;
+    const gone = prog(t, 3400, 300);
+    place($('cursor'), 1 - gone, lerp(500, 250, move) + press, lerp(290, 145, move) + press);
+  }
+
+  window.__duration = DURATION;
+  window.__seek = render;
+
+  if (location.hash.includes('capture')) {
+    render(0);
+  } else {
+    const began = performance.now();
+    const tick = (now) => { render((now - began) % DURATION); requestAnimationFrame(tick); };
+    requestAnimationFrame(tick);
+  }
+</script>
+</body>
+</html>

@@ -25,6 +25,7 @@ from slopmeister.install.preflight import (
     safe_path,
 )
 from slopmeister.removal import SCRATCH
+from slopmeister.session.repositories import save
 from slopmeister.session.verify import snapshot
 
 
@@ -34,6 +35,7 @@ def worktree_relative(repo: Path, path: Path) -> str:
 
 
 def prepare_repository(context: InstallContext) -> bool:
+    push = _push_branch(context.repo, context.request.push_branch)
     common, gitdir = repository_paths(context.repo)
     baseline = git(context.repo, ("rev-parse", "--revs-only", "HEAD^{commit}")).decode().strip()
     entries = git(context.repo, ("ls-tree", "-rz", baseline)).split(b"\0") if baseline else []
@@ -55,7 +57,7 @@ def prepare_repository(context: InstallContext) -> bool:
     _pristine(context)
     context.state.update(
         baseline=baseline or git(context.repo, ("mktree",), GitOptions(data=b"")).decode().strip(),
-        ship_target=_ship_target(context.repo),
+        ship_target=_ship_target(context.repo, push),
     )
     return True
 
@@ -112,14 +114,33 @@ def _pristine(context: InstallContext) -> None:
     context.ignore_bytes = excludes.read_bytes() if excludes.is_file() else b""
 
 
-def _ship_target(repo: Path) -> dict:
+def _push_branch(repo: Path, name: str | None) -> str | None:
+    if name is None:
+        return None
+    ref = "refs/heads/" + name
+    normal = git(repo, ("check-ref-format", "--normalize", ref), GitOptions(optional=True))
+    if name.startswith("-") or normal.decode().strip() != ref:
+        refuse("push branch is not a valid branch name: " + name)
+    return name
+
+
+def _ship_target(repo: Path, push: str | None) -> dict:
     options = GitOptions(optional=True)
     remote = git(repo, ("remote", "get-url", "--push", "--all", "origin"), options).decode().strip()
     branch = git(repo, ("branch", "--show-current")).decode().strip()
-    return {"remote": remote, "branch": branch}
+    # The remote branch a suffixed worktree or a companion pushes to, which may differ locally.
+    return {"remote": remote, "branch": branch, "push": push or branch}
+
+
+def record_push_branch(repo: Path, state_dir: Path, state: dict, name: str) -> None:
+    """Update only this verified member's remote branch."""
+    state["ship_target"]["push"] = _push_branch(repo, name)
+    save(state_dir / "state.json", state)
 
 
 def prepare_directory(context: InstallContext) -> None:
+    if context.request.push_branch:
+        refuse("a directory session has no branch to push")
     if context.repo.exists():
         refuse("session directory already exists")
     directory_parent(context.repo)

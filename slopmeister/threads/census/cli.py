@@ -154,6 +154,7 @@ def _result(sessions: list[Session], args: argparse.Namespace, thresholds: dict)
         },
         "decisions": policy.decisions(mains, thresholds),
         "after_compaction": after_compaction.summarize(sessions, interval),
+        "messages": report.messages(sessions, interval),
     }
     result["multi_compaction_main"] = _multi(mains)
     return result

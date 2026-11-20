@@ -25,12 +25,14 @@ from slopmeister.threads import occupants
 )
 def test_browser_helpers_do_not_occupy_a_workspace(monkeypatch, arguments, is_worker):
     def run(args):
-        if args[:2] == ["ps", "-axo"]:
+        if args[:3] == ["ps", "-ww", "-axo"]:
             output = "101 ttys001 /opt/bin/codex\n"
         elif args[0] == "lsof":
             output = "p101\nfcwd\nn/work\n"
         else:
-            output = arguments if args[-1] == "args=" else "Mon Jan 1 /opt/bin/codex"
+            output = "101 " + (
+                arguments if args[-1] == "pid=,args=" else "S Mon Jan 1 /opt/bin/codex"
+            )
         return subprocess.CompletedProcess(args, 0, output, "")
 
     monkeypatch.setattr(occupants, "run", run)

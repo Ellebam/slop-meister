@@ -170,3 +170,13 @@ def test_setup_refuses_symlinks_below_its_home(tmp_path, part):
     assert run.returncode == 1 and "symlink" in run.stdout
     assert target.stat().st_mode == before
     assert {path.name: path.read_bytes() for path in directory.iterdir()} == saved
+
+
+@pytest.mark.parametrize("entry", [{"name": "private"}, {"id": "private"}, "private"])
+def test_invalid_vault_entry_refuses_before_writing(tmp_path, entry):
+    home, bin_dir = machine(tmp_path)
+    fake_binary(bin_dir, "op", "echo '" + json.dumps([entry]) + "'")
+    result = workstation(home, bin_dir, "op-setup", "tokens", **tokens())
+    assert result.returncode == 1 and "OP_SETUP_FAIL" in result.stdout
+    assert "private" not in result.stdout + result.stderr
+    assert not (home / secret_tier.DIRECTORY).exists()

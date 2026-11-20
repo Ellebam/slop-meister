@@ -36,23 +36,39 @@ def test_parse_review_json_accepts_valid_findings():
         ('{"findings": [{"severity": "LOW"}]}', "invalid"),
         (
             '{"findings":[{"severity":"MUST-FIX","file":"x.py","line":"1",'
-            '"title":"t","rationale":"r","suggested_action":"a","confidence":"high"}]}',
+            '"title":"t","failure":"f","evidence":[{"path":"x.py","quote":"q"}],"suggested_action":"a"}]}',
             "line",
         ),
         (
             '{"findings":[{"severity":"MUST-FIX","file":"x.py","line":true,'
-            '"title":"t","rationale":"r","suggested_action":"a","confidence":"high"}]}',
+            '"title":"t","failure":"f","evidence":[{"path":"x.py","quote":"q"}],"suggested_action":"a"}]}',
             "line",
         ),
         (
             '{"findings":[{"severity":"MUST-FIX","file":"/tmp/x","line":1,'
-            '"title":"t","rationale":"r","suggested_action":"a","confidence":"high"}]}',
+            '"title":"t","failure":"f","evidence":[{"path":"x.py","quote":"q"}],"suggested_action":"a"}]}',
             "repo-relative",
         ),
         (
+            '{"findings":[{"severity":"NITPICK","file":"x.py","line":1,'
+            '"title":"t","failure":"f","evidence":[{"path":"x.py","quote":"q"}],'
+            '"suggested_action":"a"}]}',
+            "invalid finding.severity",
+        ),
+        (
             '{"findings":[{"severity":"MUST-FIX","file":"x.py","line":1,'
-            '"title":"t","rationale":"r","suggested_action":"a","confidence":"certain"}]}',
-            "confidence",
+            '"title":"t","evidence":[{"path":"x.py","quote":"q"}],"suggested_action":"a"}]}',
+            "finding.failure",
+        ),
+        (
+            '{"findings":[{"severity":"MUST-FIX","file":"x.py","line":1,'
+            '"title":"t","failure":"f","evidence":[],"suggested_action":"a"}]}',
+            "finding.evidence must be a non-empty list",
+        ),
+        (
+            '{"findings":[{"severity":"MUST-FIX","file":"x.py","line":1,"title":"t",'
+            '"failure":"f","evidence":[{"path":"x.py","quote":" "}],"suggested_action":"a"}]}',
+            "evidence.quote",
         ),
     ],
 )
@@ -85,9 +101,9 @@ def test_parser_rejects_extra_root_and_finding_keys():
         parse_review_json('{"findings":[],"verdict":"clean"}')
     with pytest.raises(CrossToolReviewError) as finding_error:
         parse_review_json(
-            '{"findings":[{"severity":"NITPICK","file":"x.py","line":1,'
-            '"title":"t","rationale":"r","suggested_action":"a",'
-            '"confidence":"high","extra":true}]}'
+            '{"findings":[{"severity":"SHOULD-FIX","file":"x.py","line":1,'
+            '"title":"t","failure":"f","evidence":[{"path":"x.py","quote":"q"}],'
+            '"suggested_action":"a","extra":true}]}'
         )
 
     assert root_error.value.category.value == "INVALID_REVIEWER_JSON"

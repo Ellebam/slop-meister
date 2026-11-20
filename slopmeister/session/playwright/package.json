@@ -3,6 +3,6 @@
   "private": true,
   "description": "The pinned page tool that browser-login workers drive their task Chrome with.",
   "dependencies": {
-    "@playwright/cli": "0.1.22"
+    "@playwright/cli": "0.1.24"
   }
 }

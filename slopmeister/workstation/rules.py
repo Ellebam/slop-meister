@@ -7,7 +7,7 @@ import tempfile
 
 from slopmeister.errors import SlopmeisterError
 from slopmeister.paths import ROOT
-from slopmeister.render.settings import codex_rules, permission_contract
+from slopmeister.render.permissions import codex_rules, memory_denies, permission_contract
 from slopmeister.session import launch_identity
 
 CLAUDE_LIVE = ".claude/settings.json"
@@ -36,11 +36,12 @@ def _claude(original: bytes | None, root: Path) -> bytes:
     home = json.loads((root / "plots/home/claude/settings.json.tmpl").read_bytes())
     settings["autoMemoryEnabled"] = home["autoMemoryEnabled"]
     wanted = json.loads((root / "dist/claude/settings.json").read_bytes())
+    memory = memory_denies(permission_contract(root / "src/permissions.toml"))
     for section, key, value in (
         (
             "permissions",
             "deny",
-            [r for r in wanted["permissions"]["deny"] if r.startswith("Bash(")],
+            [r for r in wanted["permissions"]["deny"] if r.startswith("Bash(")] + memory,
         ),
         ("autoMode", "soft_deny", wanted["autoMode"]["soft_deny"]),
     ):
@@ -58,7 +59,13 @@ def _expected(name: str, original: bytes | None, root: Path) -> bytes:
     if name == CLAUDE_LIVE:
         return _claude(original, root)
     contract = permission_contract(root / "src/permissions.toml")
-    contract["command"] = [entry for entry in contract["command"] if entry["decision"] != "allow"]
+    # A launched session's own rules decide terminal input by role, and Codex keeps the stricter
+    # layer, so a home prompt would override a manager's or dispatcher's allow.
+    contract["command"] = [
+        entry
+        for entry in contract["command"]
+        if entry["decision"] != "allow" and not entry.get("terminal_input")
+    ]
     return codex_rules(contract).encode()
 
 

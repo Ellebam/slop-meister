@@ -4,9 +4,11 @@ import json
 
 import pytest
 
-from slopmeister.workstation import drift, manifest, rules
+from slopmeister.errors import SlopmeisterError
+from slopmeister.workstation import drift, manifest, orca, rules
 from tests.integration.install.installer_helpers import prepared, state
-from tests.integration.workstation.test_install import ORCA_DATA, machine, workstation
+from tests.integration.workstation.test_install import ORCA_STORE, machine, workstation
+from tests.support.orca_runtime import profile
 from tests.support.repos import git, scratch_repo
 
 HELPER = ".claude/skills/ship/scripts/ship.py"
@@ -42,6 +44,11 @@ def test_main_checkout_with_review_results_and_no_state_passes(tmp_path, monkeyp
     output = capsys.readouterr().out
     assert "invalid Slopmeister configuration state" not in output
     assert "Drifted or missing: 0" in output
+
+    monkeypatch.setenv("GIT_DIR", "/dev/null")
+    with pytest.raises(SlopmeisterError, match="git drift inspection failed"):
+        drift.drift(home)
+    assert "Drifted or missing:" not in capsys.readouterr().out
 
 
 def test_drifted_home_file_fails_and_names_it(tmp_path, monkeypatch, capsys):
@@ -122,14 +129,10 @@ def test_orca_ui_edit_of_managed_key_fails_drift_without_printing_app_state(
     """Bug: changing a managed setting in Orca's UI passed the workstation gate."""
     home = _installed_home(tmp_path, monkeypatch)
     monkeypatch.setattr(drift, "ROOT", scratch_repo(tmp_path / "checkout"))
-    path = home / ORCA_DATA
-    data = json.loads(path.read_text())
-    data["settings"]["telemetry"]["optedIn"] = True
-    data["otherState"]["private"] = "do-not-print"
-    path.write_text(json.dumps(data))
+    profile(home, {**orca._wanted(), "telemetry": {"optedIn": True}, "private": "do-not-print"})
     assert drift.drift(home) == 1
     output = capsys.readouterr().out
-    assert f"drifted: ~/{ORCA_DATA}" in output
+    assert f"drifted: ~/{ORCA_STORE}" in output
     assert "do-not-print" not in output
 
 
@@ -143,6 +146,9 @@ def test_prepared_worktree_with_changed_delivery_fails(tmp_path, monkeypatch, ca
         lambda home: [type("Difference", (), {"status": "differs", "name": ".codex/AGENTS.md"})()],
     )
     helper = installed.workspace / HELPER
+    # The ship entry is delivered read-only, the drift check must still see an owner's change.
+    helper.parent.chmod(0o755)
+    helper.chmod(0o644)
     helper.write_bytes(helper.read_bytes() + b"\nchanged helper\n")
     # A delivered-root file name can carry a terminal escape that would forge the report.
     (helper.parent / "forged\x1b[2Kname").write_text("")

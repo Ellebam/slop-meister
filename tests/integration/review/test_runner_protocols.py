@@ -55,7 +55,8 @@ def test_all_review_children_receive_exact_seven_key_projection(direction: Revie
     assert fake.envs == [expected]
 
 
-def test_reviewer_nonzero_is_control_failure():
+def test_reviewer_nonzero_without_denial_evidence_is_execution_failure():
+    """A reviewer's own words, such as an auth error, name no refused control."""
     fake = FakeReviewRuntime()
     fake.set_review_output("", stderr="auth failed", returncode=1)
 
@@ -67,7 +68,8 @@ def test_reviewer_nonzero_is_control_failure():
             env={},
         )
 
-    assert raised.value.category.value == "CONTROL_FAILURE"
+    assert raised.value.category.value == "EXECUTION_FAILURE"
+    assert raised.value.stderr_tail == ("auth failed",)
 
 
 @pytest.mark.parametrize(
@@ -75,7 +77,8 @@ def test_reviewer_nonzero_is_control_failure():
     [
         ('{"permission_denials":[]}', "EXECUTION_FAILURE"),
         ('{"permission_denials":[{"tool":"Bash"}]}', "CONTROL_FAILURE"),
-        ("truncated output: permission denied while reading", "CONTROL_FAILURE"),
+        ("truncated output: permission denied while reading", "EXECUTION_FAILURE"),
+        ("the reviewer quoted a 403 Forbidden response", "EXECUTION_FAILURE"),
         ('{"findings": [', "EXECUTION_FAILURE"),
     ],
 )
@@ -93,6 +96,38 @@ def test_nonzero_requires_actual_permission_denial_evidence(stdout, category):
 
     assert raised.value.category.value == category
     assert raised.value.raw_stdout == stdout
+
+
+def test_formatted_denial_after_a_stderr_banner_is_a_control_failure():
+    """Joining the banner to formatted stdout left no line or whole text that parsed as JSON."""
+    fake = FakeReviewRuntime()
+    stdout = json.dumps({"permission_denials": [{"tool": "Bash"}]}, indent=2)
+    fake.set_review_output(stdout, stderr="Reading prompt from stdin...", returncode=1)
+
+    with pytest.raises(CrossToolReviewError) as raised:
+        run_review(
+            ReviewDirection.CODEX_TO_CLAUDE,
+            ReviewTarget(prompt="Review.", cwd="."),
+            runner=fake,
+            env={},
+        )
+
+    assert raised.value.category.value == "CONTROL_FAILURE"
+
+
+def test_invalid_json_quoting_forbidden_keeps_its_class():
+    fake = FakeReviewRuntime()
+    fake.set_review_output("Access is forbidden here, so no JSON follows.", returncode=0)
+
+    with pytest.raises(CrossToolReviewError) as raised:
+        run_review(
+            ReviewDirection.CODEX_TO_CLAUDE,
+            ReviewTarget(prompt="Review.", cwd="."),
+            runner=fake,
+            env={},
+        )
+
+    assert raised.value.category.value == "INVALID_REVIEWER_JSON"
 
 
 @pytest.mark.parametrize(

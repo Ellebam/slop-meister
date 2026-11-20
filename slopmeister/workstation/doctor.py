@@ -46,7 +46,7 @@ BUNDLE = "Backups/vault-history.bundle"
 BUNDLE_MAX_AGE = timedelta(days=2)
 HISTORY_FIX = (
     "read ~/.vault-git/vault-commit.log for the cause, then follow "
-    "docs/vault-version-control.md, When the job stops"
+    "docs/vault-history-scheduled.md, When the job stops"
 )
 ONLINE_ONLY_FIX = "set the sync client to mirror the vault, see docs/vault-version-control.md"
 # On Linux the operator installs a package that needs root, an agent never does.
@@ -178,7 +178,11 @@ def _vault_history(vault: Path) -> Result:
 
 def _online_only(path: Path) -> bool:
     flag = getattr(stat, "SF_DATALESS", 0)
-    return bool(getattr(path.lstat(), "st_flags", 0) & flag)
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return False
+    return bool(getattr(info, "st_flags", 0) & flag)
 
 
 def _vault_local(vault: Path) -> list[Result]:

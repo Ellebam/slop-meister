@@ -4,8 +4,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 import hashlib
 import json
+import re
 
-from .constants import INCOMPLETE
+from .constants import INCOMPLETE, KNOWN_FAILURES
 from .operations import Rejected
 from .wire import bounded
 
@@ -39,6 +40,14 @@ def items(value: str) -> list[dict]:
     return parsed if isinstance(parsed, list) else [parsed]
 
 
+def _error_code(error: Exception, fallback: str) -> str:
+    if isinstance(error, ValueError):
+        code = str(error).partition(":")[0]
+        if code in KNOWN_FAILURES or re.fullmatch(r"HTTP_[0-9]{3}", code):
+            return code
+    return fallback
+
+
 def apply(client, result: dict, planned: list[Write]) -> dict:
     """Send each write once, in order. A later failure keeps the lines of writes already made."""
     written = []
@@ -46,16 +55,16 @@ def apply(client, result: dict, planned: list[Write]) -> dict:
         body = json.dumps(write.payload, separators=(",", ":")).encode()
         try:
             response = client.send(write.method, write.path, body)
-        except ValueError as error:
+        except Exception as error:
             if not written:
                 raise
-            failure = {"target": write.target, "error": str(error).split(":", 1)[0]}
+            failure = {"target": write.target, "error": _error_code(error, "ACTION_FAILED")}
             return bounded(dict(result, result=INCOMPLETE, written=written, failed=failure))
         line = {"target": write.target}
         try:
             write.version(response, client, line)
-        except ValueError as error:
+        except Exception as error:
             # The write happened, only its new version is unknown, so its line must stay.
-            line["version_unconfirmed"] = str(error).split(":", 1)[0]
+            line["version_unconfirmed"] = _error_code(error, "RESPONSE_INVALID")
         written.append(line | {"payload_sha256": hashlib.sha256(body).hexdigest()})
     return bounded(dict(result, written=written))

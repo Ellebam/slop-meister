@@ -19,6 +19,7 @@ def entry() -> Path:
     return Path(sys.argv[0]).resolve()
 
 
+GIT_TIMEOUT_SECONDS = 30
 VERSION = 3
 ROOTS = (
     "AGENTS.md",
@@ -114,6 +115,7 @@ def _check_delivery_isolation(repo: Path, state: dict) -> None:
         capture_output=True,
         text=True,
         env=git_environment.child(),
+        timeout=GIT_TIMEOUT_SECONDS,
     )
     expected = os.path.relpath((state_dir / "exclude").resolve(), repo.resolve())
     if result.returncode or result.stdout.strip() != expected:
@@ -150,7 +152,7 @@ def main(argv: Sequence[str]) -> int:
             verify_shipping(json.loads((entry().parent / "state.json").read_text()))
             return 0
         refuse("invalid delivered configuration helper operation")
-    except (ValueError, OSError, KeyError, TypeError) as error:
+    except (ValueError, OSError, KeyError, TypeError, subprocess.TimeoutExpired) as error:
         message = (
             "config-install: "
             + str(error)

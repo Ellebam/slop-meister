@@ -6,14 +6,18 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
+import stat
 import sys
 import tomllib
 
 from slopmeister import paths
 from slopmeister.errors import SlopmeisterError
-from slopmeister.launch import terminal
+from slopmeister.launch import arguments, terminal
 from slopmeister.launch.model import BROKER_MARK, INBOX_NOTICE, NOTICE_VARIABLE, Launch, shq
 from slopmeister.opencode import launch as opencode
+from slopmeister.review.config import load_config
+from slopmeister.session import prompt_record
 
 RUN = r"run_[A-Za-z0-9_-]{1,128}"
 RUN_FILE_LIMIT = 200
@@ -53,7 +57,7 @@ def _mailbox_id(run: object, handle: str, objective: str) -> str:
     return run["id"]
 
 
-def _saved_run(saved: Path) -> str | None:
+def saved_run(saved: Path) -> str | None:
     try:
         descriptor = os.open(saved, os.O_RDONLY | os.O_NOFOLLOW)
     except FileNotFoundError:
@@ -101,7 +105,7 @@ def initialize_mailbox(workspace: Path, saved: Path | None = None, adopt: bool =
     try:
         # Senders keep the address of the replaced session, so a redispatch takes over its Run.
         # A failed takeover creates no second Run, which would leave their mail unread.
-        previous = _saved_run(saved) if saved and adopt else None
+        previous = saved_run(saved) if saved and adopt else None
         if saved and not adopt:
             saved.unlink(missing_ok=True)
         handle = _mailbox_handle()
@@ -122,6 +126,52 @@ def mailbox_line(workspace: Path, saved: Path | None = None, adopt: bool = False
     args = (*module, *([str(saved)] if saved else []), *(["adopt"] * adopt))
     run = f"cd {shq(str(paths.ROOT))} && " + " ".join(shq(value) for value in args)
     return f'{NOTICE_VARIABLE}="$({run})"'
+
+
+def _saved_tail(launch: Launch) -> list[str]:
+    """The tokens of the replaced worker's saved line before its kickoff separator."""
+    # workspace.adopt refuses an unusable state path or a non-regular file before anything is
+    # touched, and a nonblocking open keeps a FIFO from hanging the launch before that.
+    try:
+        descriptor = os.open(launch.command_file, os.O_RDONLY | os.O_NONBLOCK)
+    except FileNotFoundError, NotADirectoryError:
+        return []
+    with os.fdopen(descriptor) as stream:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            return []
+        lines = stream.read().splitlines()
+    tokens = shlex.split(lines[-1]) if lines else []
+    if "--" not in tokens:
+        raise ValueError(f"saved command has no kickoff separator: {launch.command_file}")
+    return tokens[: len(tokens) - 1 - tokens[::-1].index("--")]
+
+
+def _default(tool: str, setting: str, value: str) -> list[str]:
+    if setting == "model":
+        return ["--model", value]
+    return ["--effort", value] if tool == "claude" else ["-c", f'model_reasoning_effort="{value}"']
+
+
+def select(launch: Launch) -> None:
+    """An omitted model or effort keeps a redispatched worker's saved choice, otherwise it takes
+    the shared default that reviews also use. Runs before anything is prepared or closed."""
+    if launch.tool == "opencode":
+        return
+    missing = [
+        setting
+        for setting in ("model", "effort")
+        if not (setting == "model" and launch.model_set)
+        and not arguments.selector(launch.tool, launch.extra, setting)
+    ]
+    config = load_config()
+    saved = _saved_tail(launch) if launch.redispatch and missing else []
+    chosen: list[str] = []
+    for setting in missing:
+        value = getattr(config, f"{launch.tool}_{setting}")
+        chosen += arguments.selector(launch.tool, saved, setting) or _default(
+            launch.tool, setting, value
+        )
+    launch.extra[:0] = chosen
 
 
 def _tail(launch: Launch) -> str:
@@ -162,10 +212,28 @@ def _native_approvals(launch: Launch) -> str:
     )
 
 
+def _prompt_route(launch: Launch) -> str:
+    """A managed worker's permission hook waits for its manager only where a prompt would wait for
+    a person, because Codex runs the hook before its automatic reviewer."""
+    if not launch.manager_run:
+        return ""
+    if launch.tool == "codex":
+        reviewers = [
+            value.partition("=")[2].strip(" '\"")
+            for index, token in enumerate(launch.extra)
+            if (value := arguments.config_override(token, launch.extra, index))
+            and value.partition("=")[0].strip(" '\"") == "approvals_reviewer"
+        ]
+        if reviewers[-1:] != ["user"]:
+            return ""
+    return f" {prompt_record.ROUTE_VARIABLE}={shq(launch.manager_run)}"
+
+
 def line(launch: Launch) -> str:
     """Extra arguments land before a non-variadic separator so no option swallows the kickoff."""
     prompt = f'-- "$(cat {shq(str(launch.kickoff_file))})${{{NOTICE_VARIABLE}}}"'
     wt = shq(str(launch.wt))
+    marker = BROKER_MARK + _prompt_route(launch)
     if launch.tool == "opencode":
         return opencode.line(launch)
     if launch.tool == "claude":
@@ -174,7 +242,7 @@ def line(launch: Launch) -> str:
         env = "env -u CLAUDE_CONFIG_DIR"
         if launch.claude_root:
             env = f"env CLAUDE_CONFIG_DIR={shq(str(launch.claude_root))}"
-        env += " " + BROKER_MARK
+        env += " " + marker
         return (
             f"cd {wt} && {env} {shq(launch.claude_bin)} "
             f"--remote-control={launch.name} -n {launch.name} --session-id {launch.session_id} "
@@ -185,7 +253,7 @@ def line(launch: Launch) -> str:
             f"{_tail(launch)} --permission-mode auto {prompt}"
         )
     # Orca may carry its own CODEX_HOME, while the worker must use its saved store.
-    env = f"env CODEX_HOME={shq(str(launch.codex_home))} {BROKER_MARK} "
+    env = f"env CODEX_HOME={shq(str(launch.codex_home))} {marker} "
     return (
         f"cd {wt} && {env}{shq(str(launch.codex_bin))} --no-daemon{CODEX_APPROVAL}"
         f"{CODEX_SANDBOX[paths.platform()]}{_native_approvals(launch)}{_tail(launch)}"

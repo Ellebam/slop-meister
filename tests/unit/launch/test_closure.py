@@ -5,7 +5,7 @@ from dataclasses import replace
 import pytest
 
 from slopmeister.launch import closure
-from slopmeister.launch.model import ROOT, Launch, Stop
+from slopmeister.launch.model import Launch, Stop
 from tests.unit.launch.closure_helpers import box_launch, make_box
 
 CLAUDE, CODEX = ("claude", ".", False), ("codex", ".", False)
@@ -183,11 +183,15 @@ def test_unreachable_orca_keeps_the_handle_and_signals_nothing(tmp_path, monkeyp
     )
 
 
-def test_directory_session_handle_belongs_to_the_slopmeister_checkout(tmp_path, monkeypatch):
-    """Bug: a directory session's tab, opened in the Slopmeister checkout, was never closed."""
+def test_directory_session_handle_belongs_to_its_resolved_folder(tmp_path, monkeypatch):
+    """Bug: a session root spelled through `..` missed the tab Orca lists under the real folder."""
     box = make_box(tmp_path, monkeypatch, ([CLAUDE], True, ""))
-    box.terminals["old-terminal"] = str(ROOT)
-    closure.close(Launch("example-client", "example-client-old", "", claude_wt=box.wt, wt=box.wt))
+    box.terminals["old-terminal"] = str(box.wt)
+    closure.close(
+        Launch(
+            "example-client", "example-client-old", "", claude_wt=box.wt, wt=tmp_path / "x/../wt"
+        )
+    )
     assert box.events == ["term", "close"] and "old-terminal" not in box.terminals
 
 

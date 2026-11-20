@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from slopmeister.session import browser_runtime as runtime
+from slopmeister.session import browser_state as runtime
 
 
 def test_repository_node_shim_is_not_an_installed_runtime(tmp_path, monkeypatch):

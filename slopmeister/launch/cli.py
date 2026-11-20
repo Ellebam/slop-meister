@@ -46,7 +46,7 @@ def _validate(argv: Sequence[str], worktree_file: str = "") -> Launch:
     arguments.check_tool_arguments(launch)
     arguments.check_sources(launch)
     arguments.check_proof(launch)
-    target.proof_owner(launch)
+    target.owners(launch)
     target.declaration(launch)
     target.repository(launch)
     repositories.preflight(launch)
@@ -65,12 +65,13 @@ def _validate(argv: Sequence[str], worktree_file: str = "") -> Launch:
     target.binaries(launch)
     kickoff.resolve(launch)
     target.require_slot(launch, argv)
+    command.select(launch)
     return launch
 
 
 def _redispatch(launch: Launch) -> None:
     workspace.adopt(launch)
-    target.saved_proof(launch)
+    target.saved_roles(launch)
     workspace.capabilities(launch)
     if os.environ.get("PLOT_SESSION_NO_LAUNCH") != "1":
         native_check.check(launch)
@@ -98,7 +99,8 @@ def _prepare(launch: Launch) -> None:
     else:
         workspace.prepare_worktree(launch)
         for repo in launch.repositories:
-            repositories.add(launch.wt, Path(repo))
+            push = launch.push_branches.get(str(Path(repo).expanduser().resolve()))
+            repositories.add(launch.wt, Path(repo), push)
     if not launch.redispatch:
         workspace.capabilities(launch)
     if launch.wt_file:
@@ -126,7 +128,9 @@ def _open(launch: Launch) -> None:
             "diagnose Orca, then retry the same name with --redispatch"
         )
     launch.open_attempted = True
-    if launch.repo:
+    if launch.directory:
+        terminal.register(launch.orca_workspace, folder=True)
+    elif launch.repo:
         terminal.register(launch.repo)
     handle, reason = None, "unreadable_reply"
     deadline = time.monotonic() + DISCOVERY_WAIT - terminal.TIMEOUT
@@ -147,7 +151,9 @@ def _open(launch: Launch) -> None:
         return
     launch.orca_file.write_text(handle + "\n")
     print(f"plot-session: Orca terminal {handle} opened, confirming delivery by polling")
-    if launch.repo and not terminal.name(launch.wt, launch.name, launch.issue_id):
+    # Orca refuses an issue on a folder workspace.
+    issue = "" if launch.directory else launch.issue_id
+    if not terminal.name(launch.orca_workspace, launch.name, issue):
         print("plot-session: Orca did not take the workspace name, continuing", file=sys.stderr)
 
 

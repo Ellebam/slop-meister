@@ -1,7 +1,8 @@
-"""Ship one declared task branch: push it and open or update its GitHub PR.
+"""Ship one declared task branch: push it and, unless push-only, open or update its GitHub PR.
 
 Git and GitHub are the state. A rerun pushes only when the remote branch differs from HEAD and
-writes the PR only when its title or body differ, so a confirmed write is never repeated.
+writes the PR only when its title or body differ, so a confirmed write is never repeated. The
+push-only mode works on any forge and pushes HEAD to the branch recorded at launch.
 """
 
 import argparse
@@ -30,6 +31,9 @@ REVIEW_TRACE = re.compile(r"^[^A-Za-z\n]*independent\W+review\b", re.M | re.I)
 GITHUB_REMOTE = re.compile(
     "(?:git@github\\.com:|https://github\\.com/)([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(?:\\.git)?"
 )
+# A SemVer pre-release such as 0.2.1-dev1. A release tag without a suffix keeps native approval.
+PRE_RELEASE_TAG = re.compile(r"v?\d+\.\d+\.\d+-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*")
+DEFAULT_BRANCH = re.compile(r"ref: refs/heads/(\S+)\tHEAD")
 PR_FIELDS = "number,url,state,body,title,baseRefName,headRefName,headRefOid,headRepository,mergedAt"
 
 
@@ -93,8 +97,10 @@ def ship_target(repo, state, body, review_in_notes=False):
     match = GITHUB_REMOTE.fullmatch(remote)
     fetch = command(repo, "git", "remote", "get-url", "--all", "origin")
     if not match or remote != state["ship_target"]["remote"] or fetch != remote:
-        raise ValueError("origin is not the saved single GitHub repository")
+        raise ValueError("origin is not the saved single GitHub repository, see --push-only")
     branch = command(repo, "git", "branch", "--show-current")
+    if state["ship_target"].get("push", branch) != branch:
+        raise ValueError("the recorded push branch differs from the task branch, use --push-only")
     view = gh(repo, match[1], "repo", "view", "--json", "nameWithOwner,defaultBranchRef")
     info = json.loads(view)
     base = info["defaultBranchRef"]["name"]
@@ -110,13 +116,71 @@ def remote_sha(repo, branch):
     return remote.split()[0] if remote else None
 
 
-def push(repo, branch, sha):
+def push(repo, branch, sha, source=None):
     ref = f"refs/heads/{branch}"
     # Explicit flags, so repository config such as push.followTags cannot add refs to the push.
-    flags = ("--no-follow-tags", "--no-recurse-submodules", "--set-upstream")
-    command(repo, "git", "push", *flags, "origin", f"{ref}:{ref}")
+    flags = ("--no-follow-tags", "--no-recurse-submodules")
+    flags += () if source else ("--set-upstream",)
+    command(repo, "git", "push", *flags, "origin", f"{source or ref}:{ref}")
     if remote_sha(repo, branch) != sha:
         raise ValueError("pushed SHA is unconfirmed")
+
+
+def push_target(repo, state):
+    saved = state["ship_target"]
+    remote = command(repo, "git", "remote", "get-url", "--push", "--all", "origin")
+    fetch = command(repo, "git", "remote", "get-url", "--all", "origin")
+    # A second URL would receive the push while the default-branch check reads only the first.
+    if "\n" in remote or remote != saved["remote"] or fetch != remote:
+        raise ValueError("origin is not the saved single repository")
+    if command(repo, "git", "branch", "--show-current") != saved["branch"]:
+        raise ValueError("current task branch changed or HEAD is detached")
+    target = saved.get("push", saved["branch"])
+    default = DEFAULT_BRANCH.match(command(repo, "git", "ls-remote", "--symref", "origin", "HEAD"))
+    if not default or default[1] == target:
+        raise ValueError("the remote default branch is unknown or is the push branch")
+    return target
+
+
+def remote_tag(repo, ref):
+    remote = command(repo, "git", "ls-remote", "origin", ref)
+    return next(
+        (line.split()[0] for line in remote.splitlines() if line.endswith("\t" + ref)), None
+    )
+
+
+def check_tag(repo, tag, sha):
+    ref = f"refs/tags/{tag}"
+    if not PRE_RELEASE_TAG.fullmatch(tag):
+        raise ValueError("only a pre-release version tag such as 0.2.1-dev1 may be pushed")
+    if command(repo, "git", "rev-parse", "--verify", "--end-of-options", ref + "^{commit}") != sha:
+        raise ValueError("the tag does not point at HEAD")
+    local = command(repo, "git", "rev-parse", "--verify", "--end-of-options", ref)
+    if remote_tag(repo, ref) not in (None, local):
+        raise ValueError("the remote tag exists at another object and is never moved")
+    return ref, local
+
+
+def push_only(repo, tag=None):
+    target = push_target(repo, authorized_state(repo))
+    sha = command(repo, "git", "rev-parse", "HEAD")
+    ref, local = check_tag(repo, tag, sha) if tag else (None, None)
+    current = remote_sha(repo, target)
+    # A wrong or missing recorded branch would otherwise create a stray branch without approval.
+    if current is None:
+        raise ValueError(f"origin has no branch {target}, create it once with an approved git push")
+    pushed = current != sha
+    if pushed:
+        push(repo, target, sha, source=sha)
+    result = dict(sha=sha, branch=target, pushed=pushed)
+    if tag:
+        result.update(tag=tag, tag_pushed=remote_tag(repo, ref) is None)
+        if result["tag_pushed"]:
+            flags = ("--no-follow-tags", "--no-recurse-submodules")
+            command(repo, "git", "push", *flags, "origin", f"{ref}:{ref}")
+            if remote_tag(repo, ref) != local:
+                raise ValueError("pushed tag is unconfirmed")
+    return result
 
 
 def open_pr(repo, target):
@@ -226,14 +290,24 @@ def check_session_target(repo: Path) -> None:
 def main(argv) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--cwd", type=Path, default=Path.cwd())
-    parser.add_argument("--title", required=True)
-    parser.add_argument("--body-file", type=Path, required=True)
+    parser.add_argument("--push-only", action="store_true")
+    parser.add_argument("--tag")
+    parser.add_argument("--title")
+    parser.add_argument("--body-file", type=Path)
     parser.add_argument("--review-in-notes", action="store_true")
     args = parser.parse_args(argv)
+    pr = (args.title, args.body_file, args.review_in_notes or None)
+    if args.push_only and any(value is not None for value in pr):
+        parser.error("--push-only writes no PR and takes no PR options")
+    if not args.push_only and (args.tag or args.title is None or args.body_file is None):
+        parser.error("a PR needs --title and --body-file, and --tag needs --push-only")
     try:
         repo = args.cwd.resolve()
         check_session_target(repo)
-        result = ship(repo, args.title, args.body_file.read_text(), args.review_in_notes)
+        if args.push_only:
+            result = push_only(repo, args.tag)
+        else:
+            result = ship(repo, args.title, args.body_file.read_text(), args.review_in_notes)
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
         print(f"SPINE BLOCKED: shipping: {error}", file=sys.stderr)
         return 1

@@ -94,7 +94,8 @@ def _tree_entry(path: Path) -> tuple[bytes, bytes]:
     return (b"D", b"") if path.is_dir() else (b"O", b"")
 
 
-def _manifest(path: Path | str) -> tuple[Path, dict]:
+def _manifest(path: Path | str) -> tuple[Path, dict, str]:
+    """Read the manifest once, so the parsed content and its digest come from the same bytes."""
     manifest = Path(path)
     if not manifest.is_absolute():
         raise ValueError("subject manifest path must be absolute")
@@ -102,12 +103,18 @@ def _manifest(path: Path | str) -> tuple[Path, dict]:
     manifest = manifest.resolve(strict=True)
     if not manifest.is_file():
         raise ValueError("subject manifest must be a regular file")
-    data = json.loads(manifest.read_text())
+    raw = manifest.read_bytes()
+    data = json.loads(raw)
     if not isinstance(data, dict) or set(data) != {"version", "root", "files", "tree_sha256"}:
         raise ValueError("subject manifest has unknown or missing fields")
-    if data["version"] != 1 or not isinstance(data["files"], list) or not data["files"]:
-        raise ValueError("subject manifest version or files are invalid")
-    return manifest, data
+    if (
+        data["version"] != 1
+        or not isinstance(data["root"], str)
+        or not isinstance(data["files"], list)
+        or not data["files"]
+    ):
+        raise ValueError("subject manifest version, root or files are invalid")
+    return manifest, data, hashlib.sha256(raw).hexdigest()
 
 
 def _subject_file(root: Path, item: object) -> SubjectFile:
@@ -122,7 +129,7 @@ def _subject_file(root: Path, item: object) -> SubjectFile:
 
 
 def load(path: Path | str, *, verify: bool = True) -> DirectorySubject:
-    manifest, data = _manifest(path)
+    manifest, data, manifest_sha256 = _manifest(path)
     root = Path(data["root"])
     if not root.is_absolute():
         raise ValueError("subject root must be absolute")
@@ -143,7 +150,7 @@ def load(path: Path | str, *, verify: bool = True) -> DirectorySubject:
         root,
         tuple(files),
         data["tree_sha256"],
-        hashlib.sha256(manifest.read_bytes()).hexdigest(),
+        manifest_sha256,
     )
 
 

@@ -2,20 +2,22 @@
 
 import os
 from pathlib import Path
+import plistlib
 import subprocess
 import sys
 import tomllib
 
 import pytest
 
-from slopmeister.workstation import manifest, orca
+from slopmeister.workstation import codex_hooks, manifest, orca
 from tests.support.fakes import fake_binary
+from tests.support.orca_runtime import profile
 
 ROOT = Path(__file__).resolve().parents[3]
 CLAUDE_AGENT = "Library/LaunchAgents/local.claude-remote-control.plist"
 VAULT_AGENT = "Library/LaunchAgents/local.vault-commit.plist"
 APPLET = ".vault-git/VaultCommit.app"
-ORCA_DATA = orca.NAME
+ORCA_STORE = orca.NAME
 BUILD = 'while [ $# -gt 0 ]; do [ "$1" = -o ] && { mkdir -p "$2"; exit 0; }; shift; done; exit 1'
 
 
@@ -32,9 +34,8 @@ def machine(tmp_path: Path) -> tuple[Path, Path]:
         "printf '%s\\n' "
         '\'{"ok":true,"result":{"app":{"running":false},"runtime":{"reachable":false}}}\'',
     )
-    state = home / ORCA_DATA
-    state.parent.mkdir(parents=True)
-    state.write_text('{"settings":{},"otherState":{"private":"keep"}}\n')
+    # Orca already holds the managed settings, so an install sends nothing to its runtime.
+    profile(home, orca._wanted())
     (bin_dir / "python3").symlink_to(sys.executable)
     return home, bin_dir
 
@@ -54,6 +55,11 @@ def workstation(
     return subprocess.run(command, capture_output=True, text=True, env=env, check=False)
 
 
+def trusted(home):
+    """The trust tables the Codex config install writes for every owned hook."""
+    return {key: {"trusted_hash": digest} for key, digest in codex_hooks.trust(home)}
+
+
 def test_install_loads_the_vault_agent_and_sets_the_codex_window(tmp_path):
     """Escaping bug, the vault job never loads or Codex keeps its default window and compaction."""
     home, bin_dir = machine(tmp_path)
@@ -65,6 +71,7 @@ def test_install_loads_the_vault_agent_and_sets_the_codex_window(tmp_path):
         "model_post_turn_compact_threshold_percent": 30,
         "model_context_window": 872000,
         "features": {"memories": False},
+        "hooks": {"state": trusted(home)},
     }
 
 
@@ -82,6 +89,27 @@ def test_install_loads_the_claude_agent_with_a_substituted_home(tmp_path):
     assert f"bootstrap gui/{os.getuid()} {home / CLAUDE_AGENT}" in calls
 
 
+@pytest.mark.parametrize(
+    ("label", "weekday", "kickoff"),
+    [("local.glean", 0, "glean-kickoff.md"), ("local.weekly", 1, "update-kickoff.md")],
+)
+def test_install_loads_a_weekly_agent_with_its_kickoff(tmp_path, label, weekday, kickoff):
+    """Escaping bug, a weekly job fails on $HOME, a lost kickoff or a missing log folder."""
+    home, bin_dir = machine(tmp_path)
+    assert workstation(home, bin_dir, "install", "--all").returncode == 0
+    agent_path = home / f"Library/LaunchAgents/{label}.plist"
+    agent = agent_path.read_text()
+    job = plistlib.loads(agent.encode())
+    assert "$HOME" not in agent and job["StartCalendarInterval"]["Weekday"] == weekday
+    assert job["ProgramArguments"] == [str(home / ".local/bin/slopmeister-weekly"), label[6:]]
+    assert (ROOT / "plots/home/launchd" / kickoff).is_file()
+    assert {Path(job[key]).parent for key in ("StandardOutPath", "StandardErrorPath")} == {
+        home / "Library/Logs"
+    }
+    calls = (tmp_path / "launchctl.log").read_text()
+    assert f"bootstrap gui/{os.getuid()} {agent_path}" in calls
+
+
 def test_a_failed_launchd_load_is_named_and_fails_the_install(tmp_path):
     """Escaping bug, bootout stopped the job, bootstrap failed, and install reported success."""
     home, bin_dir = machine(tmp_path)
@@ -89,9 +117,8 @@ def test_a_failed_launchd_load_is_named_and_fails_the_install(tmp_path):
     result = workstation(home, bin_dir, "install", "--all")
     assert result.returncode != 0
     assert "NOT running, load it with: launchctl bootstrap" in result.stdout
-    assert "launchd job(s) not running: local.vault-commit, local.claude-remote-control" in (
-        result.stderr
-    )
+    names = "local.vault-commit, local.claude-remote-control, local.glean, local.weekly"
+    assert f"launchd job(s) not running: {names}" in result.stderr
 
 
 def test_diff_after_install_reports_zero_and_writes_nothing(tmp_path):
@@ -107,7 +134,11 @@ def test_install_backs_up_a_replaced_file(tmp_path):
     home, bin_dir = machine(tmp_path)
     (home / ".claude").mkdir()
     (home / ".claude/CLAUDE.md").write_text("old\n")
+    prior = (home / ".claude/CLAUDE.md").stat().st_ino
+    (home / ".claude/CLAUDE.md").chmod(0o640)
     result = workstation(home, bin_dir, "install", ".claude/CLAUDE.md")
+    installed = (home / ".claude/CLAUDE.md").stat()
+    assert installed.st_ino != prior and installed.st_mode & 0o777 == 0o640
     backups = list((home / ".slopmeister-backup").glob("*/.claude/CLAUDE.md"))
     assert result.returncode == 0 and [b.read_text() for b in backups] == ["old\n"]
     assert (home / ".claude/CLAUDE.md").read_bytes() == (
@@ -128,12 +159,17 @@ def test_install_backs_up_a_replaced_file(tmp_path):
         "model_context_window": 872000,
         "foreign": "keep-this-secret",
         "features": {"memories": False},
+        "hooks": {"state": trusted(home)},
     }
+    tables = "".join(
+        f'\n[hooks.state."{key}"]\ntrusted_hash = "{digest}"\n'
+        for key, digest in codex_hooks.trust(home)
+    )
     assert live.read_text() == (
         "model_post_turn_compact_threshold_percent = 30\n"
         "model_auto_compact_token_limit = 300000\n"
         'model_context_window = 872000\nforeign = "keep-this-secret"\n\n'
-        "[features]\nmemories = false\n"
+        "[features]\nmemories = false\n" + tables
     )
 
 
@@ -168,6 +204,7 @@ def test_codex_install_disables_memory_and_preserves_other_toml(tmp_path, text):
     expected["model_auto_compact_token_limit"] = 300000
     expected["model_post_turn_compact_threshold_percent"] = 30
     expected.setdefault("features", {})["memories"] = False
+    expected["hooks"] = {"state": trusted(home)}
     installed = workstation(home, bin_dir, "install", ".codex/config.toml")
     assert installed.returncode == 0, installed.stderr
     assert tomllib.loads(path.read_text()) == expected
@@ -198,11 +235,11 @@ def test_unsupported_codex_spelling_preserves_the_original(tmp_path, text):
 
 def test_install_without_names_writes_nothing(tmp_path):
     home, bin_dir = machine(tmp_path)
-    original_orca = (home / ORCA_DATA).read_bytes()
+    original_orca = (home / ORCA_STORE).read_bytes()
     result = workstation(home, bin_dir, "install")
     assert result.returncode == 2 and "missing: .claude/CLAUDE.md" in result.stdout
     assert not (home / ".claude").exists() and not (home / ".slopmeister-backup").exists()
-    assert (home / ORCA_DATA).read_bytes() == original_orca
+    assert (home / ORCA_STORE).read_bytes() == original_orca
 
 
 def test_unknown_entry_is_refused(tmp_path):
@@ -228,7 +265,9 @@ def test_diff_shows_a_changed_file_as_a_unified_diff(tmp_path, monkeypatch):
     assert "--- .codex/AGENTS.md ---" in output and "-stale line" in output
     assert "+++ dist/codex/AGENTS.md" in output
     assert "--- ~/.codex/AGENTS.md" in output
-    assert f"{len(manifest.names()) - 1} file(s) differ. Nothing written." in output
+    # The scratch Orca profile already holds the managed settings.
+    assert "unchanged: " + ORCA_STORE in output
+    assert f"{len(manifest.names()) - 2} file(s) differ. Nothing written." in output
 
 
 def test_malformed_configuration_is_reported_without_live_content(tmp_path):
@@ -248,3 +287,18 @@ def test_malformed_configuration_is_reported_without_live_content(tmp_path):
     assert result.returncode != 0 and "unsupported model_context_window spelling" in result.stderr
     assert (home / ".codex/config.toml").read_text() == unusual
     assert "do-not-print" not in result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("matching", [True, False])
+def test_link_refusal_preserves_all_preceding_files(tmp_path, matching):
+    home, bin_dir = machine(tmp_path)
+    target = tmp_path / "other-file"
+    if matching:
+        target.write_bytes((ROOT / "dist/codex/AGENTS.md").read_bytes())
+    live = home / ".codex/AGENTS.md"
+    live.parent.mkdir(exist_ok=True)
+    live.symlink_to(target)
+    result = workstation(home, bin_dir, "install", ".claude/CLAUDE.md", ".codex/AGENTS.md")
+    assert result.returncode == 1 and "symlink" in result.stderr
+    assert not (home / ".claude/CLAUDE.md").exists()
+    assert live.is_symlink() and target.exists() == matching

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import time
 
@@ -84,9 +85,9 @@ def test_redaction_covers_common_prefixed_credentials(secret: str):
                 "file": "config.py",
                 "line": 3,
                 "title": "Hard-coded credential",
-                "rationale": f"The value {secret} is committed.",
+                "failure": f"The value {secret} is committed.",
+                "evidence": [{"path": "config.py", "quote": f"KEY = '{secret}'"}],
                 "suggested_action": "Rotate it.",
-                "confidence": "high",
             }
         ],
         "security_lens": {
@@ -216,3 +217,64 @@ def test_redaction_does_not_rescan_long_flag_like_runs():
     start = time.perf_counter()
     assert redact(text) == text
     assert time.perf_counter() - start < 2.0
+
+
+def _jwt(header: str, claims: str) -> str:
+    parts = (header.encode(), claims.encode(), b"fake-signature")
+    return ".".join(base64.urlsafe_b64encode(part).decode().rstrip("=") for part in parts)
+
+
+def _key_block(label: str, end: bool = True) -> str:
+    lines = [f"-----BEGIN {label}" + "PRIVATE KEY-----", "MIIEfakeKEYBODYmarker", "AAAAmore"]
+    return "\n".join([*lines, f"-----END {label}" + "PRIVATE KEY-----"] if end else lines)
+
+
+@pytest.mark.parametrize("label", ["", "RSA ", "OPENSSH ", "ENCRYPTED "])
+def test_private_key_block_is_replaced_whole(label):
+    text = f"before\n{_key_block(label)}\nafter"
+    assert redact(text) == "before\n[REDACTED]\nafter"
+
+
+def test_unterminated_private_key_block_is_cut_to_the_end():
+    assert redact("quote: " + _key_block("", end=False)) == "quote: [REDACTED]"
+
+
+@pytest.mark.parametrize(
+    "header",
+    ['{"alg":"HS256","typ":"JWT"}', '{\n  "alg": "RS256"\n}'],
+)
+@pytest.mark.parametrize("claims", ["{}", '{"sub":"fake-user","iat":1}'])
+def test_signed_jwt_is_replaced(header, claims):
+    token = _jwt(header, claims)
+    assert sanitize_text(f"token {token} sent") == "token [REDACTED] sent"
+
+
+def test_jwt_whose_signature_looks_like_another_secret_is_replaced_whole():
+    """A generic pattern that masked the signature first left the claims readable."""
+    token = _jwt('{"alg":"HS256"}', '{"sub":"fake-user"}').rsplit(".", 1)[0] + ".sk-" + "x" * 20
+    assert sanitize_text(f"token {token} sent") == "token [REDACTED] sent"
+
+
+def test_inline_private_key_header_in_prose_stays_readable():
+    prose = "The literal `-----BEGIN " + "PRIVATE KEY-----` opens a PKCS#8 file, see the docs."
+    assert redact(prose) == prose
+
+
+def test_jwt_as_json_member_name_is_replaced():
+    token = _jwt('{"alg":"HS256"}', "{}")
+    assert token not in redact(json.dumps({token: "value", "note": "x"}))
+
+
+@pytest.mark.parametrize(
+    "prose",
+    [
+        "slopmeister.review.redact",
+        "v1.2.3",
+        "1.2.3.4",
+        "example.com.au",
+        "foo.bar.baz()",
+        "e30.e30.e30",
+    ],
+)
+def test_dotted_prose_stays_unchanged(prose):
+    assert redact(prose) == prose

@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-from slopmeister.workstation import codex_config, manifest, orca, rules
+from slopmeister.workstation import codex_config, codex_hooks, manifest, orca, rules
 from slopmeister.workstation.manifest import APPLET, CODEX_CONFIG, VAULT_REPOSITORY, Entry
 
 UNCHANGED = "unchanged"
@@ -44,12 +44,18 @@ def _status(entry: Entry, home: Path) -> str:
     destination = home / entry.destination
     if not destination.exists():
         return MISSING
-    matches = destination.is_file() and destination.read_bytes() == entry.expected(home)
-    return UNCHANGED if matches else DIFFERS
+    same = destination.is_file() and destination.read_bytes() == entry.expected(home)
+    return UNCHANGED if same else DIFFERS
 
 
 def items(home: Path) -> list[Item]:
     found = [Item(entry.destination, _status(entry, home), entry) for entry in manifest.entries()]
+    found.append(
+        Item(
+            codex_hooks.NAME,
+            UNSAFE if link_in(home, codex_hooks.NAME) else codex_hooks.status(home),
+        )
+    )
     found.append(
         Item(CODEX_CONFIG, UNSAFE if link_in(home, CODEX_CONFIG) else codex_config.status(home))
     )

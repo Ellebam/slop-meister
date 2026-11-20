@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Weekly Recap</title>
+<style>
+:root{--bg:#ffffff;--fg:#1b1d1d;--muted:#5f6666;--line:#e4e4e4;--soft:#f3f6f6;--acc:#0a6b6b;--done:#2f7d4f;--prog:#a8730c;--wait:#b03a3a;--quiet:#8a9090;--bar:#cfe3e3}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#121414;--fg:#e8ecec;--muted:#9aa3a3;--line:#2b3030;--soft:#1b2121;--acc:#62cfcf;--done:#6cc08f;--prog:#e0b24f;--wait:#ec8585;--quiet:#7c8585;--bar:#24484a}}
+:root[data-theme="dark"]{--bg:#121414;--fg:#e8ecec;--muted:#9aa3a3;--line:#2b3030;--soft:#1b2121;--acc:#62cfcf;--done:#6cc08f;--prog:#e0b24f;--wait:#ec8585;--quiet:#7c8585;--bar:#24484a}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+@media (prefers-reduced-motion:no-preference){html{scroll-behavior:smooth}}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+a{color:var(--acc)}
+a:focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:3px}
+.wrap{max-width:920px;margin:0 auto;padding:24px 16px 72px}
+h1{margin:0;font-size:28px;line-height:1.2}
+.period{color:var(--muted);margin:4px 0 18px;font-size:15px}
+h2{font-size:13px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin:40px 0 12px;font-weight:650}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}
+.st-delivered{--st:var(--done)}.st-in-progress{--st:var(--prog)}.st-waiting{--st:var(--wait)}.st-no-delivery{--st:var(--quiet)}
+/* Status overview */
+.mix{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--line);gap:2px}
+.mix span{background:var(--st)}
+.legend{display:flex;flex-wrap:wrap;gap:4px 16px;margin:8px 0 0;padding:0;list-style:none;font-size:14px}
+.legend li::before,.dot::before{content:"";display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--st);margin-right:6px;vertical-align:0}
+.legend b{font-variant-numeric:tabular-nums}
+.chips{position:sticky;top:0;z-index:2;background:var(--bg);border-bottom:1px solid var(--line);margin:16px -16px 0;padding:8px 16px}
+.chips ol{display:flex;gap:6px;margin:0;padding:0;list-style:none;overflow-x:auto;scrollbar-width:thin}
+.chips a{display:inline-flex;align-items:center;white-space:nowrap;padding:4px 10px;border-radius:999px;border:1px solid var(--line);text-decoration:none;color:var(--fg);font-size:14px}
+.chips a::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--st);margin-right:6px}
+.chips a[aria-current="true"]{border-color:var(--st);box-shadow:inset 0 0 0 1px var(--st);font-weight:600}
+/* Glance and waiting lane */
+.glance p{margin:0 0 8px}
+.lane{margin:18px 0 0;border:1px solid var(--line);border-left:4px solid var(--wait);border-radius:6px;padding:10px 14px;background:var(--soft)}
+.lane h3{margin:0 0 6px;font-size:15px;display:flex;align-items:center;gap:6px}
+.lane ul{margin:0;padding:0;list-style:none}
+.lane li{display:grid;grid-template-columns:110px 1fr auto;gap:2px 10px;padding:5px 0;border-top:1px solid var(--line);align-items:baseline}
+.lane li:first-child{border-top:0}
+.lane .who{justify-self:end}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:12.5px;line-height:1.4;padding:1px 8px;border-radius:999px;border:1px solid var(--wait);color:var(--wait);white-space:nowrap}
+.pill.you{background:var(--wait);color:var(--bg)}
+svg.i{width:15px;height:15px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+/* Plot ledger */
+.plot{display:grid;grid-template-columns:170px 1fr;gap:6px 22px;border-top:1px solid var(--line);padding:16px 0 18px;scroll-margin-top:60px}
+.side{border-left:4px solid var(--st);padding-left:12px}
+.side h3{margin:0;font-size:18px;line-height:1.3}
+.side .label{color:var(--st);font-size:13px;font-weight:650;margin:2px 0 8px}
+.pips{display:flex;gap:3px;align-items:center}
+.pips i{width:12px;height:12px;border-radius:3px;border:2px solid var(--st)}
+.pips i.d{background:var(--st)}
+.pips small{margin-left:6px;color:var(--muted);font-size:12.5px}
+.headline{margin:0 0 10px;font-size:17px;line-height:1.5}
+.items{margin:0;padding:0;list-style:none}
+.items li{display:flex;gap:8px;align-items:flex-start;margin:4px 0}
+.items li svg{margin-top:4px}
+.items.done svg{color:var(--done)}
+.items.next svg{color:var(--acc)}
+.items .t{flex:1;min-width:0;overflow-wrap:anywhere}
+.refs a,.refs .key{margin-left:6px}
+.refs a{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;text-decoration:none;border-bottom:1px dotted var(--acc)}
+.refs .key{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;color:var(--muted)}
+.sub{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:10px 0 2px;font-weight:650}
+.unread{display:inline-block;margin-top:10px;font-size:13px;color:var(--muted);border:1px dashed var(--line);border-radius:6px;padding:2px 8px}
+.none{color:var(--muted)}
+.quietlist{margin:0;padding:0;list-style:none;font-size:14px}
+.quietlist li{padding:4px 0;border-top:1px solid var(--line)}
+/* Figures */
+.sec p{margin:0 0 8px}
+.tbl{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:600;font-size:13px}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+td.n .num{display:block}
+td.n .v{display:block}
+td.n .b{display:block;height:4px;margin-top:3px;border-radius:2px;background:var(--bar);margin-left:auto}
+.gap{font-style:italic;color:var(--muted);border:1px dashed var(--line);border-radius:4px;padding:0 5px;font-size:12.5px;white-space:nowrap}
+.err{color:var(--wait)}
+@media (max-width:640px){
+.plot{grid-template-columns:1fr;gap:8px}
+.side{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px}
+.side .label{margin:0}
+.lane li{grid-template-columns:1fr auto}
+.lane li .t{grid-column:1 / -1}
+.lane .who{justify-self:start}
+.tbl thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+.tbl table,.tbl tbody,.tbl tr{display:block}
+.tbl tr{border-bottom:1px solid var(--line);padding:6px 0}
+.tbl td{display:flex;justify-content:space-between;align-items:baseline;gap:12px;border:0;padding:2px 0;text-align:right}
+.tbl td::before{content:attr(data-label);color:var(--muted);font-size:13px;text-align:left}
+.tbl td:first-child{font-weight:650;text-align:left}
+.tbl td:first-child::before{content:none}
+td.n .num{flex:0 0 45%}
+}
+</style>
+</head>
+<body>
+<main class="wrap" id="top">
+<h1 id="title">Weekly recap</h1>
+<p class="period" id="period"></p>
+<div id="app"></div>
+</main>
+<script type="application/json" id="recap-data">RECAP_DATA</script>
+<script>
+"use strict";
+const LABEL = {"delivered": "Delivered", "in progress": "In progress", "waiting": "Waiting", "no delivery": "No delivery"};
+const ORDER = Object.keys(LABEL);
+const ICON = {
+  check: "M5 12.5l4.5 4.5L19 7.5",
+  next: "M5 12h13M13 6l6 6-6 6",
+  wait: "M7 3h10M7 21h10M8 3c0 5 8 5 8 9s-8 4-8 9M16 3c0 5-8 5-8 9s8 4 8 9"
+};
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined && text !== null) e.textContent = String(text);
+  return e;
+}
+function icon(name) {
+  const ns = "http://www.w3.org/2000/svg";
+  const s = document.createElementNS(ns, "svg");
+  s.setAttribute("viewBox", "0 0 24 24");
+  s.setAttribute("class", "i");
+  s.setAttribute("aria-hidden", "true");
+  const p = document.createElementNS(ns, "path");
+  p.setAttribute("d", ICON[name]);
+  s.append(p);
+  return s;
+}
+function statusOf(p) { return ORDER.includes(p.status) ? p.status : "no delivery"; }
+function cls(status) { return "st-" + status.replace(" ", "-"); }
+function slug(name) { return "plot-" + String(name).toLowerCase().replace(/[^a-z0-9]+/g, "-"); }
+function list(x) { return Array.isArray(x) ? x : []; }
+function refs(item) {
+  const s = el("span", "refs");
+  list(item.refs).forEach(r => {
+    if (typeof r.url === "string" && r.url.startsWith("https://")) {
+      const a = el("a", null, r.label);
+      a.href = r.url;
+      a.rel = "noopener noreferrer";
+      s.append(a);
+    } else {
+      s.append(el("span", "key", r.label));
+    }
+  });
+  return s;
+}
+function waitPill(who) {
+  const p = el("span", "pill" + (String(who).toLowerCase() === "you" ? " you" : ""));
+  p.append(icon("wait"), document.createTextNode("on " + who));
+  return p;
+}
+function items(kind, entries) {
+  const ul = el("ul", "items " + kind);
+  if (!entries.length) {
+    ul.append(el("li", "none", "nothing"));
+    return ul;
+  }
+  entries.forEach(it => {
+    const li = el("li");
+    li.append(icon(kind === "done" ? "check" : "next"));
+    const t = el("span", "t", it.text);
+    t.append(refs(it));
+    if (it.waiting_on) { t.append(document.createTextNode(" ")); t.append(waitPill(it.waiting_on)); }
+    li.append(t);
+    ul.append(li);
+  });
+  return ul;
+}
+function cell(v) {
+  const td = el("td");
+  if (typeof v === "number") return td;
+  if (v === "not read" || v === "unknown") td.append(el("span", "gap", v));
+  else td.textContent = v === undefined || v === null ? "" : String(v);
+  return td;
+}
+function table(t) {
+  const cols = list(t.columns), rows = list(t.rows);
+  const numeric = cols.map((_, i) => rows.some(r => typeof r[i] === "number"));
+  const max = cols.map((_, i) => Math.max(0, ...rows.map(r => typeof r[i] === "number" ? r[i] : 0)));
+  const tb = el("table"), head = el("tr");
+  cols.forEach((c, i) => head.append(el("th", numeric[i] ? "n" : null, c)));
+  const thead = el("thead");
+  thead.append(head);
+  const body = el("tbody");
+  rows.forEach(r => {
+    const tr = el("tr");
+    cols.forEach((_, i) => {
+      const v = r[i];
+      let td;
+      if (typeof v === "number") {
+        td = el("td", "n");
+        const num = el("span", "num");
+        num.append(el("span", "v", v.toLocaleString("en")));
+        if (v > 0 && max[i] > 0) {
+          const b = el("span", "b");
+          b.setAttribute("aria-hidden", "true");
+          b.style.width = Math.max(2, Math.round(100 * v / max[i])) + "%";
+          num.append(b);
+        }
+        td.append(num);
+      } else {
+        td = cell(v);
+        if (numeric[i]) td.className = "n";
+      }
+      td.setAttribute("data-label", String(cols[i]));
+      tr.append(td);
+    });
+    body.append(tr);
+  });
+  tb.append(thead, body);
+  const w = el("div", "tbl");
+  w.append(tb);
+  return w;
+}
+function render(d) {
+  const app = document.getElementById("app");
+  if (d.title) { document.getElementById("title").textContent = d.title; document.title = d.title; }
+  document.getElementById("period").textContent = d.period || "";
+  const plots = list(d.plots), quiet = list(d.quiet);
+
+  const counts = ORDER.map(s => [s, plots.filter(p => statusOf(p) === s).length]);
+  const mix = el("div", "mix");
+  mix.setAttribute("role", "img");
+  mix.setAttribute("aria-label", counts.filter(c => c[1]).map(c => c[1] + " " + LABEL[c[0]]).join(", "));
+  counts.forEach(([s, n]) => { if (n) { const seg = el("span", cls(s)); seg.style.flex = String(n); mix.append(seg); } });
+  const legend = el("ul", "legend");
+  counts.forEach(([s, n]) => {
+    if (!n) return;
+    const li = el("li", cls(s));
+    li.append(el("b", null, n), document.createTextNode(" " + LABEL[s]));
+    legend.append(li);
+  });
+  if (quiet.length) legend.append(el("li", "st-no-delivery", quiet.length + " without visible work"));
+  app.append(mix, legend);
+
+  const nav = el("nav", "chips");
+  nav.setAttribute("aria-label", "Plots");
+  const ol = el("ol");
+  plots.forEach(p => {
+    const li = el("li"), a = el("a", cls(statusOf(p)), p.name);
+    a.href = "#" + slug(p.name);
+    li.append(a);
+    ol.append(li);
+  });
+  nav.append(ol);
+  app.append(nav);
+
+  const glance = el("section", "glance");
+  glance.setAttribute("aria-label", "Week at a glance");
+  glance.append(el("h2", null, "The week"));
+  list(d.glance).forEach(t => glance.append(el("p", null, t)));
+  const waiting = [];
+  plots.forEach(p => list(p.next).forEach(it => { if (it.waiting_on) waiting.push([p, it]); }));
+  waiting.sort((a, b) => (String(b[1].waiting_on).toLowerCase() === "you") - (String(a[1].waiting_on).toLowerCase() === "you"));
+  if (waiting.length) {
+    const lane = el("div", "lane"), h = el("h3");
+    h.append(icon("wait"), document.createTextNode("Waiting (" + waiting.length + ")"));
+    const ul = el("ul");
+    waiting.forEach(([p, it]) => {
+      const li = el("li"), a = el("a", "mono", p.name);
+      a.href = "#" + slug(p.name);
+      const who = el("span", "who");
+      who.append(waitPill(it.waiting_on));
+      li.append(a, el("span", "t", it.text), who);
+      ul.append(li);
+    });
+    lane.append(h, ul);
+    glance.append(lane);
+  }
+  app.append(glance);
+
+  app.append(el("h2", null, "Plots"));
+  plots.forEach(p => {
+    const st = statusOf(p), done = list(p.done), next = list(p.next);
+    const s = el("section", "plot " + cls(st));
+    s.id = slug(p.name);
+    const side = el("div", "side");
+    side.append(el("h3", null, p.name), el("div", "label", LABEL[st]));
+    const pips = el("div", "pips");
+    pips.setAttribute("role", "img");
+    pips.setAttribute("aria-label", done.length + " done, " + next.length + " next");
+    done.forEach(() => pips.append(el("i", "d")));
+    next.forEach(() => pips.append(el("i")));
+    pips.append(el("small", null, done.length + " done · " + next.length + " next"));
+    side.append(pips);
+    const main = el("div");
+    main.append(el("p", "headline", p.headline));
+    main.append(el("div", "sub", "Done"), items("done", done));
+    main.append(el("div", "sub", "Next"), items("next", next));
+    if (p.not_read && p.not_read !== "none") main.append(el("div", "unread", "Not read: " + p.not_read));
+    s.append(side, main);
+    app.append(s);
+  });
+
+  if (quiet.length) {
+    app.append(el("h2", null, "No visible work"));
+    const ul = el("ul", "quietlist");
+    quiet.forEach(q => {
+      const li = el("li");
+      li.append(el("b", null, q.name), document.createTextNode(q.not_read && q.not_read !== "none" ? ", not read: " + q.not_read : ", all sources read"));
+      ul.append(li);
+    });
+    app.append(ul);
+  }
+
+  list(d.sections).forEach(sec => {
+    const s = el("section", "sec");
+    s.append(el("h2", null, sec.heading));
+    list(sec.paragraphs).forEach(t => s.append(el("p", null, t)));
+    if (sec.table) s.append(table(sec.table));
+    app.append(s);
+  });
+
+  const chips = Array.from(ol.querySelectorAll("a"));
+  if ("IntersectionObserver" in window && chips.length) {
+    const seen = new Map();
+    const io = new IntersectionObserver(entries => {
+      entries.forEach(e => seen.set(e.target.id, e.isIntersecting));
+      const current = plots.map(p => slug(p.name)).find(id => seen.get(id));
+      chips.forEach(a => {
+        const on = a.getAttribute("href") === "#" + current;
+        a.setAttribute("aria-current", String(on));
+        if (on && a.scrollIntoView && ol.scrollWidth > ol.clientWidth) {
+          const left = a.offsetLeft - ol.clientWidth / 2 + a.offsetWidth / 2;
+          ol.scrollLeft = left;
+        }
+      });
+    }, {rootMargin: "-70px 0px -55% 0px"});
+    plots.forEach(p => { const n = document.getElementById(slug(p.name)); if (n) io.observe(n); });
+  }
+}
+try {
+  render(JSON.parse(document.getElementById("recap-data").textContent));
+} catch (error) {
+  document.getElementById("app").append(el("p", "err", "The recap data could not be read: " + error.message));
+}
+</script>
+</body>
+</html>

@@ -79,7 +79,7 @@ def unlock_deliveries(tmp_path):
     for root in tmp_path.rglob("service-actions"):
         if root.parent.name in (".codex", ".claude") and root.is_dir():
             _unlock(root)
-    for root in tmp_path.rglob("ci-rerun"):
+    for root in (*tmp_path.rglob("ci-rerun"), *tmp_path.rglob("ship")):
         if root.parent.name == "skills" and root.parent.parent.name in (".agents", ".claude"):
             _unlock(root)
 

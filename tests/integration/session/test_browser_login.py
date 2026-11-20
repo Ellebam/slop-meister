@@ -7,6 +7,8 @@ import subprocess
 
 import pytest
 
+from slopmeister.session import browser_login as browser
+from slopmeister.session import browser_runtime as runtime
 from slopmeister.session import browser_state as state
 
 HELPER = Path(__file__).resolve().parents[3] / "src/skills/browser-login/scripts/input.cjs"
@@ -22,27 +24,35 @@ const secret=fault==='otp'?
  require('node:crypto').randomInt(1000000).toString().padStart(6,'0'):'dummy-private-value';
 let clicks=0,events=0,authenticated=false;
 class Input {
+ matches(s){return s===':disabled'&&!!this.disabled}
  constructor(id,type){this.id=id;this.type=type;this.nodeName='INPUT';this.isConnected=true;this.stored='';}
  get value(){return this.stored} set value(v){this.stored=v}
  checkVisibility(){return fault!=='hidden'}
  getBoundingClientRect(){return {x:0,y:0,width:10,height:10}}
  contains(e){return this===e}
  focus(){throw Error('native focus must not run')}
- dispatchEvent(){events++;if(fault==='changed')this.stored+='changed';if(fault==='gated')button.disabled=false;}
+ dispatchEvent(){events++;if(fault==='changed')this.stored+='changed';if(['gated','passthrough'].includes(fault))button.disabled=false;
+  // Apple enables its button from a page timer, which Chrome delays in a tab it does not draw.
+  if(fault==='later')setTimeout(()=>{button.disabled=false},1200);}
 }
 const field=new Input('field',fault==='otp'?'tel':'password');
-const button={disabled:['gated','disabled'].includes(fault),isConnected:true,
+const button={matches(s){return s===':disabled'&&!!this.disabled},
+ disabled:['gated','disabled','passthrough','later'].includes(fault),isConnected:true,
  checkVisibility:()=>true,
  getBoundingClientRect:()=>({x:20,y:0,width:10,height:10}),contains:e=>e===button,
  click(){clicks++;authenticated=field.value===secret}};
 global.HTMLInputElement=Input;
 global.location={origin:fault==='origin'?'https://wrong.example':'https://example.com',pathname:'/login'};
-global.document={querySelectorAll:s=>s==='*'?[field,button]:s==='#field'?(fault==='duplicate'?[field,field]:[field]):s==='#submit'?(fault==='duplicate-submit'?[button,button]:[button]):[],elementFromPoint:x=>x>=20?button:fault==='covered'?null:fault==='own-label'?{closest:()=>({control:field})}:fault==='other-label'?{closest:()=>({control:{}})}:field};
+// A disabled button often ignores the pointer, so the point lands on what lies behind it.
+global.document={querySelectorAll:s=>s==='*'?[field,button]:s==='#field'?(fault==='duplicate'?[field,field]:[field]):s==='#submit'?(fault==='duplicate-submit'?[button,button]:[button]):[],
+ elementFromPoint:x=>x>=20?(fault==='covered-submit'||fault==='passthrough'&&button.disabled?{}:button):fault==='covered'?null:fault==='own-label'?{closest:()=>({control:field})}:fault==='other-label'?{closest:()=>({control:{}})}:field};
 const requests=[];
 const page={url:()=>fault==='elsewhere'?'https://other.example/login':'https://example.com/login',
  evaluateHandle:async()=>({evaluate:async(fn,step)=>{
   requests.push({step});
   if(fn.toString().includes(secret))throw Error('value in source');
+  // A driver error can quote what it was sent, so its text must never reach the result.
+  if(fault==='raises'&&step.mode==='fill')throw Error('evaluate failed with '+secret);
   return fn(document,step);
  }})};
 (async()=>{
@@ -75,11 +85,13 @@ def test_page_bound_input_refuses_bad_state_without_native_focus(fault):
     assert result.returncode == 0, result.stderr
     data = json.loads(result.stdout)
     assert data["clicks"] == (1 if fault == "none" else 0)
-    assert data["failed"] == (fault == "changed")
+    assert not data["failed"]
     if fault in {"origin", "hidden", "covered", "other-label", "duplicate"}:
         assert data["secretCalls"] == 0 and data["events"] == 0
     if fault == "none":
         assert data["result"] == {"result": "BROWSER_LOGIN_SUBMITTED"}
+    if fault == "changed":
+        assert data["result"] == inner_failure("FIELD_CHANGED")
     assert not data["remaining"], "a filled credential must not stay in the page"
 
 
@@ -108,20 +120,40 @@ def test_code_challenge_authenticates_and_clears_without_capture():
     assert data["secretCalls"] == 3, "only fill, submit and clear carry private arguments"
 
 
-@pytest.mark.parametrize("fault", ["gated", "disabled"])
+def inner_failure(code, step=0):
+    return {
+        "result": "BROWSER_BLOCKED",
+        "phase": "input",
+        "step": step,
+        "reason": f"{code}: do not retry submission",
+    }
+
+
+@pytest.mark.parametrize("fault", ["gated", "passthrough", "later", "disabled"])
 def test_submit_must_be_enabled_after_input_not_before_it(fault):
     result = node("-e", FIXTURE, str(HELPER), fault)
     assert result.returncode == 0, result.stderr
     data = json.loads(result.stdout)
-    assert data["clicks"] == (1 if fault == "gated" else 0)
-    assert data["failed"] == (fault == "disabled")
-    if fault == "gated":
+    assert data["clicks"] == (0 if fault == "disabled" else 1)
+    assert not data["failed"]
+    if fault == "disabled":
+        assert data["result"] == inner_failure("SUBMIT_UNAVAILABLE")
+    else:
         assert data["result"] == {"result": "BROWSER_LOGIN_SUBMITTED"}
     assert not data["remaining"], "a refused submit must still clear the filled credential"
 
 
-def test_preflight_refusal_identifies_that_no_credential_input_occurred():
-    result = node("-e", FIXTURE, str(HELPER), "duplicate-submit")
+def test_a_driver_error_after_input_is_named_without_its_text():
+    result = node("-e", FIXTURE, str(HELPER), "raises")
+    assert result.returncode == 0, result.stderr
+    data = json.loads(result.stdout)
+    assert data["result"] == inner_failure("PAGE_OPERATION_FAILED")
+    assert data["clicks"] == 0 and not data["remaining"]
+
+
+@pytest.mark.parametrize("fault", ["duplicate-submit", "covered-submit"])
+def test_preflight_refusal_identifies_that_no_credential_input_occurred(fault):
+    result = node("-e", FIXTURE, str(HELPER), fault)
     assert result.returncode == 0, result.stderr
     data = json.loads(result.stdout)
     assert data.get("result", {}).get("phase") == "preflight"
@@ -133,60 +165,122 @@ def test_preflight_refusal_identifies_that_no_credential_input_occurred():
 
 
 STEPS = """
-const {operate,pageStep}=require(process.argv[1]);
+const {operate}=require(process.argv[1]);
 const mode=process.argv[2];
+const request=JSON.parse(require('node:fs').readFileSync(0,'utf8'));
 // The clock runs fast, so a step that never becomes ready stops at once.
 let clock=0;Date.now=()=>clock+=5000;
-const secrets={'#user':'dummy-user','#pass':'dummy-private-value','#code':'123456'};
 const flow=[['https://idp.example','/name','#user'],['https://idp.example','/password','#pass'],
- mode==='elsewhere'?['https://evil.example','/code','#code']:['https://idp.example','/code','#code']];
+ [mode==='elsewhere'?'https://other.example':'https://idp.example','/code','#code'],
+ ['https://idp.example','/done','#done']];
 let current=0,clicks=0;
+let codeInput,codeFilled=false;
 const seen=[];
 class Input{
+ matches(s){return s===':disabled'&&!!this.disabled}
  constructor(selector){this.selector=selector;this.nodeName='INPUT';this.isConnected=true;this.stored='';
-  this.type=selector==='#pass'?'password':'text';}
- get value(){return this.stored} set value(v){this.stored=v;seen.push(selector(this))}
+  this.type=['#pass','#code'].includes(selector)?'password':'text';}
+ get value(){return this.stored}
+ set value(v){
+  this.stored=v;seen.push(location.origin+this.selector);
+  if(this===codeInput&&v===request.steps[2].fields[0].value)codeFilled=true;
+ }
  checkVisibility(){return true}
  getBoundingClientRect(){return {x:0,y:0,width:10,height:10}}
  contains(e){return this===e}
  dispatchEvent(){}
 }
-const selector=input=>location.origin+input.selector;
-const button={disabled:false,isConnected:true,checkVisibility:()=>true,
+const button={matches(s){return s===':disabled'&&!!this.disabled},
+ get disabled(){return mode==='disabled'&&current===2},
+ isConnected:true,checkVisibility:()=>true,
  getBoundingClientRect:()=>({x:20,y:0,width:10,height:10}),contains:e=>e===button,
- click(){clicks++;if(mode==='repeat'&&current===1)return;current=Math.min(current+1,flow.length-1);render()}};
+ click(){
+  if(input.value!==request.steps[current].fields[0].value)throw Error('unexpected credential');
+  clicks++;
+  if((mode==='repeat'&&current===1)||(mode!=='redirect'&&current===2))return;
+  current++;render();
+ }};
 let input;
 function render(){
  const [origin,pathname,id]=flow[current];
  global.location={origin,pathname};input=new Input(id);
+ if(id==='#code')codeInput=input;
 }
 render();
 global.HTMLInputElement=Input;
 global.document={querySelectorAll:s=>s==='*'?[input,button]:s===input.selector?[input]:s==='#go'?[button]:[],
  elementFromPoint:x=>x<20?input:button};
 // A document handle stops working when its page is replaced, as a real execution context does.
-let replaced=[];
+let refusedWrites=0;
 const page={url:()=>location.origin+location.pathname,evaluateHandle:async()=>{
  const owner=input;
  return {evaluate:async(fn,value)=>{
-  if(owner!==input){replaced.push(JSON.stringify(value));throw Error('context destroyed')}
+  if(owner!==input){refusedWrites++;throw Error('context destroyed')}
   return fn(document,value);
  }};
 }};
-const step=(origin,path,id)=>({origin,path,submit:'#go',
- fields:[{selector:id,types:['text','password'],value:secrets[id]}]});
-operate([page],{action:'fill',steps:[step('https://idp.example','/name','#user'),
- step('https://idp.example','/password','#pass'),step('https://idp.example','/code','#code')]})
- .then(result=>console.log(JSON.stringify({result,clicks,seen,refusedWrites:replaced.length})));
+operate([page],request).then(result=>console.log(JSON.stringify({
+ result,clicks,seen,refusedWrites,codeFilled,codeEmpty:codeInput?.value==='',
+})));
 """
 
 
-def test_one_process_walks_the_declared_pages_in_order():
-    result = node("-e", STEPS, str(HELPER), "complete")
-    assert result.returncode == 0, result.stderr
-    data = json.loads(result.stdout)
+@pytest.fixture
+def ordered_fill(tmp_path, monkeypatch, capsys):
+    state.save(tmp_path, {"worktree": str(tmp_path)})
+    monkeypatch.setattr(runtime, "owned", lambda _: tmp_path)
+    monkeypatch.setenv("BROWSER_LOGIN_USERNAME", "dummy-user")
+    monkeypatch.setenv("BROWSER_LOGIN_PASSWORD", SECRET)
+    steps = [
+        ("/name", "#user", "BROWSER_LOGIN_USERNAME"),
+        ("/password", "#pass", "BROWSER_LOGIN_PASSWORD"),
+        ("/code", "#code", "BROWSER_LOGIN_OTP"),
+    ]
+    args = ["fill", str(tmp_path)]
+    for path, selector, variable in steps:
+        args.extend(
+            [
+                "--step",
+                json.dumps(
+                    {
+                        "url": "https://idp.example" + path,
+                        "fields": [[selector, variable]],
+                        "submit": "#go",
+                    }
+                ),
+            ]
+        )
+
+    def run(mode, code="001234"):
+        observed = {}
+        monkeypatch.setenv("BROWSER_LOGIN_OTP", code)
+
+        def request(_root, payload):
+            assert not observed, "one fill must send one request"
+            assert payload["steps"][-1]["fields"][0]["value"] == code
+            done = node("-e", STEPS, str(HELPER), mode, payload=json.dumps(payload))
+            assert code not in done.stdout + done.stderr and SECRET not in done.stdout + done.stderr
+            assert done.returncode == 0, done.stderr
+            observed.update(json.loads(done.stdout))
+            return observed["result"]
+
+        monkeypatch.setattr(runtime, "request", request)
+        status = browser.main(args)
+        output = capsys.readouterr()
+        assert code not in output.out + output.err and SECRET not in output.out + output.err
+        result = json.loads(output.out)
+        assert status == int(result["result"] == "BROWSER_BLOCKED")
+        return observed | {"result": result}
+
+    return run
+
+
+@pytest.mark.parametrize("code", ["001234", "00123456"], ids=["six-digits", "eight-digits"])
+def test_password_type_code_submits_in_order_and_clears(ordered_fill, code):
+    data = ordered_fill("complete", code)
     assert data["result"] == {"result": "BROWSER_LOGIN_SUBMITTED"}
     assert data["clicks"] == 3
+    assert data["codeFilled"] and data["codeEmpty"], "the submitted code field must be empty"
     assert [s for s in data["seen"] if s.endswith(("user", "pass", "code"))][:3] == [
         "https://idp.example#user",
         "https://idp.example#pass",
@@ -194,21 +288,35 @@ def test_one_process_walks_the_declared_pages_in_order():
     ]
 
 
-@pytest.mark.parametrize(("mode", "clicks"), [("elsewhere", 2), ("repeat", 2)])
-def test_a_later_step_stops_before_its_value_leaves_this_process(mode, clicks):
-    result = node("-e", STEPS, str(HELPER), mode)
-    assert result.returncode == 0, result.stderr
-    data = json.loads(result.stdout)
+def test_password_type_code_clears_after_a_refused_submit(ordered_fill):
+    data = ordered_fill("disabled")
+    assert data["result"] == inner_failure("SUBMIT_UNAVAILABLE", step=2)
+    assert data["clicks"] == 2
+    assert data["codeFilled"] and data["codeEmpty"], "the refused code must clear after input"
+
+
+@pytest.mark.parametrize("code", ["1234567", "１２３４５６"], ids=["seven-digits", "non-ascii"])
+def test_password_type_code_refuses_invalid_input_before_request(ordered_fill, code):
+    assert ordered_fill("complete", code) == {
+        "result": {
+            "result": "BROWSER_BLOCKED",
+            "reason": "BROWSER_OTP_REFUSED: require a generated numeric code, never a seed",
+        },
+    }
+
+
+@pytest.mark.parametrize("mode", ["elsewhere", "repeat"])
+def test_a_later_step_stops_before_its_value_leaves_this_process(ordered_fill, mode):
+    data = ordered_fill(mode)
     assert data["result"]["result"] == "BROWSER_BLOCKED"
     assert data["result"]["phase"] == "preflight" and data["result"]["credential_input"] is True
-    assert data["clicks"] == clicks
+    assert data["clicks"] == 2
     assert not any(s.endswith("#code") for s in data["seen"]), "the code must stay unsent"
 
 
-def test_a_redirect_receives_nothing_when_a_step_clears_its_fields():
-    result = node("-e", STEPS, str(HELPER), "complete")
-    assert result.returncode == 0, result.stderr
-    data = json.loads(result.stdout)
+def test_a_redirect_receives_nothing_when_a_step_clears_its_fields(ordered_fill):
+    data = ordered_fill("redirect")
+    assert data["result"] == {"result": "BROWSER_LOGIN_SUBMITTED"} and data["codeFilled"]
     assert data["refusedWrites"] == 3, "each clear must stop at the old, gone document"
 
 
@@ -229,121 +337,3 @@ operate([page],{action:'fill',steps:[{origin:'https://example.com',path:'/',fiel
         "credential_input": False,
         "submission_attempted": False,
     }
-
-
-@pytest.mark.parametrize(("value", "expected"), [("", "EMPTY"), ("kept", "FILLED")])
-def test_credential_check_reports_only_whether_a_field_holds_a_value(value, expected):
-    script = """
-const {operate}=require(process.argv[1]);
-const value=process.argv[2];
-global.document={querySelectorAll:s=>s==='*'?[]:s==='#user'?[{value}]:[]};
-const frame={evaluateHandle:async()=>({evaluate:async(fn,step)=>fn(document,step)})};
-const page={url:()=>'https://example.com/login?once=private',frames:()=>[frame]};
-operate([page],{action:'filled',selectors:['input[type=password]','#user']})
-  .then(r=>console.log(JSON.stringify(r)));
-"""
-    result = node("-e", script, str(HELPER), value)
-    assert result.returncode == 0, result.stderr
-    assert json.loads(result.stdout) == {
-        "result": expected,
-        "pages": 1,
-        "address": "https://example.com/login",
-    }
-
-
-@pytest.mark.parametrize(
-    ("urls", "expected"),
-    [
-        ([], {"result": "PAGE_LOST"}),
-        (["about:blank"], {"result": "PAGE_LOST"}),
-        (["", "about:blank"], {"result": "PAGE_LOST"}),
-        (
-            ["about:blank", "https://b.example/x"],
-            {"result": "EMPTY", "pages": 1, "address": "https://b.example/x"},
-        ),
-        (
-            ["https://b.example/" + "x" * 5000],
-            {"result": "EMPTY", "pages": 1, "address": ("https://b.example/" + "x" * 5000)[:1024]},
-        ),
-    ],
-)
-def test_a_blank_tab_is_a_lost_tab_and_a_live_page_is_counted(urls, expected):
-    script = """
-const {operate}=require(process.argv[1]);
-global.document={querySelectorAll:()=>[]};
-const frame={evaluateHandle:async()=>({evaluate:async(fn,step)=>fn(document,step)})};
-const pages=JSON.parse(process.argv[2]).map(url=>({url:()=>url,frames:()=>[frame]}));
-operate(pages,{action:'filled',selectors:['input[type=password]']})
-  .then(r=>console.log(JSON.stringify(r)));
-"""
-    result = node("-e", script, str(HELPER), json.dumps(urls))
-    assert result.returncode == 0, result.stderr
-    assert json.loads(result.stdout) == expected
-
-
-@pytest.mark.parametrize(
-    ("origin", "expected"),
-    [
-        ("https://example.com", {"result": "BROWSER_FILL_READY"}),
-        ("https://other.example", {"reason": "WRONG_DESTINATION", "credential_input": False}),
-    ],
-)
-def test_check_inspects_the_page_and_writes_nothing(origin, expected):
-    script = """
-const {operate}=require(process.argv[1]);
-const events=[];
-class Input{
- constructor(){this.nodeName='INPUT';this.type='password';this.isConnected=true;}
- get value(){return ''} set value(v){events.push('write')}
- checkVisibility(){return true}
- getBoundingClientRect(){return {x:0,y:0,width:10,height:10}}
- contains(e){return this===e}
- dispatchEvent(){events.push('event')}
-}
-const field=new Input();
-const button={disabled:false,isConnected:true,checkVisibility:()=>true,
- getBoundingClientRect:()=>({x:20,y:0,width:10,height:10}),contains:e=>e===button,
- click(){events.push('click')}};
-global.HTMLInputElement=Input;
-global.location={origin:'https://example.com',pathname:'/login'};
-global.document={querySelectorAll:s=>s==='*'?[field,button]:s==='#p'?[field]:s==='#s'?[button]:[],
- elementFromPoint:x=>x>=20?button:field};
-const page={url:()=>process.argv[2]+'/login',
- evaluateHandle:async()=>({evaluate:async(fn,step)=>fn(document,step)})};
-operate([page],{action:'check',steps:[{origin:process.argv[2],path:'/login',submit:'#s',
- fields:[{selector:'#p',types:['password'],value:''}]}]})
- .then(result=>console.log(JSON.stringify({result,events})));
-"""
-    result = node("-e", script, str(HELPER), origin)
-    assert result.returncode == 0, result.stderr
-    data = json.loads(result.stdout)
-    assert data["events"] == [] and expected.items() <= data["result"].items()
-
-
-FRAMES = """
-const {operate,pageStep}=require(process.argv[1]);
-const frame=value=>({evaluateHandle:async()=>{
- if(value===null)throw Error('unreadable frame');
- return {evaluate:async(fn,step)=>{
-  global.document={querySelectorAll:s=>s==='*'?[]:s==='input[type=password]'?[{value}]:[]};
-  return fn(document,step);
- }};
-}});
-const frames=JSON.parse(process.argv[2]).map(frame);
-operate([{url:()=>'https://example.com/',frames:()=>frames}],{action:'filled',selectors:['input[type=password]']})
- .then(r=>console.log(JSON.stringify(r)),()=>console.log(JSON.stringify({rejected:true})));
-"""
-
-
-@pytest.mark.parametrize(
-    ("frames", "expected"),
-    [
-        (["", ""], {"result": "EMPTY", "pages": 1, "address": "https://example.com/"}),
-        (["", "kept"], {"result": "FILLED", "pages": 1, "address": "https://example.com/"}),
-        (["", None], {"rejected": True}),
-    ],
-)
-def test_the_guard_reads_every_frame_and_an_unreadable_frame_is_not_empty(frames, expected):
-    result = node("-e", FRAMES, str(HELPER), json.dumps(frames))
-    assert result.returncode == 0, result.stderr
-    assert json.loads(result.stdout) == expected

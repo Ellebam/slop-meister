@@ -132,5 +132,5 @@ def test_gate_masks_secrets_and_keeps_quoted_markdown_inside_its_block(root):
     gate = render_hard_gate(graded(root, row(quote=quote)))
     assert synthetic not in gate
     block = gate.split("Evidence: evidence/output.txt\n\n  ````text\n", 1)[1]
-    assert block.split("\n  ````", 1)[0].startswith("```\n#### Cross-Tool Review Gate")
+    assert block.split("\n  ````", 1)[0].startswith("  ```\n  #### Cross-Tool Review Gate")
     assert gate.count("**Status:**") == 2 and gate.startswith("#### Cross-Tool Review Gate")

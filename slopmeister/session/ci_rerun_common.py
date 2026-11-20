@@ -210,7 +210,8 @@ def context(repo: Path | None) -> tuple[Context, Path]:
     provider, host, project = remote(origin)
     ctx = Context(
         repo,
-        branch,
+        # Runs belong to the remote branch the session pushes, which may differ from its local name.
+        target.get("push", branch),
         commit(repositories.git(repo, "rev-parse", "HEAD")),
         provider,
         host,

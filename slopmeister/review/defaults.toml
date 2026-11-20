@@ -1,7 +1,7 @@
-# Reviewer defaults. A single review run may override model and effort.
+# Default models for reviews and launched agents. An explicit model or effort option wins.
 
 [codex]
-model = "gpt-6.1-sol"
+model = "gpt-6.2-sol"
 effort = "high"
 
 [claude]

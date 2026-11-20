@@ -1,4 +1,4 @@
-"""Issue claim classification, inventory and lifecycle actions."""
+"""Issue claim lifecycle actions."""
 
 from collections.abc import Iterator
 from contextlib import contextmanager

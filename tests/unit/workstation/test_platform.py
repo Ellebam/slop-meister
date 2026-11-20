@@ -54,7 +54,7 @@ def test_linux_installs_one_systemd_unit_and_nothing_from_launchd(monkeypatch):
     monkeypatch.setenv(VARIABLE, "darwin")
     names = manifest.names()
     assert UNIT not in names and manifest.APPLET in names and orca.NAME in names
-    assert len([name for name in names if "LaunchAgents" in name]) == 2
+    assert len([name for name in names if "LaunchAgents" in name]) == 4
 
 
 def test_sleep_guard_wraps_both_tools_per_system(tmp_path, monkeypatch):

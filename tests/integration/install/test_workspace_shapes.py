@@ -132,9 +132,10 @@ def test_claude_runs_unsandboxed_and_only_the_named_path_vault_commit_skips_a_qu
     assert "sandbox" not in json.loads((workspace / ".claude/settings.json").read_text())
     # Bug: with no sandbox the secret denies are the only guard on these commands.
     assert {"Bash(gh auth token)", "Bash(gh auth login)"} <= set(access["permissions"]["deny"])
-    assert "Bash(slopmeister-vault commit *)" in access["permissions"]["allow"]
+    binary = str(Path(env["HOME"]) / ".vault-git/bin/slopmeister-vault")
+    assert f"Bash({binary} commit *)" in access["permissions"]["allow"]
     vault = (workspace / ".codex/rules/vault-commit.rules").read_text()
-    assert '["slopmeister-vault", "commit"]' in vault and 'decision="allow"' in vault
+    assert json.dumps([binary, "commit"]) in vault and 'decision="allow"' in vault
     for wider in ('["slopmeister-vault"]', "lint", "retro", "obsidian"):
         assert wider not in vault
 

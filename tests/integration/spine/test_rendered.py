@@ -15,7 +15,7 @@ STAGES = [
     "2. Run `local-qa`",
     '3. With `commit = "deny"`',
     "4. Promote",
-    "5. Run `ship`",
+    "5. Push nothing before the step 6 verdict",
     "6. Run",
 ]
 
@@ -169,7 +169,9 @@ def test_native_review_route_keeps_the_subject_at_the_reviewed_checkout():
 def test_promotion_prunes_candidates_before_adding_tests():
     """Bug: a speculative tester candidate becomes a permanent regression test."""
     source = (ROOT / "src/skills/execute-plan/SKILL.md").read_text()
-    step = source[source.index("4. Promote") : source.index("5. Run `ship`")]
+    step = source[
+        source.index("4. Promote") : source.index("5. Push nothing before the step 6 verdict")
+    ]
     assert "Invoke `prune`" in step
 
 

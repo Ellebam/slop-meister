@@ -63,7 +63,12 @@ def vaults(tier: str, token: str) -> list[dict[str, str]]:
         listed = None
     if not isinstance(listed, list) or not listed:
         raise Problem(f"1Password did not accept the {tier} token or it lists no vault")
-    return [{"id": str(vault["id"]), "name": str(vault["name"])} for vault in listed]
+    for vault in listed:
+        if not isinstance(vault, dict) or not all(
+            isinstance(vault.get(key), str) and vault[key] for key in ("id", "name")
+        ):
+            raise Problem(f"1Password returned an invalid vault entry for {tier}")
+    return [{"id": vault["id"], "name": vault["name"]} for vault in listed]
 
 
 def write(path: Path, text: str) -> None:

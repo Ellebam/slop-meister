@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+import plistlib
 import shutil
 import subprocess
 
@@ -25,6 +26,7 @@ fi""",
     "pk12util": """echo "pk12util $*" >> "$LOG"
 while [ "$#" -gt 0 ]; do [ "$1" = -w ] && cat "$2" > "$LOG.password"; shift; done""",
     "sudo": 'echo "sudo $*" >> "$LOG"; cat > "$LOG.policy"',
+    "open": 'echo "open $*" >> "$LOG"; cp "$1" "$LOG.mobileconfig"',
 }
 
 
@@ -87,11 +89,27 @@ def test_an_existing_store_is_kept(run):
     assert "certutil" not in log.read_text() and (store / "cert9.db").read_text() == "kept"
 
 
+def test_a_mac_gets_the_rule_as_a_managed_profile_and_no_secret_is_read(run):
+    execute, log, scratch = run
+    done = execute(*ARGUMENTS, FAKE_UNAME="Darwin")
+    assert done.returncode == 0, done.stderr
+    assert "Device Management" in done.stdout
+    calls = log.read_text()
+    assert f"open {scratch}/slopmeister-certificate." in calls
+    assert "op " not in calls and "sudo" not in calls and "pk12util" not in calls
+    profile = plistlib.loads(Path(str(log) + ".mobileconfig").read_bytes())
+    assert profile["PayloadType"] == "Configuration"
+    (chrome,) = profile["PayloadContent"]
+    assert chrome["PayloadType"] == "com.google.Chrome"
+    rule = json.loads(chrome["AutoSelectCertificateForUrls"][0])
+    assert rule == {"pattern": "https://[*.]example.com", "filter": {}}
+
+
 @pytest.mark.parametrize(
     ("arguments", "extra", "message"),
     [
         (ARGUMENTS, {"SLOPMEISTER_SECRET_BROKER": "1"}, "not in an agent session"),
-        (ARGUMENTS, {"FAKE_UNAME": "Darwin"}, "Keychain Access"),
+        (ARGUMENTS, {"FAKE_UNAME": "FreeBSD"}, "Linux and macOS only"),
         (ARGUMENTS[:2], {}, "usage:"),
     ],
 )

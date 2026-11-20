@@ -6,7 +6,7 @@ import os
 
 import pytest
 
-from slopmeister.render.settings import permission_contract
+from slopmeister.render.permissions import memory_denies, permission_contract
 from tests.integration.workstation.test_install import ROOT, machine, workstation
 
 
@@ -44,7 +44,7 @@ def test_central_policy_installs_restrictions_without_session_allows(tmp_path, p
             entry["decision"]
         ]
         for entry in commands
-        if entry["decision"] != "allow"
+        if entry["decision"] != "allow" and not entry.get("terminal_input")
     }
     assert parsed == expected and set(parsed.values()) == {"forbidden", "prompt"}
     current = json.loads(settings.read_text())
@@ -54,6 +54,7 @@ def test_central_policy_installs_restrictions_without_session_allows(tmp_path, p
         "deny": [
             *original["permissions"]["deny"],
             *[rule for rule in generated["permissions"]["deny"] if rule.startswith("Bash(")],
+            *memory_denies(permission_contract(ROOT / "src/permissions.toml")),
         ],
     }
     assert current["autoMode"] == {

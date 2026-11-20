@@ -47,7 +47,7 @@ Use `mcp__jira_write__run` or `mcp__confluence_write__run` for writes. Their `co
 
 `NATIVE_APPROVAL_REQUIRED` can be a local fault before provider contact. Its fixed reason is `client` for a client-path mismatch, `ask` for a missing native write approval rule, or `local` for another local fault. Repair the local setup and start a fresh admitted session. Do not change arguments, retry the action or use a browser to bypass this gate.
 
-Codex sessions use `on-request` with an automatic reviewer. Claude retains auto mode with an explicit ask on the native write tool. An automatic review decision is not operator approval. A Codex reviewer denial stops this run unless the operator uses native `/approve` for one exact retry, still subject to review. A declared manager may relay an operator-ordered native approval for one named worker and action under Manage sessions in the plot-session skill.
+Codex sessions use `on-request` with an automatic reviewer. Claude retains auto mode with an explicit ask on the native write tool. An automatic review decision is not operator approval. A Codex reviewer denial stops this run unless the operator uses native `/approve` for one exact retry, still subject to review. A managed worker can notify its manager that the operator needs to inspect a native permission dialog.
 
 `jira-write` accepts these forms:
 

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 import json
 from pathlib import Path
+import re
 
 from slopmeister.threads.census import after_compaction
 from slopmeister.threads.census.records import (
@@ -18,8 +19,103 @@ from slopmeister.threads.census.records import (
     total,
 )
 
-CLAUDE_HINTS = ('"usage"', '"tool_use"', "compact_boundary", '"error"')
-CODEX_HINTS = ('"token_count"', '"compacted"', '"session_meta"', '"turn_context"')
+CLAUDE_HINTS = (
+    '"usage"',
+    '"tool_use"',
+    "compact_boundary",
+    '"error"',
+    '"user"',
+    '"queued_command"',
+)
+CODEX_HINTS = (
+    '"token_count"',
+    '"compacted"',
+    '"session_meta"',
+    '"turn_context"',
+    '"user"',
+)
+PASTED = re.compile(r"^\s*<pasted_content[^>]*>\s*")
+REVIEW_HISTORY = re.compile(r"^(The following is the Codex agent h|\[\d+\] (assistant|tool))")
+NOTICE = re.compile(r"^You have \d+ orchestration message")
+# Relay prefixes come from plot-session/manage.md and the managers' decision messages.
+RELAY = re.compile(r"^(\[relay|Manager decision|Dispatcher relay|Operator order, rel)")
+CLAUDE_INJECTED = (
+    "<bash-",
+    "<local-command",
+    "[Request interrupted",
+    "<task-notification",
+    "<system-reminder",
+    "This session is being continued",
+)
+
+
+def _kind(session: Session, timestamp: datetime | None, text: str) -> str:
+    """Classify one prompt and keep only its kind. The text stays here."""
+    text = PASTED.sub("", text).lstrip()
+    if session.role == "review" or REVIEW_HISTORY.match(text):
+        kind = "autoreview"
+    elif NOTICE.match(text):
+        kind = "notice"
+    elif RELAY.match(text):
+        kind = "relay"
+    else:
+        started = any(seen != "autoreview" for _, seen in session.messages)
+        kind = "operator" if started else "kickoff"
+    session.messages.append((timestamp, kind))
+    return kind
+
+
+def _claude_prompt(record: dict, session: Session) -> str | None:
+    origin = mapping(record.get("origin")).get("kind")
+    automatic = (
+        record.get("isSidechain")
+        or record.get("isMeta")
+        or "toolUseResult" in record
+        or origin in ("task-notification", "peer")
+        or record.get("turnOrigin") == "task_notification"
+    )
+    content = mapping(record.get("message")).get("content")
+    if isinstance(content, list):
+        automatic = automatic or any(mapping(part).get("type") == "tool_result" for part in content)
+        content = " ".join(
+            str(mapping(part).get("text", ""))
+            for part in content
+            if mapping(part).get("type") == "text"
+        )
+    if automatic or not isinstance(content, str) or not content.strip():
+        return None
+    if content.startswith(CLAUDE_INJECTED):
+        return None
+    return _kind(session, stamp(record.get("timestamp")), content)
+
+
+def _claude_queued(record: dict) -> dict | None:
+    """Return a prompt delivered while a turn ran in the shape of a user record."""
+    attachment = mapping(record.get("attachment"))
+    if (
+        attachment.get("type") != "queued_command"
+        or attachment.get("commandMode", "prompt") != "prompt"
+    ):
+        return None
+    return {
+        "isSidechain": record.get("isSidechain"),
+        "isMeta": record.get("isMeta"),
+        "turnOrigin": record.get("turnOrigin"),
+        "origin": attachment.get("origin"),
+        "timestamp": record.get("timestamp"),
+        "message": {"content": attachment.get("prompt")},
+    }
+
+
+def _codex_prompt(record: dict, session: Session) -> str | None:
+    payload = mapping(record.get("payload"))
+    if payload.get("type") != "message" or payload.get("role") != "user":
+        return None
+    parts = payload.get("content") if isinstance(payload.get("content"), list) else []
+    text = " ".join(str(mapping(part).get("text", "")) for part in parts)
+    if not text.strip() or PASTED.sub("", text).startswith(("# AGENTS.md", "<")):
+        return None
+    return _kind(session, stamp(record.get("timestamp")), text)
 
 
 def _claude_request(record: dict, pending: bool) -> Request:
@@ -45,9 +141,13 @@ def _claude_request(record: dict, pending: bool) -> Request:
 def claude(path: Path) -> Session:
     session = Session("claude", role="subagent" if path.parent.name == "subagents" else None)
     requests: dict[str, Request] = {}
-    pending = False
+    pending, trigger = False, None
     seen_tools: set[tuple[str, str]] = set()
     for record in records(path, session, CLAUDE_HINTS):
+        prompt = record if record.get("type") == "user" else _claude_queued(record)
+        if prompt is not None:
+            trigger = _claude_prompt(prompt, session) or trigger
+            continue
         if record.get("isSidechain") and session.role != "subagent":
             continue
         if record.get("type") != "assistant" and (
@@ -67,17 +167,20 @@ def claude(path: Path) -> Session:
             )
             pending = True
         elif record.get("type") == "assistant":
-            pending = _claude_message(record, session, requests, pending)
+            pending = _claude_message(record, session, requests, pending, trigger)
             session.tools.extend(after_compaction.extract(record, seen_tools))
     session.requests = list(requests.values())
     return session
 
 
-def _claude_message(record: dict, session: Session, requests: dict, pending: bool) -> bool:
+def _claude_message(
+    record: dict, session: Session, requests: dict, pending: bool, trigger: str | None
+) -> bool:
     message = mapping(record.get("message"))
     if "usage" not in message or message.get("model") == "<synthetic>":
         return pending
     request = _claude_request(record, pending)
+    request.trigger = trigger
     identity = label(message.get("id")) or label(record.get("uuid"))
     request.identity_known = identity is not None
     key = identity or f"unknown-{len(requests)}"
@@ -85,6 +188,7 @@ def _claude_message(record: dict, session: Session, requests: dict, pending: boo
     if previous:
         request.timestamp = previous.timestamp
         request.after_compaction = previous.after_compaction
+        request.trigger = previous.trigger
     requests[key] = request
     session.cwd = label(record.get("cwd")) or session.cwd
     if record.get("entrypoint") == "sdk-cli" and session.role is None:
@@ -99,6 +203,7 @@ class CodexState:
     last_total: str | None = None
     last_context: int | None = None
     pending: Compaction | None = None
+    trigger: str | None = None
 
 
 def _metadata(payload: dict, session: Session) -> None:
@@ -149,6 +254,7 @@ def _codex_request(
         state.model,
         state.pending is not None,
         known,
+        state.trigger,
     )
     session.requests.append(request)
     if state.pending is not None:
@@ -173,4 +279,6 @@ def codex(path: Path) -> Session:
             session.compactions.append(state.pending)
         if kind == "event_msg" and payload.get("type") == "token_count":
             _codex_usage(record, session, state)
+        if kind == "response_item":
+            state.trigger = _codex_prompt(record, session) or state.trigger
     return session

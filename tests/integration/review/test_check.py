@@ -82,6 +82,7 @@ def test_commit_check_tests_a_clean_copy_and_keeps_only_evidence(
     [root] = runs(tmp_path)
     assert not (root / "checkout").exists() and (root / "evidence/basic.out").is_file()
     assert stat.S_IMODE(root.stat().st_mode) == 0o700
+    assert (root / "finished").read_text() == str(workspace.resolve())
 
 
 def test_failed_or_unproven_scenario_makes_the_gate_not_clean(workspace, monkeypatch, capsys):
@@ -145,7 +146,7 @@ def test_unverified_reviewer_stop_keeps_checkout_and_reports_it(
 
     assert run(workspace, hang, monkeypatch) == 1
     [root] = runs(tmp_path)
-    assert (root / "checkout/README.md").is_file()
+    assert (root / "checkout/README.md").is_file() and not (root / "finished").exists()
     assert "reviewer stop unverified" in capsys.readouterr().err
 
 

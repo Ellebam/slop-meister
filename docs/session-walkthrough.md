@@ -1,6 +1,6 @@
 # One session, start to finish
 
-Follow one issue from the dispatcher's tab to a merged pull request. You decide, a worker does the work, and the other tool reviews and tests it.
+Suppose a shop lists four products. You want a search box that filters the list as you type. Follow that task from your first instruction to a tested change and a decision about merging.
 
 [Overview](../README.md) · [All documentation](README.md) · [Skills](skills.md)
 
@@ -21,29 +21,9 @@ task check
 task dispatch -- claude slopmeister-dispatcher
 ```
 
-The dispatcher is the one standing agent. Ask it what's open and it reads the backlog. Tell it to dispatch an issue and it writes a kickoff starting with `Mode: spine`, checks it and launches the worker. Under the hood it runs these, with a plot-first name such as `slopmeister-120-session-names`:
+Tell the dispatcher which issue to start and which tool should own it. For the shop, the instruction might be “Dispatch the search-box issue to Claude.” The dispatcher reads the issue, checks its [task brief](contracts.md) and launches a worker. The first message from that worker should tell you what it plans to deliver.
 
-```bash
-task kickoff:check -- - < kickoff.md
-task plot-session -- <slopmeister root> slopmeister <name> --issue-id <number> --tool claude < kickoff.md
-```
-
-A good brief prints `kickoff adheres: ...`. [Task briefs](contracts.md) says what belongs in one.
-
-The Slopmeister example above has no slot resources. Other plots follow [Choose the worker command](../src/skills/plot-session/dispatcher.md#choose-the-worker-command).
-
-```mermaid
-sequenceDiagram
-    participant O as Operator
-    participant D as Dispatcher
-    participant W as Worker
-    O->>D: Dispatch this issue
-    D->>D: Read issue and check kickoff
-    D->>W: Launch via task plot-session
-    D->>D: Script verifies kickoff delivery
-    D-->>O: Report worker and evidence
-    W->>O: Discuss the task
-```
+[![Illustration of choosing the search task, opening a workspace and receiving a plan for approval.](../assets/launch-animation.gif)](../assets/launch-animation.gif)
 
 The worker opens in its own Orca terminal and worktree. The launcher prints `plot-session: delivered` with the workspace, session ID and evidence path, then marks the issue `agent:claimed`. [Issue ownership](issue-claims.md) covers claims, and the [launcher procedure](../src/skills/plot-session/SKILL.md) covers options and recovery.
 
@@ -51,6 +31,10 @@ The worker opens in its own Orca terminal and worktree. The launcher prints `plo
 > A running process doesn't prove delivery. The launcher reports success only when it finds the kickoff in the session's own record. If it reports failure, look at the worker's terminal, often a trust prompt is waiting, before you retry.
 
 ## What the worker receives
+
+The task gets a branch, a worktree and a fixed copy of the plot instructions. The worker can edit the search box there while another worker works on a different branch.
+
+[![A checkout and selected plot produce a task worktree with its own branch, fixed instructions and one tool.](../assets/plot-session.svg)](../assets/plot-session.svg)
 
 | Input | Claude Code | Codex |
 |---|---|---|
@@ -67,26 +51,9 @@ The worker keeps its decisions and evidence in an untracked `<TASK-ID>-NOTES.md`
 
 One ticket, one worker, one conversation, with the same task branch name in every needed repository. The worker runs every step itself and stops wherever you decide.
 
-Every plan traces the path from the user's entry point to the visible result, including within a single repository. Step 1 carries the smallest deliverable through that real path and runs its acceptance command before later work. A harness alone does not prove the deliverable. If the user result exists only in continuous integration (CI), the pull request CI run is the tracer. A failed first slice is fixed or brought back for a scope decision. If an external prerequisite blocks its acceptance, the worker records the blocker and asks once. Independent approved steps can continue while dependent steps wait. The blocked proof remains owed. Later steps widen the working path. The same session can add a repository after your scope answer through the [launcher](launcher.md#repositories), keeping its plot and approval rules. QA and the one diff check test the repositories together. Shipping records each repository's result and links its PRs.
+For the shop, the smallest working change lets a reader type “blue” and see “Blue mug.” The worker tries it before adding the rest, then checks cases such as an empty search or a query with no match. The other tool tests the result on a clean copy and records what it saw.
 
-```mermaid
-flowchart LR
-    subgraph decide["Decide"]
-        direction TB
-        S1["1-2 · Sow,<br/>you answer once"] --> S3["3 · Plan review"]
-    end
-    subgraph build["Build and prove"]
-        direction TB
-        S4["4 · Implement"] --> S5["5 · Prove"] --> S6["6 · Diff review"] --> S7["7 · Fix pass"]
-    end
-    subgraph accept["Accept"]
-        direction TB
-        S8["8 · Ship and hand off"] --> S9["9 · You test"] --> S10["10 · You harvest"]
-    end
-    decide --> build --> accept
-    classDef you fill:#f5c26b,stroke:#b7791f,color:#1a1a1a
-    class S1,S9,S10 you
-```
+[![The ten steps run from planning through independent review and testing to harvest on your order.](../assets/spine.svg)](../assets/spine.svg)
 
 | # | Step | The worker | You |
 |---|---|---|---|
@@ -100,15 +67,13 @@ flowchart LR
 | 9 | testing | | Accept the diff check’s scenario results and run any checks the guide leaves to you. |
 | 10 | [harvest](../src/skills/harvest/SKILL.md) | | Order the end in any words, or type `/harvest` or `$harvest`. |
 
-After your one answer, the worker goes straight through to the report on its own, following [execute-plan](../src/skills/execute-plan/SKILL.md). The report lists every review finding and scenario result in one line, applied or dropped with the reason, and you can reopen any of them. The worker halts earlier only for a security must-fix, a wrong approach, drift from the ticket, a fix outside the scope or an error it cannot diagnose. The diff check tests the exact committed or frozen candidate. It reports pass, fail or could not run for each required scenario with saved evidence. The worker never regrades those results.
+After the plan decision, you receive a handoff with the evidence, confirmed fixes and any checks that need your device. Read the observed result. If the search finds the wrong product, send it back. When the result works for you, accept testing. You decide when the session should merge and finish.
 
-Permanent tests follow the shared [test-purpose rule](../src/skills/implement/SKILL.md#test-purpose). Before another round, the worker separates required product failures, broken setup or guides, real additional defects and unsupported probes. The diff check executes required scenarios independently. Additional defects are findings. Scoped fixes need affected proof, not another completed review.
+[![The search finds Blue mug, the other tool records a passing check, and the operator accepts testing.](../assets/proof-acceptance-animation.gif)](../assets/proof-acceptance-animation.gif)
 
-**Reviews run once.** Each review keeps one result per task and mode, and asking again replays it. A fresh result needs your explicit word, then the worker runs `review replace --mode <plan|diff>`. A finding that says the approach is wrong comes to you, and you either ship with a follow-up issue or abandon and re-ticket.
+The illustrations have editable HTML sources for [launch](../assets/launch-animation.html) and [testing](../assets/proof-acceptance-animation.html). To record a variant, open the source at 640 × 400 in a browser with `#capture` on its address. Capture the stage after calling `window.__seek(t)` at 100 ms intervals from zero to `window.__duration`. Keep the time spent on identical frames when encoding the loop.
 
-Plots that require [groom](../src/skills/groom/SKILL.md) use it for affected repository docs and vault notes. Plans name the documents and actions. Maintenance finishes before proof, and both reviews check it. Freeform records the list in session notes.
-
-**Harvest is yours.** Green CI or an open PR cannot authorize it. Order harvest in any words to select the ending from saved state. Finished spine work retains testing acceptance and merge/integration gates. Unfinished work keeps its worktree, slot, notes and claim. Unsaved or unpushed work keeps the workspace. Harvest finishes authorized routine document maintenance through groom, then reports once before cleanup. A worktree harvest carries its report inside the shutdown call and saves it in the result log, which counts as delivery. The manager, dispatcher or proof owner that sent harvest reads the full report there and passes it on. An unfinished harvest then stops only its calling session, see [stop an unfinished session](workspace-removal.md#stop-an-unfinished-session). A question awaiting your answer remains a pause and closes nothing.
+[Independent testing](testing.md#the-independent-check-and-readable-handoff) explains how the checks run. The [harvest procedure](../src/skills/harvest/SKILL.md) describes what happens when work is complete or you need to stop early.
 
 ## Pause and resume
 

@@ -1,13 +1,10 @@
 #!/bin/bash
-# Scheduled vault commit with a mass-deletion guard, a non-blocking lint report and a daily
+# Scheduled vault commit with a mass-deletion guard and a daily
 # git bundle beside the synced vault so the history leaves the machine. See
 # docs/vault-version-control.md.
 set -uo pipefail
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
 V="${SLOPMEISTER_VAULT:-$HOME/.slopmeister/vault}"
-# Git and the bundle location run after the lint step changes directory, so a relative
-# override must not stay relative.
-case "$V" in /*) ;; *) V="$PWD/$V" ;; esac
 G="${VAULT_GIT_DIR:-$HOME/.vault-git/obsidian.git}"
 LOG="${VAULT_LOG:-$HOME/.vault-git/vault-commit.log}"
 LOCK="${VAULT_LOCK:-$HOME/.vault-git/bin/vault-lock.py}"
@@ -55,21 +52,14 @@ else
     g reset -q
     log "SKIPPED, $deleted deletions ($pct% of $tracked) exceed the guard, inspect with vaultgit status"
     notify "Skipped, $deleted deletions staged. Inspect the vault before committing."
-    exit 0
-  fi
-  if g commit -q -m "Vault snapshot $(date '+%F %H:%M')"; then
+    # Bundle the history already committed even when this snapshot is skipped.
+  elif g commit -q -m "Vault snapshot $(date '+%F %H:%M')"; then
     log "committed $(g rev-parse --short HEAD), $(g show --shortstat --format= HEAD | tail -1 | sed 's/^ *//')"
   else
     log "commit failed, Git's message is above, see docs/vault-version-control.md"
     notify "Commit failed, see vault-commit.log"; exit 0
   fi
 fi
-
-# Lint report only. A defect in a note must never cost the history that would let you fix it.
-cd "$V" || exit 0
-pipes=$(grep -rlE '^\|.*\[\[[^]]*[^\\]\|[^]]*\]\]' --include='*.md' . 2>/dev/null | wc -l | tr -d ' ')
-bare=$(grep -rnoE --include='*.md' '\[\[(README|WORKLOG|_INDEX|CUSTOMER|contacts)(\|[^]]*)?(#[^]|]*)?\]\]' . 2>/dev/null | wc -l | tr -d ' ')
-[ "$pipes$bare" = "00" ] || log "LINT alias-pipe-rows=$pipes bare-wikilinks=$bare"
 
 # Daily bundle, written to a temp name and renamed so the sync never uploads a half-written
 # file. It sits in the folder that holds the real vault, the link's own folder is not synced.

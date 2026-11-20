@@ -52,11 +52,27 @@ def build_review_prompt(target: ReviewTarget) -> str:
         "merge, release, run deployment workflows or mutate any tracker.",
         f"The review target's root is {Path(target.cwd).resolve()}. Cite every finding's file "
         "path relative to that root, never as an absolute path.",
-        "Report only findings that are valid, reachable and proportionate, each with the smallest "
-        "remedy. Challenge accidental complexity in the target and in your own remedies. Prefer "
-        "the smallest behavior-preserving remedy and do not propose new machinery without "
-        "demonstrated need. Security, data-loss, irreversible-operation, explicit-authority and "
-        "recovery requirements are mandatory, not overengineering.",
+        "Report only findings that are valid, reachable and proportionate: defects and gaps that "
+        "make the work fail its goal, its acceptance criteria or a project rule. In failure, give "
+        "the input or state and the wrong result it causes. In evidence, quote exact, nonempty "
+        "text from a file that shows it, such as a source line, a plan or notes line, or saved "
+        "command output, never reconstructed or paraphrased. Cite each evidence path relative to "
+        "the review target's root, or as an absolute path under a directory you were given. A "
+        "finding whose quote is not in its file is withheld from the worker. MUST-FIX is a "
+        "security defect, data loss or an unmet acceptance criterion. SHOULD-FIX is any other "
+        "real defect or gap.",
+        "Do not report wording, naming, style, formatting or preference, unless the ticket or a "
+        "project rule requires it. Then name that rule in failure.",
+        "Look first where real defects hide: claims in the pull request text, the notes or the "
+        "plan that the work does not deliver; changed behavior without a test that fails before "
+        "the change and passes after it; weak or missing assertions; error, cleanup and teardown "
+        "paths; changes unrelated to the task; and acceptance criteria the work does not meet. "
+        "Fit your depth to the change. Read the plan or diff, the code it touches, its direct "
+        "callers and its tests, and stop when this list and the Security Lens are covered.",
+        "Give each finding the smallest remedy. Challenge accidental complexity in the target and "
+        "in your own remedies. Prefer the smallest behavior-preserving remedy and do not propose "
+        "new machinery without demonstrated need. Security, data-loss, irreversible-operation, "
+        "explicit-authority and recovery requirements are mandatory, not overengineering.",
         "Run the Security Lens over the target. Run and name every mandatory check: secrets "
         "and sensitive-data handling; untrusted inputs and trust-boundary validation; "
         "authentication, authorization and privilege boundaries; injection, unsafe evaluation "
@@ -86,7 +102,8 @@ def _check_lines(target: ReviewTarget) -> tuple[str, ...]:
         "development tools, so run the setup that the guide, README or CONTRIBUTING names "
         "before you call a scenario not runnable. Run every guide scenario, including its "
         "falsification cases, and decide each by its written steps and expected results. Then "
-        "make your own attempts to break the change and report each one that holds as a finding.",
+        "make your own attempts to break the change and report each one that holds as a finding, "
+        f"citing its saved output by absolute path under {root / 'evidence'}.",
         f"Save the stdout and stderr of every scenario command directly to files under "
         f"{root / 'evidence'}, and copy any checkout file you quote there, because the copy is "
         "deleted after the run. Cite each file by its path relative to "
@@ -95,9 +112,11 @@ def _check_lines(target: ReviewTarget) -> tuple[str, ...]:
         "check that the command succeeded and save a nonempty marker that says so. A pass or "
         "fail without a verified quote counts as could_not_run.",
         "Report every scenario ID exactly once as pass, fail or could_not_run, with the reason "
-        "for fail and could_not_run. A failed or unavailable scenario is never pass. When a "
-        "guide step is wrong or impossible, add a guide finding that names the scenario and the "
-        "step, then continue with the remaining scenarios. Stop every process you start before "
+        "for fail and could_not_run. A failed or unavailable scenario is never pass. A scenario "
+        "fails only when the product behaves wrongly. When setup, the environment or a guide step "
+        "fails instead, report could_not_run and name that fault in the reason. When a guide step "
+        "is wrong or impossible, also add a guide finding that names the scenario and the step, "
+        "then continue with the remaining scenarios. Stop every process you start before "
         "you finish, because a process left running fails the check. Do not launch reviews or "
         "other agents. Scenario IDs: " + ", ".join(target.scenarios) + ".",
     )

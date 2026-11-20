@@ -303,7 +303,7 @@ def main(argv: list[str]) -> int:
             )
         else:
             request = Request(
-                str(args.workspace),
+                str(args.workspace if args.host else args.workspace.resolve()),
                 args.tool,
                 args.session_id,
                 args.dispatcher_run or "",

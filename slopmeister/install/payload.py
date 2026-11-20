@@ -53,8 +53,10 @@ def permission_paragraph(context: PayloadContext) -> bytes:
         shipping = (
             "Agent shipping permission for this session is allow. Ordinary push and PR "
             "create/update are allowed only for the saved repository and current non-default "
-            "task branch through ship, GitHub enforces branch protection. Merge and harvest "
-            "remain operator-controlled."
+            "task branch through ship. The helper refuses the default branch. On another forge "
+            "its push-only command pushes the branch recorded at launch and new pre-release tags "
+            "at HEAD, and every other push keeps native approval. Merge and harvest remain "
+            "operator-controlled."
         )
     else:
         shipping = (

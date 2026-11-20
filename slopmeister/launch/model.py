@@ -82,12 +82,16 @@ class Launch:
     redispatch: bool = False
     abandon: bool = False
     manager: bool = False
+    weekly_update: bool = False
     proof_for: str = ""
     proof_handle: str = ""
+    managed_by: str = ""
+    manager_run: str = ""
     directory_requested: bool = False
     model_set: bool = False
     extra: list[str] = field(default_factory=list)
     repositories: list[str] = field(default_factory=list)
+    push_branches: dict[str, str] = field(default_factory=dict)
     service_actions: bool = False
     git_prompts: bool = False
     approval_required: bool = False
@@ -152,8 +156,8 @@ class Launch:
 
     @property
     def orca_workspace(self) -> Path:
-        """A directory session has no repository, its tab opens in the Slopmeister checkout."""
-        return ROOT if self.directory else self.wt
+        """A directory session is its own Orca folder, resolved as Orca lists its tabs."""
+        return self.claude_wt if self.directory else self.wt
 
     @property
     def terminal_line(self) -> str:

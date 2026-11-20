@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 500" width="720" height="500" role="img" aria-labelledby="ps-title ps-desc" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif">
+  <title id="ps-title">What a plot session creates</title>
+  <desc id="ps-desc">A project checkout and the selected plot feed a launch. The launch creates a new task worktree for the task Add a search box. The worktree has its own branch and a fixed copy of the instructions for one tool. The project vault stays separate and serves as a reference.</desc>
+  <style>
+    .over { font-size: 12.5px; font-weight: 700; letter-spacing: 1.2px; fill: #566056; }
+    .title { font-size: 19px; font-weight: 700; fill: #1f2a22; }
+    .sub { font-size: 14.5px; fill: #566056; }
+    .row { font-size: 15.5px; font-weight: 700; fill: #1f2a22; }
+    .lbl { font-size: 14px; fill: #566056; }
+    .task { font-size: 16.5px; font-weight: 700; fill: #1f2a22; }
+    .mono { font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', monospace; font-size: 13.5px; font-weight: 600; fill: #35654d; }
+    .card { fill: #ffffff; stroke: #d8d4c6; stroke-width: 1.2; }
+    .flow { fill: none; stroke: #7d877d; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .icon { fill: none; stroke: #35654d; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+  </style>
+  <defs>
+    <marker id="ps-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M1 1 L9 5 L1 9 Z" fill="#7d877d"/>
+    </marker>
+    <filter id="ps-shadow" x="-5%" y="-10%" width="110%" height="130%">
+      <feDropShadow dx="0" dy="1.5" stdDeviation="2.5" flood-color="#1f2a22" flood-opacity="0.09"/>
+    </filter>
+  </defs>
+
+  <rect width="720" height="500" rx="20" fill="#f6f4ee"/>
+
+  <text class="over" x="32" y="48">WHAT YOU START WITH</text>
+  <text class="over" x="392" y="48">WHAT THE LAUNCH CREATES</text>
+
+  <g filter="url(#ps-shadow)">
+    <rect class="card" x="32" y="76" width="244" height="92" rx="14"/>
+    <rect class="card" x="32" y="234" width="244" height="92" rx="14"/>
+    <rect x="392" y="64" width="296" height="274" rx="14" fill="#ffffff" stroke="#35654d" stroke-width="1.8"/>
+  </g>
+
+  <!-- project checkout -->
+  <g class="icon">
+    <path d="M52 104 H62 L66 109 H80 V130 H52 Z"/>
+  </g>
+  <text class="title" x="94" y="113">Project checkout</text>
+  <text class="sub" x="94" y="136">your repository,</text>
+  <text class="sub" x="94" y="155">left as it is</text>
+
+  <!-- selected plot -->
+  <g class="icon">
+    <rect x="53" y="260" width="26" height="30" rx="4"/>
+    <path d="M59 270 H73 M59 276 H73 M59 282 H68"/>
+  </g>
+  <text class="title" x="94" y="271">Selected plot</text>
+  <text class="sub" x="94" y="294">this project's rules</text>
+  <text class="sub" x="94" y="313">and permissions</text>
+
+  <!-- join and launch -->
+  <path class="flow" d="M276 122 H284 Q294 122 294 132 V191 Q294 201 304 201 H308"/>
+  <path class="flow" d="M276 280 H284 Q294 280 294 270 V211 Q294 201 304 201 H308"/>
+  <rect x="308" y="185" width="56" height="32" rx="16" fill="#35654d"/>
+  <text x="336" y="206" text-anchor="middle" font-size="13.5" font-weight="700" fill="#ffffff">launch</text>
+  <path class="flow" d="M364 201 H384" marker-end="url(#ps-arrow)"/>
+
+  <!-- task worktree -->
+  <text class="title" x="412" y="98">New task worktree</text>
+  <rect x="412" y="112" width="256" height="38" rx="9" fill="#e2efe7"/>
+  <text class="lbl" x="424" y="136">Task</text>
+  <text class="task" x="464" y="136.5">Add a search box</text>
+
+  <g class="icon">
+    <circle cx="420" cy="178" r="4"/>
+    <circle cx="420" cy="202" r="4"/>
+    <circle cx="436" cy="184" r="4"/>
+    <path d="M420 182 V198 M436 188 Q436 195 424 199"/>
+  </g>
+  <text class="row" x="460" y="186">Its own branch</text>
+  <text class="mono" x="460" y="206">add-search-box</text>
+
+  <g class="icon">
+    <rect x="414" y="230" width="24" height="30" rx="4"/>
+    <path d="M420 240 H432 M420 246 H432 M420 252 H427"/>
+  </g>
+  <text class="row" x="460" y="242">Fixed instructions</text>
+  <text class="lbl" x="460" y="262">a copy that stays as launched</text>
+
+  <g class="icon">
+    <rect x="412" y="290" width="28" height="22" rx="5"/>
+    <path d="M418 297 L422 301 L418 305 M426 306 H433"/>
+  </g>
+  <text class="row" x="460" y="296">For one tool</text>
+  <rect x="460" y="303" width="104" height="22" rx="11" fill="#e2efe7"/>
+  <text x="512" y="318.500" text-anchor="middle" font-size="13" font-weight="600" fill="#35654d">Claude Code</text>
+
+  <!-- vault -->
+  <path d="M540 394 V346" fill="none" stroke="#7d877d" stroke-width="1.8" stroke-dasharray="5 5" stroke-linecap="round" marker-end="url(#ps-arrow)"/>
+  <text class="lbl" x="528" y="375" text-anchor="end">reference</text>
+
+  <text class="over" x="32" y="386">KEPT SEPARATE</text>
+  <rect x="32" y="398" width="656" height="74" rx="14" fill="#efede6" stroke="#8b958b" stroke-width="1.5" stroke-dasharray="6 5"/>
+  <g fill="none" stroke="#566056" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M54 421 Q61 417 68 421 V451 Q61 447 54 451 Z"/>
+    <path d="M82 421 Q75 417 68 421 V451 Q75 447 82 451 Z"/>
+  </g>
+  <text class="title" x="98" y="430">Project vault</text>
+  <text class="sub" x="98" y="453">Project knowledge. The worker looks things up here.</text>
+</svg>

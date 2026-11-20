@@ -1,9 +1,8 @@
-"""The marked session every test of the op runs in."""
+"""The marked session every test of the op runs in, and the recorded browser profile."""
 
 import json
 import os
 from pathlib import Path
-import subprocess
 
 import pytest
 
@@ -16,6 +15,7 @@ from slopmeister.session import (
     secret_tier,
 )
 from slopmeister.session import browser_state as state
+from tests.support.browser import Chrome
 from tests.support.op_session import LISTS, ONE, TWO, private
 
 # The entry kinds a delivered rules file holds, a tool name, both command forms and a path.
@@ -68,40 +68,38 @@ def session(monkeypatch, tmp_path):
 
 
 @pytest.fixture
-def root(tmp_path, monkeypatch):
+def profiles(tmp_path, monkeypatch):
+    """Profiles, runtime folders and states inside the test folder, with no operator profile."""
     monkeypatch.setattr(browser_runtime, "TEMP_ROOT", tmp_path)
     monkeypatch.setattr(state, "TEMP_ROOT", tmp_path)
+    monkeypatch.setattr(state, "PROFILES", tmp_path / "profiles")
+    monkeypatch.setattr(state, "RUNTIME", tmp_path / "sm-browser")
+    monkeypatch.setattr(state, "OPERATOR_PROFILE", {})
+    # Linux behavior on every host, a Mac test sets its own platform.
+    monkeypatch.setattr(state.sys, "platform", "linux")
+    return tmp_path / "profiles"
+
+
+@pytest.fixture
+def root(tmp_path, profiles):
+    """A started state of the profile "test" whose own tab is the Chrome target T1."""
     path = tmp_path / "slopmeister-browser-test"
     path.mkdir(mode=0o700)
-    browser_runtime.save(path, {"worktree": str(tmp_path)})
+    browser_runtime.save(path, {"worktree": str(tmp_path), "profile": "test", "own": "T1"})
     return path
 
 
 @pytest.fixture
-def tool(root, monkeypatch, tmp_path):
-    """Record page tool calls instead of starting Node, with an installed entry present."""
+def chrome(profiles, monkeypatch, tmp_path):
+    """Record page tool, systemd and helper calls instead of starting Node or Chrome."""
     entry = tmp_path / "playwright-cli.js"
     entry.write_text("")
     monkeypatch.setattr(browser_runtime, "PAGE_ENTRY", entry)
     monkeypatch.setattr(browser_runtime, "node", lambda: tmp_path / "node")
-    monkeypatch.setattr(browser_runtime, "request", lambda *_: {"result": "EMPTY"})
-    calls = []
-    replies = {}
-
-    def run(argv, **options):
-        calls.append((argv[2:], options))
-        command = next((a for a in argv[2:] if not a.startswith("-")), "")
-        code, output = replies.get(command, (0, "### Result\nok\n"))
-        return subprocess.CompletedProcess(argv, code, output, "")
-
-    monkeypatch.setattr(browser_runtime.subprocess, "run", run)
-    return calls, replies
-
-
-@pytest.fixture
-def started(tool, tmp_path, monkeypatch):
-    monkeypatch.setenv(browser_runtime.TOKEN, "dummy-private-token")
+    fake = Chrome()
+    monkeypatch.setattr(browser_runtime, "request", fake.request)
+    monkeypatch.setattr(browser_runtime.subprocess, "run", fake.run)
     monkeypatch.setenv(state.WORKSPACE, str(tmp_path))
     # The test host may itself have a desktop with no monitor.
     monkeypatch.setattr(browser_display, "monitorless", lambda: False)
-    return tool
+    return fake

@@ -39,9 +39,19 @@ def test_first_release_uses_the_tested_commit(release_repo: ReleaseRepository, e
         "name": TAG,
         "draft": False,
         "prerelease": False,
-        "generate_release_notes": True,
+        "body": "Find products by colour.",
     }
     assert f"Published {TAG} at {sha}" in result.stdout
+
+
+@pytest.mark.parametrize(
+    "notes", ["## Upgrading to 0.2.0\nOther version.", "## Upgrading to 0.1.0\n"]
+)
+def test_missing_or_empty_notes_refuse_before_tag(release_repo, notes):
+    (release_repo.path / "docs/releases.md").write_text(notes)
+    result = release_repo.run()
+    assert result.returncode != 0 and "release notes" in result.stderr
+    assert release_repo.writes() == []
 
 
 @pytest.mark.parametrize("version", ["01.2.3", "1.2", "1.2.3-rc1", "1.2.3+meta", "../tag", 123])

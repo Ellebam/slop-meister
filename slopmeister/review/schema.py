@@ -8,8 +8,8 @@ from enum import StrEnum
 import json
 from pathlib import PurePosixPath
 
-VALID_SEVERITIES = {"MUST-FIX", "SHOULD-FIX", "NITPICK"}
-VALID_CONFIDENCES = {"high", "medium", "low"}
+VALID_SEVERITIES = {"MUST-FIX", "SHOULD-FIX"}
+FINDING_KEYS = {"severity", "file", "line", "title", "failure", "evidence", "suggested_action"}
 SCENARIO_STATUSES = {"pass", "fail", "could_not_run"}
 CHECK_KEYS = {"scenarios", "guide_findings"}
 
@@ -51,9 +51,9 @@ class ReviewFinding:
     file: str
     line: int
     title: str
-    rationale: str
+    failure: str
+    evidence: tuple[tuple[str, str], ...]
     suggested_action: str
-    confidence: str
 
 
 @dataclass(frozen=True)
@@ -78,6 +78,7 @@ class ReviewResult:
     preexisting_dirty: bool = False
     scenarios: tuple[Scenario, ...] = ()
     guide_findings: tuple[tuple[str, str], ...] = ()
+    withheld: tuple[str, ...] = ()
 
 
 def _invalid(message: str) -> CrossToolReviewError:
@@ -111,8 +112,7 @@ def _file(value: object) -> str:
 def _finding(item: object) -> ReviewFinding:
     if not isinstance(item, dict):
         raise _invalid("each finding must be an object")
-    keys = {"severity", "file", "line", "title", "rationale", "suggested_action", "confidence"}
-    if not set(item) <= keys:
+    if not set(item) <= FINDING_KEYS:
         raise _invalid("review finding contains unknown keys")
     severity = _string(item, "severity")
     if severity not in VALID_SEVERITIES:
@@ -120,18 +120,30 @@ def _finding(item: object) -> ReviewFinding:
     line = item.get("line")
     if isinstance(line, bool) or not isinstance(line, int) or line < 1:
         raise _invalid("finding.line must be a positive integer")
-    confidence = _string(item, "confidence")
-    if confidence not in VALID_CONFIDENCES:
-        raise _invalid(f"invalid finding.confidence: {confidence}")
     return ReviewFinding(
         severity,
         _file(item.get("file")),
         line,
         _string(item, "title"),
-        _string(item, "rationale"),
+        _string(item, "failure"),
+        _evidence(item.get("evidence")),
         _string(item, "suggested_action"),
-        confidence,
     )
+
+
+def _evidence(value: object) -> tuple[tuple[str, str], ...]:
+    """The quotes the runner checks before a finding reaches the worker."""
+    if not isinstance(value, list) or not value:
+        raise _invalid("finding.evidence must be a non-empty list")
+    cited = []
+    for item in value:
+        if not isinstance(item, dict) or set(item) != {"path", "quote"}:
+            raise _invalid("invalid finding.evidence shape")
+        path = _string(item, "path", "evidence")
+        if not path.isprintable():
+            raise _invalid("evidence.path contains control characters")
+        cited.append((path, _string(item, "quote", "evidence")))
+    return tuple(cited)
 
 
 def _security_lens(value: object, count: int) -> SecurityLens:
@@ -213,23 +225,15 @@ def _finding_schema() -> dict:
     return {
         "type": "object",
         "additionalProperties": False,
-        "required": [
-            "severity",
-            "file",
-            "line",
-            "title",
-            "rationale",
-            "suggested_action",
-            "confidence",
-        ],
+        "required": sorted(FINDING_KEYS),
         "properties": {
             "severity": {"type": "string", "enum": sorted(VALID_SEVERITIES)},
             "file": {"type": "string"},
             "line": {"type": "integer", "minimum": 1},
             "title": {"type": "string"},
-            "rationale": {"type": "string"},
+            "failure": {"type": "string"},
+            "evidence": {"type": "array", "minItems": 1, "items": _strings("path", "quote")},
             "suggested_action": {"type": "string"},
-            "confidence": {"type": "string", "enum": sorted(VALID_CONFIDENCES)},
         },
     }
 

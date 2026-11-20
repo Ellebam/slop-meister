@@ -110,24 +110,33 @@ elif name == "ps":
                 else:
                     print(w["pid"], "??", w["tool"])
     else:
-        pid = int(args[args.index("-p") + 1])
-        worker = next((w for w in workers if w["pid"] == pid), None)
-        if worker is None:
-            sys.exit(subprocess.run(["/bin/ps", *args]).returncode)
-        if not live(worker):
-            sys.exit(1)
-        if any("args=" in x for x in args):
-            print(
-                "codex --no-daemon -C " + worker["workspace"]
-                if worker["tool"] == "codex"
-                else "claude --remote-control=" + worker["name"]
-            )
-        else:
-            prefix = "S " if any("stat=" in field for field in args) else ""
-            print(prefix + "fixture-start " + worker["tool"])
+        # A census asks for several PIDs at once and wants each row led by its PID.
+        fields = args[args.index("-o") + 1] if "-o" in args else "pid="
+        rows = 0
+        for text in args[args.index("-p") + 1].split(","):
+            worker = next((w for w in workers if w["pid"] == int(text)), None)
+            if worker is None:
+                real = subprocess.run(["/bin/ps", "-p", text, "-o", fields], stdout=subprocess.PIPE)
+                sys.stdout.write(real.stdout.decode())
+                rows += not real.returncode
+                continue
+            if not live(worker):
+                continue
+            if "args=" in fields:
+                row = (
+                    "codex --no-daemon -C " + worker["workspace"]
+                    if worker["tool"] == "codex"
+                    else "claude --remote-control=" + worker["name"]
+                )
+            else:
+                row = ("S " if "stat=" in fields else "") + "fixture-start " + worker["tool"]
+            print((text + " " if fields.startswith("pid=") else "") + row)
+            rows += 1
+        sys.exit(0 if rows else 1)
 elif name == "lsof":
-    worker = next(w for w in workers if str(w["pid"]) == args[args.index("-p") + 1])
-    print("n" + worker["workspace"])
+    for text in args[args.index("-p") + 1].split(","):
+        worker = next(w for w in workers if str(w["pid"]) == text)
+        print("p" + text + "\nn" + worker["workspace"])
 elif name == "claude":
     assert args == ["agents", "--json"], args
     print(json.dumps([{"pid": w["pid"]} for w in workers if live(w)]))

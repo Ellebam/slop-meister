@@ -4,9 +4,12 @@ import argparse
 from collections.abc import Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+import errno
 import os
 from pathlib import Path
+import stat
 import subprocess
+import sys
 import tempfile
 
 from slopmeister.errors import SlopmeisterError
@@ -22,6 +25,8 @@ from slopmeister.spine import candidate as repository_candidate
 from slopmeister.vault import subject as directory_subject
 
 INPUT_LIMIT = 256_000
+# A finished run records its resolved workspace here, so workspace removal can delete it.
+FINISHED, PATH_LIMIT = "finished", 4096
 
 
 @dataclass
@@ -89,11 +94,15 @@ def _git(cwd: Path, *args: str) -> str:
     return result.stdout.strip()
 
 
-def _home(workspace: Path) -> Path:
+def _state() -> Path:
     state = Path(os.environ.get("XDG_STATE_HOME", ""))
     if not state.is_absolute():
         state = Path.home() / ".local/state"
-    state = (state / "slopmeister/checks").resolve()
+    return (state / "slopmeister/checks").resolve()
+
+
+def _home(workspace: Path) -> Path:
+    state = _state()
     if state.is_relative_to(workspace.resolve()):
         raise _failure("diff check evidence must live outside the reviewed checkout")
     state.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -190,7 +199,7 @@ def prepared(args: argparse.Namespace, frozen):
             slot_tester.prepare(check.root, check.run, args.slot_target)
     except BaseException as error:
         if check is not None:
-            check.cleanup_error = _cleanup(check)
+            _finish(check)
         if isinstance(error, (OSError, ValueError, SlopmeisterError, subprocess.SubprocessError)):
             detail = redact(str(error))
             raise _failure(f"the diff check could not be prepared: {detail}") from error
@@ -198,7 +207,59 @@ def prepared(args: argparse.Namespace, frozen):
     try:
         yield check
     finally:
-        check.cleanup_error = _cleanup(check)
+        _finish(check)
+
+
+def _finish(check: Check) -> None:
+    """Clean up, then record the run as finished. A kept checkout or slot leaves no record."""
+    check.cleanup_error = _cleanup(check)
+    if check.cleanup_error:
+        return
+    record = check.root / f".{FINISHED}"
+    try:
+        record.write_text(str(check.workspace))
+        record.replace(check.root / FINISHED)
+    except OSError:
+        pass  # Without its record the run only stays, the review result still counts.
+
+
+def remove_finished(workspace: Path) -> None:
+    """Delete the finished check runs of the removed resolved workspace. Other runs stay."""
+    try:
+        with os.scandir(_state()) as listing:
+            entries = list(listing)
+    except FileNotFoundError:
+        return
+    except OSError as error:
+        # The workspace is already gone, so an unreadable checks directory only keeps its runs.
+        print(f"check runs kept: {_state()}: {error}", file=sys.stderr)
+        return
+    owner = str(workspace).encode()
+    for entry in entries:
+        run = Path(entry.path)
+        if not (entry.name.startswith("run-") and entry.is_dir(follow_symlinks=False)):
+            continue
+        try:
+            if _owner(run) == owner:
+                remove_tree(run)
+        except OSError as error:
+            print(f"check run kept: {run}: {error}", file=sys.stderr)
+
+
+def _owner(run: Path) -> bytes:
+    try:
+        descriptor = os.open(run / FINISHED, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except FileNotFoundError, NotADirectoryError:
+        return b""
+    except OSError as error:
+        # A linked record is refused by O_NOFOLLOW, never followed.
+        if error.errno == errno.ELOOP:
+            return b""
+        raise
+    with os.fdopen(descriptor, "rb") as stream:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            return b""
+        return stream.read(PATH_LIMIT + 1)
 
 
 def _cleanup(check: Check) -> str:

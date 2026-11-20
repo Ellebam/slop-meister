@@ -127,7 +127,12 @@ def test_allow_prompts_only_raw_push(installed):
     assert asks == ["Bash(git push *)", f"Bash(git -C {workspace} push *)"]
     assert 'pattern=["git", "push"]' in rules
     assert 'pattern=["git", "commit"]' not in rules
-    assert "skills/ship/scripts/ship.py" not in rules
+    assert all(
+        '"--push-only"], decision="allow"' in line
+        for line in rules.splitlines()
+        if "skills/ship/scripts/ship.py" in line
+    )
+    assert rules.count('"--push-only"]') == 2
     config = (workspace / ".codex/config.toml").read_text()
     assert "approval_policy" not in config
     assert "approvals_reviewer" not in config

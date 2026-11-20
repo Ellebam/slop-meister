@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 540" width="720" height="540" role="img" aria-labelledby="tl-title tl-desc" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif">
+  <title id="tl-title">Three layers meet at one worker</title>
+  <desc id="tl-desc">Global rules say how both tools work. The project plot says how this project works. The task kickoff says what to deliver. All three reach one worker. The vault holds project knowledge and stays separate.</desc>
+  <style>
+    .over { font-size: 12.5px; font-weight: 700; letter-spacing: 1.4px; fill: #566056; }
+    .title { font-size: 20px; font-weight: 700; fill: #1f2a22; }
+    .sub { font-size: 15.5px; fill: #566056; }
+    .chip { font-size: 13px; font-weight: 600; fill: #35654d; }
+    .num { font-size: 16px; font-weight: 700; fill: #ffffff; }
+    .note { font-size: 14px; fill: #566056; }
+    .card { fill: #ffffff; stroke: #d8d4c6; stroke-width: 1.2; }
+    .flow { fill: none; stroke: #7d877d; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  </style>
+  <defs>
+    <marker id="tl-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M1 1 L9 5 L1 9 Z" fill="#7d877d"/>
+    </marker>
+    <filter id="tl-shadow" x="-5%" y="-10%" width="110%" height="130%">
+      <feDropShadow dx="0" dy="1.5" stdDeviation="2.5" flood-color="#1f2a22" flood-opacity="0.09"/>
+    </filter>
+  </defs>
+
+  <rect width="720" height="540" rx="20" fill="#f6f4ee"/>
+
+  <text class="over" x="32" y="40">THREE LAYERS</text>
+
+  <g filter="url(#tl-shadow)">
+    <rect class="card" x="32" y="56" width="392" height="100" rx="14"/>
+    <rect class="card" x="32" y="172" width="392" height="100" rx="14"/>
+    <rect class="card" x="32" y="288" width="392" height="100" rx="14"/>
+  </g>
+
+  <circle cx="70" cy="106" r="17" fill="#35654d"/>
+  <text class="num" x="70" y="111.5" text-anchor="middle">1</text>
+  <text class="title" x="102" y="100">Global rules</text>
+  <text class="sub" x="102" y="125">How both tools work</text>
+  <rect x="300" y="92" width="108" height="28" rx="14" fill="#e2efe7"/>
+  <text class="chip" x="354" y="110.5" text-anchor="middle">every project</text>
+
+  <circle cx="70" cy="222" r="17" fill="#35654d"/>
+  <text class="num" x="70" y="227.5" text-anchor="middle">2</text>
+  <text class="title" x="102" y="216">Project plot</text>
+  <text class="sub" x="102" y="241">How this project works</text>
+  <rect x="300" y="208" width="108" height="28" rx="14" fill="#e2efe7"/>
+  <text class="chip" x="354" y="226.5" text-anchor="middle">one project</text>
+
+  <circle cx="70" cy="338" r="17" fill="#35654d"/>
+  <text class="num" x="70" y="343.5" text-anchor="middle">3</text>
+  <text class="title" x="102" y="332">Task kickoff</text>
+  <text class="sub" x="102" y="357">What to deliver</text>
+  <rect x="300" y="324" width="108" height="28" rx="14" fill="#e2efe7"/>
+  <text class="chip" x="354" y="342.5" text-anchor="middle">one task</text>
+
+  <path class="flow" d="M424 106 H462 Q472 106 472 116 V186 Q472 196 482 196 H496" marker-end="url(#tl-arrow)"/>
+  <path class="flow" d="M424 222 H496" marker-end="url(#tl-arrow)"/>
+  <path class="flow" d="M424 338 H462 Q472 338 472 328 V258 Q472 248 482 248 H496" marker-end="url(#tl-arrow)"/>
+
+  <text class="over" x="596" y="130" text-anchor="middle">ONE WORKER</text>
+  <rect x="504" y="146" width="184" height="152" rx="14" fill="#e2efe7" stroke="#35654d" stroke-width="1.8" filter="url(#tl-shadow)"/>
+  <g fill="none" stroke="#35654d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="574" y="166" width="44" height="34" rx="7"/>
+    <path d="M584 177 L591 183 L584 189"/>
+    <path d="M596 190 H607"/>
+  </g>
+  <text class="title" x="596" y="236" text-anchor="middle">Worker</text>
+  <text class="note" x="596" y="260" text-anchor="middle">Claude Code or Codex</text>
+  <text class="note" x="596" y="280" text-anchor="middle">does the task</text>
+
+  <path d="M596 418 V306" fill="none" stroke="#7d877d" stroke-width="1.8" stroke-dasharray="5 5" stroke-linecap="round" marker-end="url(#tl-arrow)"/>
+  <text class="note" x="584" y="368" text-anchor="end">looks things up</text>
+
+  <text class="over" x="32" y="412">PROJECT KNOWLEDGE</text>
+  <rect x="32" y="424" width="656" height="84" rx="14" fill="#efede6" stroke="#8b958b" stroke-width="1.5" stroke-dasharray="6 5"/>
+  <g fill="none" stroke="#566056" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M56 452 Q63 448 70 452 V482 Q63 478 56 482 Z"/>
+    <path d="M84 452 Q77 448 70 452 V482 Q77 478 84 482 Z"/>
+  </g>
+  <text class="title" x="102" y="460">Vault</text>
+  <text class="sub" x="102" y="485">Notes about the project, kept separate from the three layers</text>
+</svg>

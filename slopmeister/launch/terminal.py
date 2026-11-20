@@ -29,6 +29,8 @@ LINUX_SESSION_ENV = (
     "DBUS_SESSION_BUS_ADDRESS",
     "XAUTHORITY",
 )
+# A paired-host selector would point a local removal at another machine's Orca.
+REMOTE_SELECTORS = ("ORCA_ENVIRONMENT", "ORCA_PAIRING_CODE")
 
 
 def binary() -> str:
@@ -67,8 +69,12 @@ def _orca(
     return result if isinstance(result, dict) else {}
 
 
-def _usable() -> bool:
-    status = _orca("status") or {}
+def _local() -> dict[str, str]:
+    return {key: value for key, value in os.environ.items() if key not in REMOTE_SELECTORS}
+
+
+def _usable(env: dict[str, str] | None = None) -> bool:
+    status = _orca("status", env=env) or {}
     app, runtime = status.get("app") or {}, status.get("runtime") or {}
     return bool(app.get("running") and runtime.get("reachable"))
 
@@ -82,10 +88,33 @@ def ready() -> bool:
     return _usable()
 
 
-def register(repo: Path) -> None:
+def register(repo: Path, folder: bool = False) -> None:
     listed = _orca("repo", "list") or {}
     if str(repo) not in {entry.get("path") for entry in listed.get("repos", [])}:
-        _orca("repo", "add", "--path", str(repo))
+        _orca("repo", "add", "--path", str(repo), *(("--kind", "folder") if folder else ()))
+
+
+def repos() -> dict[str, str] | None:
+    """Path to id of each path the local Orca lists once, None while it is closed or refuses."""
+    if not os.access(binary(), os.X_OK):
+        return {}
+    if not _usable(_local()):
+        return None
+    listed = _orca("repo", "list", env=_local())
+    if listed is None:
+        return None
+    rows = listed.get("repos", [])
+    paths = [entry.get("path") for entry in rows]
+    return {
+        entry.get("path"): entry.get("id") for entry in rows if paths.count(entry.get("path")) == 1
+    }
+
+
+def drop(setup_id: str) -> bool:
+    """A folder workspace is a whole Orca project, `worktree rm` refuses its root."""
+    return (
+        _orca("project", "setup-delete", "--setup", setup_id, "--force", env=_local()) is not None
+    )
 
 
 def create(workspace: Path, title: str, command: str) -> str:

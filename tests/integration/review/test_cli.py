@@ -1,5 +1,7 @@
 """The small review CLI exposes only execution, replay and exact replacement."""
 
+import base64
+import io
 import json
 import uuid
 
@@ -9,11 +11,17 @@ from slopmeister.review import cli
 from slopmeister.review.config import ReviewerConfig
 from slopmeister.review.run import CommandResult
 from slopmeister.review.schema import CrossToolReviewError, ReviewResult, SecurityLens
+from slopmeister.review.state import save_result
 from slopmeister.session import launch_identity
 from tests.support.repos import scratch_repo
 from tests.support.review_helpers import CLEAN_LENS, DEFAULTS, finding
 
 CLEAN = ReviewResult((), SecurityLens(None, ("secrets",), "Nothing found."))
+
+
+def jwt(header: str, claims: str) -> str:
+    parts = (header.encode(), claims.encode(), b"fake-signature")
+    return ".".join(base64.urlsafe_b64encode(part).decode().rstrip("=") for part in parts)
 
 
 def _ready(monkeypatch, tmp_path, tool="codex"):
@@ -206,9 +214,9 @@ def test_invalid_path_keeps_rejected_evidence_without_saving_a_verdict(
     valid = finding("README.md", 1, "MUST-FIX")
     invalid = finding("../outside.md", 1, "SHOULD-FIX")
     valid["title"] = "Useful finding retained"
-    valid["rationale"] = 'config has "password": "nested-fixture" and password="a b c-fixture"'
+    valid["failure"] = 'config has "password": "nested-fixture" and password="a b c-fixture"'
     invalid["title"] = "Rejected location retained"
-    invalid["rationale"] = "ANTHROPIC_API_KEY=sk-ant-api03-12345678901234567890"
+    invalid["failure"] = "ANTHROPIC_API_KEY=sk-ant-api03-12345678901234567890"
     payload = json.dumps({"findings": [valid, invalid], "security_lens": CLEAN_LENS})
     if envelope:
         payload = json.dumps({"type": "result", "is_error": False, "result": payload})
@@ -244,4 +252,105 @@ def test_rejected_output_cannot_forge_log_lines_and_reports_truncation(
     assert all(char not in printed.err for char in ("\x1b", "\r", "\x9b", "\x9d", "\u202e"))
     assert not any(line.startswith(("::", "**Status:")) for line in printed.err.splitlines())
     assert len(printed.err) < 18000
+    assert not (workspace / ".git/slopmeister-config/reviews/cli-task-plan.json").exists()
+
+
+def test_finding_without_a_verified_quote_is_withheld_with_its_location(
+    monkeypatch, tmp_path, capsys
+):
+    """Reviewer output is untrusted: a finding reaches the worker only with a quote in its file."""
+    workspace = _ready(monkeypatch, tmp_path)
+    shown = finding("README.md", 1, "MUST-FIX", "scratch")
+    invented = finding("README.md", 1, "MUST-FIX", "cleanup()")
+    invented["title"] = "Invented teardown leak"
+    payload = json.dumps({"findings": [shown, invented], "security_lens": CLEAN_LENS})
+    monkeypatch.setattr(cli, "owned_reviewer_runner", lambda *a, **k: CommandResult(0, payload))
+
+    assert cli.main(_args(workspace)) == 1
+    gate = capsys.readouterr().out
+    assert "**Status:** MUST_FIX" in gate and gate.count("| MUST-FIX |") == 1
+    assert "Invented teardown leak" not in gate
+    assert (
+        "**Withheld:** 1 finding without a verified quote: "
+        "README.md:1 (quote is absent from README.md)"
+    ) in gate
+
+
+def test_secret_shapes_quoted_as_evidence_are_masked_in_gate_and_saved_result(
+    monkeypatch, tmp_path, capsys
+):
+    """Escaping bug: a key or token a diff holds by mistake reached the gate through a quote."""
+    workspace = _ready(monkeypatch, tmp_path)
+    block = "\n".join(
+        (
+            "-----BEGIN " + "PRIVATE KEY-----",
+            "MIIEfakeKEYBODYmarker",
+            "-----END " + "PRIVATE KEY-----",
+        )
+    )
+    token = jwt('{"alg":"HS256"}', "{}")
+    (workspace / "leak.txt").write_text(f"{block}\nAUTH {token}\n")
+    leaked = finding("leak.txt", 1, "MUST-FIX", block)
+    leaked["evidence"].append({"path": "leak.txt", "quote": f"AUTH {token}"})
+    leaked["title"] = "Committed key material"
+    payload = json.dumps({"findings": [leaked], "security_lens": CLEAN_LENS})
+    monkeypatch.setattr(cli, "owned_reviewer_runner", lambda *a, **k: CommandResult(0, payload))
+
+    assert cli.main(_args(workspace)) == 1
+    printed = capsys.readouterr()
+    saved = json.loads(
+        (workspace / ".git/slopmeister-config/reviews/cli-task-plan.json").read_text()
+    )
+    for gate in (printed.out, saved["gate"]):
+        assert "Committed key material" in gate and "**Withheld:**" not in gate
+        assert "[REDACTED]" in gate
+        assert "KEYBODYmarker" not in gate and token not in gate
+    assert "KEYBODYmarker" not in printed.err and token not in printed.err
+
+
+@pytest.mark.parametrize(
+    "tail, reason",
+    [
+        (("--prompt-file", "-"), "stdin is empty"),
+        (("--prompt-file", "/nonexistent/prompt.md"), "could not be read"),
+        (("--candidate",), "requires repository diff mode"),
+        ((), "candidate differs"),
+        (("--exempt-reason", " "), "nonempty reason"),
+    ],
+)
+def test_operator_mistakes_are_start_preconditions(monkeypatch, tmp_path, capsys, tail, reason):
+    """Escaping bug: an empty prompt told the session to restore the read-only review boundary."""
+    workspace = _ready(monkeypatch, tmp_path)
+    monkeypatch.setattr("sys.stdin", io.StringIO(" \n"))
+    if reason == "candidate differs":
+        saved = workspace / ".git/slopmeister-config/reviews/cli-task-plan.json"
+        save_result(saved, "gate", (0, "a" * 40))
+    calls = []
+    monkeypatch.setattr(cli, "run_review", lambda *a, **k: calls.append(a) or CLEAN)
+    args = _args(workspace, *tail)
+    if "--prompt-file" in tail:
+        args.remove("--prompt")
+        args.remove("Review.")
+    assert cli.main(args) == 1
+    gate = capsys.readouterr().out
+    assert reason in gate and not calls
+    assert "**Category:** `START_PRECONDITION`" in gate
+    assert "Correct the named start condition" in gate and "read-only review boundary" not in gate
+
+
+def test_failed_reviewer_with_large_output_prints_a_bounded_tail(monkeypatch, tmp_path, capsys):
+    """Escaping bug: a failed run put its whole output into the gate reason, unbounded."""
+    workspace = _ready(monkeypatch, tmp_path)
+    noise = "".join(f"line {n} | pipes || and ümlaut 漢字 {'x' * 120}\n" for n in range(1500))
+    output = noise + "final cause: model at capacity\n"
+    assert len(output) > 200_000
+    failed = CommandResult(1, output, stderr=noise)
+    monkeypatch.setattr(cli, "owned_reviewer_runner", lambda *a, **k: failed)
+
+    assert cli.main(_args(workspace)) == 1
+    printed = capsys.readouterr()
+    assert len(printed.out) + len(printed.err) < cli.REJECTED_OUTPUT_CHARS
+    assert "stderr| final cause: model at capacity" in printed.err
+    assert "review command failed with exit code 1" in printed.out
+    assert "**Category:** `EXECUTION_FAILURE`" in printed.out
     assert not (workspace / ".git/slopmeister-config/reviews/cli-task-plan.json").exists()

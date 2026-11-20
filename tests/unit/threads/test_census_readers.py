@@ -142,3 +142,84 @@ def test_unreadable_source_roots_are_not_reported_as_missing(tmp_path, monkeypat
     assert coverage["source_roots"] == {"claude": "unreadable", "codex": "unreadable"}
     assert coverage["unreadable_roots"] == 2
     assert "PRIVATE_PATH_SENTINEL" not in repr(coverage)
+
+
+def user(text, timestamp, **fields):
+    return {"type": "user", "timestamp": timestamp, "message": {"content": text}, **fields}
+
+
+def queued(text, origin, **fields):
+    attachment = {"type": "queued_command", "prompt": text, "origin": {"kind": origin}}
+    record = {"type": "attachment", "timestamp": "2026-10-05T00:04:00Z", "attachment": attachment}
+    return {**record, **fields}
+
+
+def test_claude_message_kinds_and_triggers(tmp_path):
+    usage = {"input_tokens": 1, "output_tokens": 1}
+    rows = [
+        user("Mode: spine kickoff", "2026-10-05T00:00:00Z"),
+        assistant(usage),
+        user([{"type": "tool_result", "content": "x"}], "2026-10-05T00:00:01Z"),
+        user("sidechain prompt", "2026-10-05T00:00:02Z", isSidechain=True),
+        user("<system-reminder>meta</system-reminder>", "2026-10-05T00:00:03Z"),
+        user("[relayed by manager m on the operator's order] go", "2026-10-05T00:01:00Z"),
+        {**assistant(usage), "message": {"id": "two", "model": "m", "usage": usage}},
+        user("You have 2 orchestration messages. Run it.", "2026-10-05T00:02:00Z"),
+        {**assistant(usage), "message": {"id": "three", "model": "m", "usage": usage}},
+        user([{"type": "text", "text": "please also check"}], "2026-10-05T00:03:00Z"),
+        {**assistant(usage), "message": {"id": "four", "model": "m", "usage": usage}},
+        queued("You have 1 orchestration message. Run it.", "human"),
+        queued("background task finished", "task-notification"),
+        queued("meta prompt", "human", isMeta=True),
+        queued("task finished", "human", turnOrigin="task_notification"),
+        {**assistant(usage), "message": {"id": "four", "model": "m", "usage": usage}},
+        {**assistant(usage), "message": {"id": "five", "model": "m", "usage": usage}},
+    ]
+    session = readers.claude(log(tmp_path, rows))
+    kinds = ["kickoff", "relay", "notice", "operator", "notice"]
+    assert [kind for _, kind in session.messages] == kinds
+    assert [q.trigger for q in session.requests] == kinds
+
+
+def said(text, timestamp):
+    content = [{"type": "input_text", "text": text}]
+    payload = {"type": "message", "role": "user", "content": content}
+    return {"type": "response_item", "timestamp": timestamp, "payload": payload}
+
+
+def test_codex_pasted_relay_is_classified(tmp_path):
+    rows = [
+        said("<environment_context>x</environment_context>", "2026-10-05T00:00:00Z"),
+        said("Mode: spine", "2026-10-05T00:00:01Z"),
+        said("<pasted_content>Manager decision: go</pasted_content>", "2026-10-05T00:00:02Z"),
+        token(10, 10),
+    ]
+    session = readers.codex(log(tmp_path, rows))
+    assert [kind for _, kind in session.messages] == ["kickoff", "relay"]
+    assert [q.trigger for q in session.requests] == ["relay"]
+
+
+def test_codex_review_prompts_are_not_operator_messages(tmp_path):
+    guardian = {"source": {"subagent": {"other": "guardian"}}}
+    rows = [
+        {"type": "session_meta", "timestamp": "2026-10-05T00:00:00Z", "payload": guardian},
+        said("# AGENTS.md instructions for a checkout", "2026-10-05T00:00:00Z"),
+        said("<environment_context>x</environment_context>", "2026-10-05T00:00:00Z"),
+        said("The following is the Codex agent history to review", "2026-10-05T00:00:01Z"),
+        token(10, 10),
+        said("[3] assistant: more history", "2026-10-05T00:00:02Z"),
+        said("Is this action allowed?", "2026-10-05T00:00:03Z"),
+        token(10, 20),
+    ]
+    session = readers.codex(log(tmp_path, rows))
+    assert [kind for _, kind in session.messages] == ["autoreview"] * 3
+    assert [q.trigger for q in session.requests] == ["autoreview"] * 2
+    weeks = report.messages(
+        [session], Interval(stamp("2026-10-03T00:00:00Z"), stamp("2026-10-17T00:00:00Z"))
+    )
+    assert weeks == {
+        "W1": {
+            "messages": {"autoreview": 3},
+            "requests": {"autoreview": 2},
+        }
+    }

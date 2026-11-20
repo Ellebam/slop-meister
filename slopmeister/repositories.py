@@ -23,6 +23,7 @@ from slopmeister.install.preflight import (
 from slopmeister.install.preflight import git as install_git
 from slopmeister.install.prepare import prepare
 from slopmeister.install.snapshot import source_identity
+from slopmeister.install.workspace import record_push_branch
 from slopmeister.session import launch_identity
 from slopmeister.session import repositories as saved
 from slopmeister.slots import allocation, claimed, leftover
@@ -43,7 +44,24 @@ def validate(repo: Path, name: str, destination: Path) -> Path:
     return repo
 
 
+def _push_branches(launch) -> None:
+    if not launch.push_branches:
+        return
+    if launch.directory or launch.abandon:
+        raise ValueError("--push-branch needs a repository session and is not taken with --abandon")
+    named = [launch.repo, *(Path(value).expanduser() for value in launch.repositories)]
+    if set(launch.push_branches) - {str(path.resolve()) for path in named}:
+        reason = "--push-branch names a repository outside this launch"
+        if launch.redispatch:
+            reason += (
+                "; for an existing companion use repository add --workspace <primary> "
+                "--repo <main-checkout> --push-branch <branch>"
+            )
+        raise ValueError(reason)
+
+
 def preflight(launch) -> None:
+    _push_branches(launch)
     if not launch.repositories:
         return
     if launch.directory or launch.redispatch or launch.abandon or launch.tool == "opencode":
@@ -61,7 +79,7 @@ def preflight(launch) -> None:
         names.add(repo.name)
 
 
-def _request(workspace: Path, repo: Path, state: dict) -> InstallRequest:
+def _check_primary(workspace: Path, state: dict) -> None:
     if not state.get("repository_add") or state.get("session"):
         raise ValueError("add repositories from a prepared primary workspace")
     check(CheckContext(workspace, state["plot"], state["commit"], state["grants"]))
@@ -71,26 +89,44 @@ def _request(workspace: Path, repo: Path, state: dict) -> InstallRequest:
         and launch_identity.private_json(identity, "launcher identity").get("tool") == "opencode"
     ):
         raise ValueError("OpenCode does not support adding repositories")
+
+
+def _refuse_delivery(reason: str, workspace: Path, repo: Path, push: str | None) -> None:
+    command = [
+        "bin/slopmeister",
+        "repository",
+        "add",
+        "--workspace",
+        str(workspace),
+        "--repo",
+        str(repo),
+    ]
+    if push is not None:
+        command += ["--push-branch", push]
+    raise ValueError(
+        f"{reason}. Use an existing checkout matching the launch source and permissions. "
+        "If none is available, preserve this worktree and hand off to one newly named worker "
+        "with all repositories under the approved plot. See docs/launcher-recovery.md.\n"
+        f"Retry from a matching checkout: {shlex.join(command)}"
+    )
+
+
+def _request(workspace: Path, repo: Path, state: dict, push: str | None) -> InstallRequest:
     root, declared = declaration(state["plot"])
-    if state.get("source_identity") != source_identity(root):
-        source = (
-            Path(state["source_root"]) / "bin/slopmeister"
-            if state.get("source_root")
-            else "bin/slopmeister"
-        )
-        retry = shlex.join(
-            [str(source), "repository", "add", "--workspace", str(workspace), "--repo", str(repo)]
-        )
-        raise ValueError(
-            "session delivery differs; run from the unchanged invoking Slopmeister checkout. "
-            "If that source changed, restore it or ask the operator for a fresh session. "
-            "Do not replace this session's delivery.\n"
-            f"Retry: {retry}"
-        )
-    policy = declared["target"]["repository"]
+    target = declared["target"]
+    policy = target["repository"]
     shipping = "deny" if state.get("proof_owner") else policy.get("shipping", "deny")
-    if (policy["commit"], shipping) != (state["commit"], state["shipping"]):
-        raise ValueError("plot permissions changed; ask before adding a repository")
+    reason = ""
+    if (policy["commit"], shipping, target.get("service_actions", [])) != (
+        state["commit"],
+        state["shipping"],
+        state.get("service_actions", []),
+    ):
+        reason = "plot permissions changed"
+    elif state.get("source_identity") != source_identity(root):
+        reason = "session delivery differs"
+    if reason:
+        _refuse_delivery(reason, workspace, repo, push)
     return InstallRequest(
         "--preflight",
         state["plot"],
@@ -99,16 +135,27 @@ def _request(workspace: Path, repo: Path, state: dict) -> InstallRequest:
         state["grants"],
         proof_owner=state.get("proof_owner"),
         session=str(workspace),
+        push_branch=push,
     )
 
 
-def _attach(workspace: Path, repo: Path, state: dict) -> dict:
-    request = _request(workspace, repo, state)
+def _attach(workspace: Path, repo: Path, state: dict, push: str | None) -> dict:
+    _check_primary(workspace, state)
     rows = saved.members(workspace)
+    for row in rows:
+        if row["repository"] != str(repo):
+            continue
+        if row == rows[0] or push is None:
+            raise ValueError("repository already belongs to this session")
+        child = Path(row["worktree"])
+        member = saved.read(child)
+        check(CheckContext(child, state["plot"], state["commit"], state["grants"]))
+        record_push_branch(child, saved.state_path(child).parent, member, push)
+        return row | {"updated_push": push}
+
+    request = _request(workspace, repo, state, push)
     destination = workspace / saved.DIRECTORY / repo.name
     validate(repo, rows[0]["branch"], destination)
-    if str(repo) in {row["repository"] for row in rows}:
-        raise ValueError("repository already belongs to this session")
     prepare(request)
     pending = dict(
         repository=str(repo),
@@ -122,8 +169,7 @@ def _attach(workspace: Path, repo: Path, state: dict) -> dict:
     state["repositories"] = [*rows, pending]
     path = saved.state_path(workspace)
     saved.save(path, state)
-    _create_member(repo, destination, request, state, path)
-    member = saved.read(destination)
+    member = _create_member(repo, destination, request, state, path)
     state["repositories"][-1] = saved.record(destination, member)
     saved.save(path, state)
     return state["repositories"][-1]
@@ -182,7 +228,7 @@ def _start(repo: Path) -> str:
         raise ValueError(f"cannot select companion start in {repo}: {error}") from error
 
 
-def _create_member(repo, destination, request, state, path) -> None:
+def _create_member(repo, destination, request, state, path) -> dict:
     rows = state["repositories"][:-1]
     branch = rows[0]["branch"]
     start, created = "", False
@@ -197,6 +243,22 @@ def _create_member(repo, destination, request, state, path) -> None:
         created = True
         request.action, request.workspace = "--prepare", str(destination)
         prepare(request)
+        member = saved.read(destination)
+        # Preparation reads the plot again after a possibly slow origin fetch.
+        if any(
+            member.get(key, []) != state.get(key, [])
+            for key in ("commit", "shipping", "service_actions")
+        ):
+            _refuse_delivery(
+                "plot permissions changed", Path(state["worktree"]), repo, request.push_branch
+            )
+        if member["source_root"] != state.get("source_root") and member[
+            "source_identity"
+        ] != state.get("source_identity"):
+            _refuse_delivery(
+                "session delivery differs", Path(state["worktree"]), repo, request.push_branch
+            )
+        return member
     except BaseException:
         cleared = (
             _rollback_member(repo, destination, branch, start)
@@ -213,14 +275,14 @@ def _create_member(repo, destination, request, state, path) -> None:
         raise
 
 
-def add(workspace: Path, repo: Path) -> dict:
+def add(workspace: Path, repo: Path, push: str | None = None) -> dict:
     reject_git_context()
     workspace = workspace.absolute()
     safe_path(workspace)
     path = saved.state_path(workspace)
     with (path.parent / "repositories.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        return _attach(workspace, repo.expanduser().absolute(), saved.read(workspace))
+        return _attach(workspace, repo.expanduser().absolute(), saved.read(workspace), push)
 
 
 def _companions(path: Path) -> list[dict]:
@@ -264,18 +326,26 @@ def main(argv) -> int:
     parser.add_argument("action", choices=("add", "status"))
     parser.add_argument("--workspace", type=Path, required=True)
     parser.add_argument("--repo", type=Path)
+    parser.add_argument("--push-branch")
     args = parser.parse_args(argv)
     try:
         if args.action == "add":
             if args.repo is None:
                 parser.error("add requires --repo")
-            row = add(args.workspace, args.repo)
+            row = add(args.workspace, args.repo, args.push_branch)
+            if "updated_push" in row:
+                print(
+                    f"repository push branch updated: {row['worktree']} push={row['updated_push']}"
+                )
+                return 0
             print(f"repository added: {row['worktree']} (branch {row['branch']})")
             print(f"plot {row['plot']}: commit={row['commit']}, shipping={row['shipping']}")
             print(f"Read {row['worktree']}/AGENTS.md or CLAUDE.md before editing this member.")
         else:
             for row in saved.members(args.workspace.absolute()):
-                print(f"{row['worktree']} commit={row['commit']} shipping={row['shipping']}")
+                push = saved.read(Path(row["worktree"]))["ship_target"].get("push", row["branch"])
+                permissions = f"commit={row['commit']} shipping={row['shipping']}"
+                print(f"{row['worktree']} {permissions} push={push}")
     except (OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
         print(f"repository: {error}")
         return 1

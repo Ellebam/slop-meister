@@ -1,4 +1,4 @@
-"""Orca's shared app state is merged only after a proven closed-app reply."""
+"""Orca's managed settings go through its runtime, and status reads only what Orca uses."""
 
 import json
 import stat
@@ -7,108 +7,254 @@ import pytest
 
 from slopmeister.errors import SlopmeisterError
 from slopmeister.workstation import install, orca
+from tests.support.orca_runtime import RUNTIME_ID, TOKEN, Runtime, profile
+
+STALE = {"id": "slopmeister-fixture", "label": "Old", "scope": {"type": "global"}}
+FIXTURE = {**STALE, "label": "Fixture", "action": "terminal-command", "command": "true"}
+FIXTURE["appendEnter"] = True
+KEPT = {"id": "operator-command", "label": "Keep", "command": "echo keep"}
+# A scratch template, so an edit of the committed one fails no unit test.
+TEMPLATE = {
+    "telemetry": {"optedIn": False},
+    "agentStatusHooksEnabled": True,
+    "agentDefaultArgs": {"claude": ""},
+    "terminalQuickCommands": [FIXTURE],
+}
+PRIOR = {
+    "telemetry": {"optedIn": False, "installId": "private-identifier"},
+    "agentStatusHooksEnabled": False,
+    "agentDefaultArgs": {"claude": "--old", "other": "--keep"},
+    "terminalQuickCommands": [KEPT, STALE],
+}
 
 
 @pytest.fixture(autouse=True)
 def mac(monkeypatch):
-    """Orca's settings file is a Mac-only install entry."""
+    """Orca's managed settings are a Mac-only install entry."""
     monkeypatch.setenv("SLOPMEISTER_PLATFORM", "darwin")
 
 
 @pytest.fixture
 def home(tmp_path, monkeypatch):
     root = tmp_path / "home"
-    path = root / orca.NAME
-    path.parent.mkdir(parents=True)
-    path.write_text(
-        json.dumps(
-            {
-                "settings": {
-                    "telemetry": {"optedIn": True, "installId": "private-identifier"},
-                    "terminalQuickCommands": [
-                        {"id": "operator-command", "label": "Keep", "command": "echo keep"}
-                    ],
-                },
-                "sessionState": {"token": "private-token"},
-            }
-        )
-    )
-    monkeypatch.setattr(
-        orca.terminal,
-        "_orca",
-        lambda *args: {"app": {"running": False}, "runtime": {"reachable": False}},
-    )
+    profile(root, PRIOR)
+    monkeypatch.setattr(orca, "_wanted", lambda *args: TEMPLATE)
     return root
 
 
-def test_install_preserves_foreign_values_and_exact_private_backup(home, tmp_path):
-    """Bug: rewriting Orca's file dropped live state or exposed its old bytes in a backup."""
-    path = home / orca.NAME
-    original = path.read_bytes()
+@pytest.fixture
+def runtime(home):
+    with Runtime(home, json.loads(json.dumps(PRIOR))) as fake:
+        yield fake
+
+
+def test_install_sends_only_differing_settings_after_a_private_backup(home, runtime, tmp_path):
+    """Bug: the install rewrote Orca's files, dropped unmanaged values or wrote before a backup."""
     backups = tmp_path / "backups"
+    saved = backups / f"{orca.NAME}.settings.json"
+    seen = []
+
+    def first_write(request):
+        seen.append(json.loads(saved.read_text()))
+        seen.append(stat.S_IMODE(saved.stat().st_mode))
+        return runtime._frames(request)
+
+    runtime.replies["settings.updateTerminalQuickCommands"] = first_write
+    store = (home / orca.NAME).read_bytes()
     assert orca.status(home) == "differs"
     orca.install(home, backups)
-    saved = backups / orca.NAME
-    assert saved.read_bytes() == original
-    assert stat.S_IMODE(saved.stat().st_mode) == 0o600
-    assert stat.S_IMODE(backups.stat().st_mode) == 0o700
-    updated = json.loads(path.read_text())
-    assert updated["sessionState"] == {"token": "private-token"}
-    assert updated["settings"]["telemetry"]["installId"] == "private-identifier"
-    assert updated["settings"]["terminalQuickCommands"][0]["id"] == "operator-command"
-    assert orca.status(home) == "unchanged"
-    updated["sessionState"]["token"] = "changed-foreign-value"
-    path.write_text(json.dumps(updated))
-    assert orca.status(home) == "unchanged"
-    updated["settings"]["telemetry"]["optedIn"] = True
-    path.write_text(json.dumps(updated))
-    assert orca.status(home) == "differs"
+    assert seen == [PRIOR, 0o600] and stat.S_IMODE(backups.stat().st_mode) == 0o700
+    assert runtime.methods() == [
+        "settings.get",
+        "settings.getTerminalQuickCommands",
+        "settings.updateTerminalQuickCommands",
+        "settings.update",
+        "settings.get",
+        "settings.getTerminalQuickCommands",
+    ]
+    assert runtime.requests[2]["params"] == {"mutation": {"type": "upsert", "command": FIXTURE}}
+    assert runtime.requests[3]["params"] == {
+        "agentStatusHooksEnabled": True,
+        "agentDefaultArgs": {"claude": "", "other": "--keep"},
+    }
+    assert runtime.settings["terminalQuickCommands"] == [KEPT, FIXTURE]
+    assert (home / orca.NAME).read_bytes() == store
+
+
+def test_install_with_matching_runtime_sends_no_mutation(home, runtime, tmp_path):
+    runtime.settings.update(TEMPLATE)
+    orca.install(home, tmp_path / "backups")
+    assert runtime.methods() == ["settings.get", "settings.getTerminalQuickCommands"]
+    assert not (tmp_path / "backups").exists()
+
+
+def test_backup_keeps_what_the_runtime_serves(home, runtime, tmp_path):
+    """Bug: the backup took Orca's store copy, which can lag the values the install replaces."""
+    runtime.settings["agentDefaultArgs"] = {"claude": "--live", "newer": "--live"}
+    orca.install(home, tmp_path / "backups")
+    saved = json.loads((tmp_path / "backups" / f"{orca.NAME}.settings.json").read_text())
+    assert saved["agentDefaultArgs"] == {"claude": "--live", "newer": "--live"}
+    assert saved["telemetry"] == PRIOR["telemetry"]
+
+
+def test_failed_backup_sends_no_mutation(home, runtime, tmp_path):
+    """Bug: a write reached Orca although the prior settings were not saved."""
+    backups = tmp_path / "backups"
+    backups.write_text("not a folder")
+    with pytest.raises(OSError):
+        orca.install(home, backups)
+    assert runtime.methods() == ["settings.get", "settings.getTerminalQuickCommands"]
+
+
+def unsafe_mode(runtime):
+    runtime.metadata.chmod(0o644)
+
+
+def open_folder(runtime):
+    runtime.endpoint.parent.chmod(0o750)
+
+
+def linked_file(runtime):
+    target = runtime.root / "elsewhere.json"
+    runtime.metadata.rename(target)
+    runtime.metadata.symlink_to(target)
+
+
+def closed_orca(runtime):
+    runtime.metadata.unlink()
+
+
+def no_unix_transport(runtime):
+    runtime.write_metadata(transports=[{"kind": "websocket", "endpoint": "ws://127.0.0.1:1"}])
+
+
+def foreign_socket(runtime):
+    runtime.write_metadata(transports=[{"kind": "unix", "endpoint": str(runtime.metadata)}])
 
 
 @pytest.mark.parametrize(
-    "reply",
-    [None, {}, {"app": {}}, {"app": {"running": True}}, {"app": {"running": 0}}],
+    "spoil",
+    [unsafe_mode, open_folder, linked_file, closed_orca, no_unix_transport, foreign_socket],
 )
-def test_install_refuses_unverified_closed_state_before_any_home_write(
-    home, tmp_path, monkeypatch, reply
-):
-    """Bug: a timed-out or malformed status allowed a live Orca file to be replaced."""
-    monkeypatch.setattr(orca.terminal, "_orca", lambda *args: reply)
-    original = (home / orca.NAME).read_bytes()
-    with pytest.raises(SlopmeisterError, match="closed state is unverified"):
+def test_unsafe_or_absent_runtime_refuses_before_any_write(home, runtime, spoil):
+    """Bug: the token went to a socket another user controls, or a closed Orca read as success."""
+    spoil(runtime)
+    with pytest.raises(SlopmeisterError, match="open Orca and retry; nothing written") as raised:
         install.install(home, {orca.NAME, ".claude/CLAUDE.md"})
-    assert (home / orca.NAME).read_bytes() == original
-    assert not (home / ".claude").exists()
-    assert not (home / ".slopmeister-backup").exists()
+    assert TOKEN not in str(raised.value)
+    assert runtime.requests == []
+    assert not (home / ".claude").exists() and not (home / ".slopmeister-backup").exists()
 
 
-def test_install_refuses_changed_orca_file_after_backup(home, tmp_path, monkeypatch):
-    """Bug: Orca changed its state between the installer's read and replace."""
-    path = home / orca.NAME
-    original = path.read_bytes()
+def frames(*replies):
+    return lambda request: [
+        json.dumps(reply(request)).encode() + b"\n" if callable(reply) else reply
+        for reply in replies
+    ]
 
-    def status(*args):
-        path.write_bytes(original + b" ")
-        return {"app": {"running": False}}
 
-    monkeypatch.setattr(orca.terminal, "_orca", status)
-    with pytest.raises(SlopmeisterError, match="changed during install"):
+@pytest.mark.parametrize(
+    ("reply", "message"),
+    [
+        (frames(), "no valid reply"),
+        (frames(b'{"id": "partial"'), "no valid reply"),
+        (frames(b"[]\n"), "another request"),
+        (frames(lambda r: {"id": "other", "ok": True, "result": {}}), "another request"),
+        (
+            frames(
+                lambda r: {"id": r["id"], "ok": True, "result": {}, "_meta": {"runtimeId": "x"}}
+            ),
+            "another runtime",
+        ),
+        (
+            frames(
+                lambda r: {
+                    "id": r["id"],
+                    "ok": False,
+                    "error": {"code": "forbidden", "message": f"{r['authToken']}\x1b[2J"},
+                }
+            ),
+            "Orca refused settings.get: forbidden",
+        ),
+        (
+            frames(
+                lambda r: {
+                    "id": r["id"],
+                    "ok": False,
+                    "error": {"code": "forbidden", "message": "x" * 190 + r["authToken"]},
+                }
+            ),
+            "Orca refused settings.get: forbidden x+\\[token\\]$",
+        ),
+        (
+            frames(
+                lambda r: {
+                    "id": r["id"],
+                    "ok": True,
+                    "result": [],
+                    "_meta": {"runtimeId": RUNTIME_ID},
+                }
+            ),
+            "unknown shape",
+        ),
+    ],
+)
+def test_invalid_runtime_reply_stops_before_any_mutation(home, runtime, tmp_path, reply, message):
+    """Bug: a reply from another runtime or of another shape was taken as Orca's settings."""
+    runtime.replies["settings.get"] = reply
+    with pytest.raises(SlopmeisterError, match=message) as raised:
         orca.install(home, tmp_path / "backups")
-    assert path.read_bytes() == original + b" "
-    assert (tmp_path / "backups" / orca.NAME).read_bytes() == original
+    assert "\x1b" not in str(raised.value) and TOKEN[:5] not in str(raised.value)
+    assert runtime.methods() == ["settings.get"]
+    assert not (tmp_path / "backups").exists()
 
 
-def test_missing_or_malformed_orca_state_refuses_before_other_install(home):
-    """Bug: a new or corrupted Orca profile caused a partial all-home installation."""
-    path = home / orca.NAME
-    for text in (None, "{invalid", '{"settings":[]}', '{"settings":{"terminalQuickCommands":{}}}'):
-        if text is None:
-            path.unlink(missing_ok=True)
-        else:
-            path.write_text(text)
-        with pytest.raises(SlopmeisterError, match="open Orca once"):
-            install.install(home, {orca.NAME, ".claude/CLAUDE.md"})
-        assert not (home / ".claude").exists()
+def test_setting_orca_does_not_keep_fails_the_install(home, runtime, tmp_path):
+    """Bug: the install claimed success although Orca ignored or rewrote a managed value."""
+    runtime.settings.update(
+        {key: TEMPLATE[key] for key in ("agentStatusHooksEnabled", "agentDefaultArgs")}
+    )
+    runtime.replies["settings.updateTerminalQuickCommands"] = frames(
+        lambda r: {"id": r["id"], "ok": True, "result": {}, "_meta": {"runtimeId": RUNTIME_ID}}
+    )
+    with pytest.raises(
+        SlopmeisterError, match="did not keep these managed settings: terminalQuickCommands"
+    ) as raised:
+        orca.install(home, tmp_path / "backups")
+    assert str(tmp_path / "backups") in str(raised.value)
+
+
+def test_key_without_a_route_refuses_and_names_it(home, runtime):
+    """Bug: the install reported success while Orca kept a value no outside route can set."""
+    profile(home, {**PRIOR, "telemetry": {"optedIn": True}})
+    with pytest.raises(SlopmeisterError, match="no outside change of telemetry") as raised:
+        install.install(home, {orca.NAME, ".claude/CLAUDE.md"})
+    assert "nothing written" in str(raised.value)
+    assert runtime.requests == [] and not (home / ".claude").exists()
+
+
+def test_status_compares_only_managed_values_in_orcas_store(home):
+    """Bug: home:diff compared a file Orca no longer uses, or an unmanaged value."""
+    assert orca.status(home) == "differs"
+    current = {**PRIOR, **TEMPLATE, "terminalQuickCommands": [KEPT, FIXTURE], "unmanaged": 1}
+    profile(home, current)
+    assert orca.status(home) == "unchanged"
+    profile(home, {**current, "telemetry": {"optedIn": False, "installId": "changed"}})
+    assert orca.status(home) == "unchanged"
+    profile(home, {**current, "terminalQuickCommands": [KEPT, FIXTURE, FIXTURE]})
+    assert orca.status(home) == "differs"
+    profile(home, None)
+    assert orca.status(home) == "differs"
+    (home / orca.NAME).unlink()
+    assert orca.status(home) == "missing"
+
+
+def test_missing_profile_refuses_before_other_install(home):
+    """Bug: a new Orca profile caused a partial all-home installation."""
+    (home / orca.NAME).unlink()
+    with pytest.raises(SlopmeisterError, match="missing or unreadable"):
+        install.install(home, {orca.NAME, ".claude/CLAUDE.md"})
+    assert not (home / ".claude").exists()
 
 
 @pytest.mark.parametrize(
@@ -189,14 +335,6 @@ def test_doctor_reports_missing_cli_without_starting_orca(tmp_path, monkeypatch)
     monkeypatch.setenv("PLOT_SESSION_ORCA", str(tmp_path / "missing"))
     monkeypatch.setattr(orca.terminal, "_orca", lambda *args: pytest.fail("Orca CLI called"))
     assert orca.health() == {"runtime": "missing", "hooks": "not checked"}
-
-
-def test_missing_orca_cli_install_refusal_names_the_missing_app(home, monkeypatch):
-    """Bug: first-time setup told the operator to close an app that was not installed."""
-    monkeypatch.setattr(orca.terminal, "_orca", lambda *args: None)
-    with pytest.raises(SlopmeisterError, match="install Orca"):
-        install.install(home, {".claude/CLAUDE.md", orca.NAME})
-    assert not (home / ".claude").exists()
 
 
 def test_template_uses_manual_agent_defaults_and_safe_quick_commands():

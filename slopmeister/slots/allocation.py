@@ -11,6 +11,7 @@ import subprocess
 from slopmeister.errors import SlopmeisterError
 from slopmeister.paths import main_checkout, plot_declarations
 from slopmeister.plots.declaration import load_all
+from slopmeister.session.launch_identity import replace_bytes
 from slopmeister.slots.models import Claim as Claim
 from slopmeister.slots.models import Listener as Listener
 from slopmeister.slots.models import Live as Live
@@ -217,4 +218,4 @@ def content(claim: Claim) -> str:
 
 
 def write(path: Path, claim: Claim) -> None:
-    path.write_text(content(claim))
+    replace_bytes(path, content(claim).encode())

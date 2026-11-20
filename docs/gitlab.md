@@ -15,7 +15,7 @@ The target sends the token through masked `op run` to `glab auth login --stdin`.
 
 ## Read
 
-Name projects with `-R <host>/<group>/<project>`. Group reads use `GITLAB_HOST=<host>` and `--group <group>`. Add `-F json` to `issue` and `mr` for JSON. Use these named reads when they provide the requested result. Write an API-only repository or tracker read inside the project's checkout as `glab api -X GET <endpoint>` with the query in the URL. Claude runs that form by [rule](permissions.md). A read with `--hostname`, a field option or a credential endpoint retains review of its exact method, endpoint, destination and payload. The read request supplies task authority without a separate write order. GET alone does not make an endpoint safe. [`glab api`](https://docs.gitlab.com/cli/api/) has no `--jq`, so pipe its JSON to `jq`.
+Name projects with `-R <host>/<group>/<project>`. Group reads use `GITLAB_HOST=<host>` and `--group <group>`. Add `-F json` to `issue` and `mr` for JSON. Use these named reads when they provide the requested result. Write an API-only repository or tracker read inside the project's checkout as `glab api -X GET <endpoint>` with the query in the URL. Claude runs that form by [rule](permissions.md). Place the host before the method for a read from another host. The reviewer checks the destination. A host after the method, a field option or a credential endpoint asks the operator. The read request supplies task authority without a separate write order. GET alone does not make an endpoint safe. [`glab api`](https://docs.gitlab.com/cli/api/) has no `--jq`, so pipe its JSON to `jq`.
 
 | Command | Expected output, exit 0 |
 |---|---|
@@ -28,6 +28,12 @@ Name projects with `-R <host>/<group>/<project>`. Group reads use `GITLAB_HOST=<
 | `GITLAB_HOST=<host> glab iteration list --group <group>` | One line per iteration with its title and link |
 
 `glab issue board view -R <host>/<group>/<project>` shows a project's issue board. Read group epic boards in the browser. [Legacy epic notes](https://docs.gitlab.com/api/notes/#epics) need the numeric epic ID, not its IID. That API is deprecated. Use Work Items for newer epics.
+
+For a self-managed host, use `glab api --hostname <host> --method GET <endpoint>`. The explicit host and read method keep the destination and operation visible.
+
+## Ship a branch
+
+Launch the worker with a branch belonging to the selected repository. With the plot’s commit and shipping grants, its fixed ship helper can push the saved non-default branch. Use the forge’s normal merge-request route for review. The [shipping procedure](../src/skills/ship/SKILL.md) lists the allowed targets and required checks.
 
 ## Write
 

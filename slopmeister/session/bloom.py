@@ -18,6 +18,8 @@ HOST_COMMAND = ("/usr/local/bin/grove", "receive")
 HOST_CONFIG = Path("/etc/slopmeister/grove.json")
 COMMAND_SECONDS = 30
 MAX_RECEIPT_BYTES = 1024
+UNEXPECTED_ENTRY_EXIT = 65
+UNEXPECTED_ENTRY = "GROVE_UNEXPECTED_ENTRY"
 
 
 def _git(root: Path, *args: str) -> str:
@@ -121,6 +123,8 @@ def _send(data: bytes, config: dict) -> str:
         )
     except subprocess.TimeoutExpired:
         raise ValueError("Grove intake timed out") from None
+    if result.returncode == UNEXPECTED_ENTRY_EXIT:
+        raise ValueError(UNEXPECTED_ENTRY)
     if result.returncode:
         raise ValueError("Grove intake failed")
     if len(result.stdout) > MAX_RECEIPT_BYTES:
@@ -154,7 +158,11 @@ def _host(args: argparse.Namespace) -> int:
     if not isinstance(folder, str):
         raise ValueError("Grove settings require the absolute page directory")
     if args.command == "receive":
-        name = store.publish(Path(folder), store.read_page(sys.stdin.buffer))
+        try:
+            name = store.publish(Path(folder), store.read_page(sys.stdin.buffer))
+        except store.UnexpectedEntries:
+            print(UNEXPECTED_ENTRY, file=sys.stderr)
+            return UNEXPECTED_ENTRY_EXIT
         print(config["base_url"] + "/" + name)
     else:
         removed, size = store.cleanup(Path(folder))

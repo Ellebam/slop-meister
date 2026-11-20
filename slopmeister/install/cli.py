@@ -27,6 +27,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--grant", action="append", default=[])
     parser.add_argument("--dispatcher-jira", action="store_true")
     parser.add_argument("--manager", action="store_true")
+    parser.add_argument("--push-branch")
     return parser
 
 
@@ -42,6 +43,7 @@ def main(argv: Sequence[str]) -> int:
             args.grant,
             args.dispatcher_jira,
             args.manager,
+            push_branch=args.push_branch,
         )
         prepare(request)
         return 0

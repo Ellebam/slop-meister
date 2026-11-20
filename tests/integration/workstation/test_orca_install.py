@@ -1,98 +1,85 @@
-"""The public workstation command manages Orca only through a scratch profile."""
+"""The public workstation command sets Orca through a stand-in runtime and a scratch profile."""
 
 import json
 
-from tests.integration.workstation.test_install import ORCA_DATA, ROOT, machine, workstation
+from slopmeister.workstation import orca
+from tests.integration.workstation.test_install import ORCA_STORE, ROOT, machine, workstation
 from tests.support.fakes import fake_binary
+from tests.support.orca_runtime import TOKEN, Runtime, profile
+
+COMMAND_ID = "slopmeister-phone-claude"
+KEPT = {"id": "operator-command", "label": "Keep", "command": "echo keep"}
 
 
-def test_orca_install_merges_managed_keys_without_losing_live_state(tmp_path):
-    """Bug: installing managed commands leaves the old entry or deletes unrelated state."""
-    home, bin_dir = machine(tmp_path)
-    path = home / ORCA_DATA
-    original = {
-        "settings": {
-            "telemetry": {"optedIn": True, "installId": "private-value"},
-            "terminalQuickCommands": [
-                {"id": "operator-command", "label": "Keep", "command": "echo keep"},
-                {
-                    "id": "slopmeister-claude-sign-in",
-                    "label": "Claude sign in",
-                    "scope": {"type": "repo", "repoId": "old-repository"},
-                    "action": "terminal-command",
-                    "command": "claude auth login --claudeai",
-                    "appendEnter": True,
-                },
-            ],
-            "unmanaged": {"badge": "blue"},
-        },
-        "liveAppState": {"private": "keep-this-secret"},
+def live_settings() -> dict:
+    """Orca's settings with one stale managed command, one unmanaged command and private values."""
+    wanted = orca._wanted()
+    stale = next(item for item in wanted["terminalQuickCommands"] if item["id"] == COMMAND_ID)
+    stale = {**stale, "label": "Old label", "scope": {"type": "repo", "repoId": "old-repository"}}
+    return {
+        **wanted,
+        "telemetry": {"optedIn": False, "installId": "private-value"},
+        "terminalQuickCommands": [KEPT, stale],
+        "unmanaged": {"badge": "blue"},
     }
-    path.write_text(json.dumps(original))
-    result = workstation(home, bin_dir, "install", "--all")
-    assert result.returncode == 0, result.stderr
-    updated = json.loads(path.read_text())
-    assert updated["liveAppState"] == original["liveAppState"]
-    assert updated["settings"]["unmanaged"] == original["settings"]["unmanaged"]
-    assert updated["settings"]["telemetry"] == {"optedIn": False, "installId": "private-value"}
-    assert (
-        updated["settings"]["terminalQuickCommands"][0]
-        == original["settings"]["terminalQuickCommands"][0]
-    )
-    commands = updated["settings"]["terminalQuickCommands"]
-    assert [
-        item
-        for item in commands
-        if item["id"] == original["settings"]["terminalQuickCommands"][1]["id"]
-    ] == [
-        {
-            **original["settings"]["terminalQuickCommands"][1],
-            "label": "Claude sign-in",
-            "scope": {"type": "global"},
+
+
+def test_orca_install_sends_managed_commands_to_the_running_orca(tmp_path):
+    """Bug: the install wrote Orca's files, lost an unmanaged command or printed private state."""
+    home, bin_dir = machine(tmp_path)
+    store = profile(home, live_settings())
+    before = store.read_bytes()
+    with Runtime(home, live_settings()) as runtime:
+        result = workstation(home, bin_dir, "install", ORCA_STORE)
+        assert result.returncode == 0, result.stderr
+        commands = runtime.settings["terminalQuickCommands"]
+        assert commands[0] == KEPT
+        assert [item for item in commands if item["id"] == COMMAND_ID][0][
+            "label"
+        ] == "Claude dispatcher"
+        assert {item["id"] for item in commands[1:]} == {
+            item["id"] for item in orca._wanted()["terminalQuickCommands"]
         }
-    ]
-    assert len(commands) == 4
-    assert "Claude sign in" not in {item["label"] for item in commands}
-    assert "private-value" not in result.stdout + result.stderr
-    before = path.read_bytes()
-    assert "0 file(s) differ. Nothing written." in workstation(home, bin_dir, "diff").stdout
-    assert workstation(home, bin_dir, "install", "--all").returncode == 0
-    assert path.read_bytes() == before
-    assert "0 file(s) differ. Nothing written." in workstation(home, bin_dir, "diff").stdout
+        updates = [m for m in runtime.methods() if m.startswith("settings.update")]
+        assert updates == ["settings.updateTerminalQuickCommands"] * 3
+        assert runtime.settings["unmanaged"] == {"badge": "blue"}
+        for private in (TOKEN, "private-value"):
+            assert private not in result.stdout + result.stderr
+        assert store.read_bytes() == before
+        saved = next((home / ".slopmeister-backup").glob(f"*/{ORCA_STORE}.settings.json"))
+        assert json.loads(saved.read_text()) == live_settings()
+        # Orca saves its database on its own schedule, a repeat asks the runtime and sends nothing.
+        runtime.requests.clear()
+        assert workstation(home, bin_dir, "install", ORCA_STORE).returncode == 0
+        assert not [m for m in runtime.methods() if m.startswith("settings.update")]
+        assert len(list((home / ".slopmeister-backup").glob(f"*/{ORCA_STORE}.settings.json"))) == 1
 
 
 def test_orca_diff_never_prints_live_state(tmp_path):
-    """Bug: home:diff exposed an unrelated private value in Orca's app state."""
+    """Bug: home:diff exposed an unrelated private value in Orca's settings."""
     home, bin_dir = machine(tmp_path)
-    path = home / ORCA_DATA
-    path.write_text(
-        '{"settings":{"telemetry":{"optedIn":true,"installId":"private-value"}},"liveAppState":{"private":"keep-this-secret"}}'
-    )
+    profile(home, {**live_settings(), "private": "keep-this-secret"})
     output = workstation(home, bin_dir, "diff").stdout
-    assert "managed Orca settings" in output
+    assert f"differs: {ORCA_STORE} managed Orca settings" in output
     assert "private-value" not in output and "keep-this-secret" not in output
 
 
-def test_running_or_unanswered_orca_refuses_its_install_before_any_write(tmp_path):
-    """Bug: live or unknown Orca status allowed an Orca update or partial home writes."""
+def test_closed_orca_refuses_its_install_before_any_write(tmp_path):
+    """Bug: a closed Orca let the install write other files and then fail or claim success."""
     home, bin_dir = machine(tmp_path)
-    original = (home / ORCA_DATA).read_bytes()
-    for reply in (
-        '{"ok":true,"result":{"app":{"running":true},"runtime":{"reachable":true}}}',
-        '{"ok":false}',
-    ):
-        fake_binary(bin_dir, "orca", f"printf '%s\\n' '{reply}'")
-        for selection in ("--all", ORCA_DATA):
-            result = workstation(home, bin_dir, "install", selection)
-            assert result.returncode != 0 and "nothing written" in result.stderr
-            assert (home / ORCA_DATA).read_bytes() == original
-            assert not (home / ".claude").exists()
+    store = profile(home, live_settings())
+    before = store.read_bytes()
+    for selection in ("--all", ORCA_STORE):
+        result = workstation(home, bin_dir, "install", selection)
+        assert result.returncode != 0 and "open Orca and retry; nothing written" in result.stderr
+        assert store.read_bytes() == before
+        assert not (home / ".claude").exists() and not (home / ".slopmeister-backup").exists()
 
 
 def test_named_global_install_works_while_orca_runs(tmp_path):
     """Bug: a global instruction refresh is blocked by unrelated live Orca state."""
     home, bin_dir = machine(tmp_path)
-    original_orca = (home / ORCA_DATA).read_bytes()
+    original_orca = (home / ORCA_STORE).read_bytes()
     fake_binary(
         bin_dir,
         "orca",
@@ -107,7 +94,7 @@ def test_named_global_install_works_while_orca_runs(tmp_path):
         (".codex/AGENTS.md", "dist/codex/AGENTS.md"),
     ):
         assert (home / name).read_bytes() == (ROOT / source).read_bytes()
-    assert (home / ORCA_DATA).read_bytes() == original_orca
+    assert (home / ORCA_STORE).read_bytes() == original_orca
 
 
 def test_doctor_reports_orca_hooks_off_from_the_two_cli_replies(tmp_path):

@@ -8,7 +8,7 @@ import pytest
 
 from slopmeister.launch import cli, confirm
 from slopmeister.launch import model as launch_model
-from slopmeister.launch.model import ROOT, Launch, Stop
+from slopmeister.launch.model import Launch, Stop
 
 
 class Seam:
@@ -22,8 +22,8 @@ class Seam:
         self.calls.append(("ready",))
         return self.state["ready"]
 
-    def register(self, repo):
-        self.calls.append(("register", repo))
+    def register(self, repo, folder=False):
+        self.calls.append(("register", repo, folder))
 
     def create(self, workspace, title, command):
         self.calls.append(("create", workspace, title, command))
@@ -73,7 +73,7 @@ def test_worktree_opens_named_with_its_issue_and_records_the_handle(seam, tmp_pa
     line = f" /bin/zsh -l '{tmp_path}/example-client-a.command'"
     assert fake.calls == [
         ("ready",),
-        ("register", tmp_path / "repo"),
+        ("register", tmp_path / "repo", False),
         ("create", launch.wt, "example-client-a", line),
         ("name", launch.wt, "example-client-a", "337"),
     ]
@@ -83,15 +83,26 @@ def test_worktree_opens_named_with_its_issue_and_records_the_handle(seam, tmp_pa
     assert said.err == ""
 
 
-def test_directory_session_opens_in_the_checkout_and_renames_nothing(seam, tmp_path):
-    """Bug: a directory session renamed the operator's shared Slopmeister workspace."""
+def test_directory_session_opens_in_its_own_folder_workspace(seam, tmp_path):
+    """Bug: every directory session's tab sat under the one Slopmeister checkout in Orca."""
     fake = seam()
+    real = tmp_path / "sessions/example-client-a"
     launch = Launch(
-        "example-client", "example-client-a", "", wt=tmp_path / "sessions/example-client-a"
+        "example-client",
+        "example-client-a",
+        "",
+        wt=tmp_path / "x/../sessions/example-client-a",
+        claude_wt=real,
+        issue_id="7",
     )
     cli._open(launch)
-    assert [call[0] for call in fake.calls] == ["ready", "create"]
-    assert fake.calls[1][1] == ROOT
+    line = f" /bin/zsh -l '{tmp_path}/example-client-a.command'"
+    assert fake.calls == [
+        ("ready",),
+        ("register", real, True),
+        ("create", real, "example-client-a", line),
+        ("name", real, "example-client-a", ""),
+    ]
 
 
 def test_failed_name_still_reaches_delivery(seam, tmp_path, capsys):
